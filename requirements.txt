@@ -1,0 +1,4 @@
+PyQt6>=6.6.0
+pyodbc>=5.0
+# install bsca-core locally:
+# pip install -e "C:\Users\luald\OneDrive\Desktop\BSCA"

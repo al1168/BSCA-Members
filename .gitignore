@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.accdb
+*.mdb
+bsca_settings.json
