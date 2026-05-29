@@ -98,11 +98,12 @@ def get_all_members(db_path: str) -> list[dict]:
         return [
             {
                 "center_id": int(row[0]),
-                "last_name": row[1],
-                "first_name": row[2],
-                "health_plan": row[3],
+                "last_name": row[1] or "",
+                "first_name": row[2] or "",
+                "health_plan": row[3] or "",
             }
             for row in cursor.fetchall()
+            if row[0] is not None  # skip Contacts rows with NULL Center ID
         ]
     finally:
         conn.close()
