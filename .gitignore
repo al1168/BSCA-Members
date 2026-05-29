@@ -7,3 +7,6 @@ bsca_settings.json
 .superpowers/
 *.db
 bsca_members_settings.json
+build/
+dist/
+*.spec.bak

@@ -1,0 +1,43 @@
+# -*- mode: python ; coding: utf-8 -*-
+# Build: .venv\Scripts\pyinstaller MemberManager.spec
+# Output: dist\MemberManager.exe
+
+a = Analysis(
+    ['member_manager.py'],
+    pathex=[],
+    binaries=[],
+    datas=[],
+    hiddenimports=[
+        'pyodbc',
+        'monthly_schedule',
+        'monthly_schedule.db',
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=['pytest', 'pytest_qt'],
+    noarchive=False,
+    optimize=1,
+)
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name='MemberManager',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
