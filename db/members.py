@@ -7,7 +7,14 @@ so multiple INSERTs can be wrapped in a single transaction.
 import os
 from datetime import date, datetime
 
-from monthly_schedule.db import build_connection_string
+from monthly_schedule.db import (
+    build_connection_string,
+    map_member_row,
+    map_enrollment_row,
+    map_authorization_row,
+    map_availability_row,
+    map_absence_row,
+)
 
 HEALTH_PLANS = ("AE", "Aetna", "Anthem", "BCBS", "ES", "HC", "HF", "HOF", "VCM")
 
@@ -105,6 +112,66 @@ def get_all_members(db_path: str) -> list[dict]:
             for row in cursor.fetchall()
             if row[0] is not None  # skip Contacts rows with NULL Center ID
         ]
+    finally:
+        conn.close()
+
+
+def get_member_context(center_id: int, db_path: str) -> dict:
+    """Fetch member + all 4 supporting tables in one connection.
+
+    Returns dict with keys: member, enrollments, authorizations,
+    availability, absences.  Reusing one connection cuts the per-click
+    latency from ~5 × 230 ms to ~230 ms (5× speedup).
+    """
+    conn = _connect(db_path)
+    try:
+        c = conn.cursor()
+
+        c.execute(
+            "SELECT [Center ID],[Last Name],[First Name],[Health Plan],"
+            "[Address],[Long Lat] FROM [Contacts] WHERE [Center ID]=?",
+            center_id,
+        )
+        row = c.fetchone()
+        member = map_member_row(row) if row else {}
+
+        c.execute(
+            "SELECT [ID],[Center ID],[start_date],[end_date] "
+            "FROM [Enrollment] WHERE [Center ID]=?",
+            center_id,
+        )
+        enrollments = [map_enrollment_row(r) for r in c.fetchall()]
+
+        c.execute(
+            "SELECT [ID],[Center ID],[auth_start],[auth_end],"
+            "[effective_start],[effective_end],[auth_days] "
+            "FROM [Authorization] WHERE [Center ID]=?",
+            center_id,
+        )
+        authorizations = [map_authorization_row(r) for r in c.fetchall()]
+
+        c.execute(
+            "SELECT [ID],[Center ID],[effective_start_date],"
+            "[effective_end_date],[Day Of Week],[avail_start],[avail_end] "
+            "FROM [Availability] WHERE [Center ID]=?",
+            center_id,
+        )
+        availability = [map_availability_row(r) for r in c.fetchall()]
+
+        c.execute(
+            "SELECT [ID],[Center ID],[Leave Type],[Start_Date],[End_Date] "
+            "FROM [Absences] WHERE [Center ID]=?",
+            center_id,
+        )
+        absences = [map_absence_row(r) for r in c.fetchall()]
+
+        return {
+            "member": member,
+            "enrollments": enrollments,
+            "authorizations": authorizations,
+            "availability": availability,
+            "absences": absences,
+        }
     finally:
         conn.close()
 

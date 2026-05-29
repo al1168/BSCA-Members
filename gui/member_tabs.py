@@ -4,10 +4,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from monthly_schedule.db import (
-    get_member, get_enrollments, get_authorizations,
-    get_availability, get_absences,
-)
+from db.members import get_member_context
 
 
 class MemberTabsWidget(QWidget):
@@ -28,29 +25,15 @@ class MemberTabsWidget(QWidget):
         self._authorizations = []
         self._availability = []
         self._absences = []
-        errors = []
         try:
-            self._member = get_member(self._center_id, self._db_path) or {}
+            ctx = get_member_context(self._center_id, self._db_path)
+            self._member = ctx["member"]
+            self._enrollments = ctx["enrollments"]
+            self._authorizations = ctx["authorizations"]
+            self._availability = ctx["availability"]
+            self._absences = ctx["absences"]
         except Exception as exc:
-            errors.append(str(exc))
-        try:
-            self._enrollments = get_enrollments(self._center_id, self._db_path)
-        except Exception as exc:
-            errors.append(str(exc))
-        try:
-            self._authorizations = get_authorizations(self._center_id, self._db_path)
-        except Exception as exc:
-            errors.append(str(exc))
-        try:
-            self._availability = get_availability(self._center_id, self._db_path)
-        except Exception as exc:
-            errors.append(str(exc))
-        try:
-            self._absences = get_absences(self._center_id, self._db_path)
-        except Exception as exc:
-            errors.append(str(exc))
-        if errors:
-            QMessageBox.critical(self, "Load Error", "\n".join(errors))
+            QMessageBox.critical(self, "Load Error", str(exc))
 
     def _missing(self) -> list[str]:
         missing = []
