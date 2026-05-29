@@ -23,17 +23,34 @@ class MemberTabsWidget(QWidget):
         self._setup_dirty_tracking()
 
     def _load_data(self):
+        self._member = {}
+        self._enrollments = []
+        self._authorizations = []
+        self._availability = []
+        self._absences = []
+        errors = []
         try:
-            self._member = get_member(self._center_id, self._db_path)
+            self._member = get_member(self._center_id, self._db_path) or {}
+        except Exception as exc:
+            errors.append(str(exc))
+        try:
             self._enrollments = get_enrollments(self._center_id, self._db_path)
+        except Exception as exc:
+            errors.append(str(exc))
+        try:
             self._authorizations = get_authorizations(self._center_id, self._db_path)
+        except Exception as exc:
+            errors.append(str(exc))
+        try:
             self._availability = get_availability(self._center_id, self._db_path)
+        except Exception as exc:
+            errors.append(str(exc))
+        try:
             self._absences = get_absences(self._center_id, self._db_path)
         except Exception as exc:
-            QMessageBox.critical(self, "Load Error", str(exc))
-            self._member = {}
-            self._enrollments = self._authorizations = []
-            self._availability = self._absences = []
+            errors.append(str(exc))
+        if errors:
+            QMessageBox.critical(self, "Load Error", "\n".join(errors))
 
     def _missing(self) -> list[str]:
         missing = []
@@ -91,13 +108,6 @@ class MemberTabsWidget(QWidget):
         )
         self._tabs.addTab(self._tab_events, "Events")
 
-    def _make_placeholder_tab(self, name: str) -> QWidget:
-        w = QWidget()
-        lbl = QLabel(f"{name} — coming soon")
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        QVBoxLayout(w).addWidget(lbl)
-        return w
-
     # ── Info tab (Task 9) ──────────────────────────────────────────────────
 
     def _make_info_tab(self) -> QWidget:
@@ -120,6 +130,8 @@ class MemberTabsWidget(QWidget):
         idx = self._info_plan.findText(current_plan)
         if idx >= 0:
             self._info_plan.setCurrentIndex(idx)
+        else:
+            self._info_plan.setCurrentIndex(0)
         self._info_cid = QLineEdit(str(self._center_id))
         self._info_cid.setReadOnly(True)
         self._info_address = QLineEdit(self._member.get("address", "") or "")
@@ -156,6 +168,8 @@ class MemberTabsWidget(QWidget):
         idx = self._info_plan.findText(plan)
         if idx >= 0:
             self._info_plan.setCurrentIndex(idx)
+        else:
+            self._info_plan.setCurrentIndex(0)
         self._dirty = False
 
     def _save_info(self):
@@ -191,9 +205,11 @@ class MemberTabsWidget(QWidget):
             self._dirty = False
             if self._events_path:
                 conn = open_db(self._events_path)
-                insert_event(conn, "EDIT", self._center_id,
-                    f"{new_last}, {new_first}", "; ".join(changes))
-                conn.close()
+                try:
+                    insert_event(conn, "EDIT", self._center_id,
+                        f"{new_last}, {new_first}", "; ".join(changes))
+                finally:
+                    conn.close()
         except Exception as exc:
             QMessageBox.critical(self, "Save Error", str(exc))
 
@@ -294,11 +310,13 @@ class MemberTabsWidget(QWidget):
                 self._refresh_tab(1, self._make_enrollments_tab())
                 if self._events_path:
                     conn = open_db(self._events_path)
-                    m = self._member
-                    insert_event(conn, "ENROLL", self._center_id,
-                        f"{m.get('last_name')}, {m.get('first_name')}",
-                        f"Enrollment added: {s} – {e or 'ongoing'}")
-                    conn.close()
+                    try:
+                        m = self._member
+                        insert_event(conn, "ENROLL", self._center_id,
+                            f"{m.get('last_name')}, {m.get('first_name')}",
+                            f"Enrollment added: {s} – {e or 'ongoing'}")
+                    finally:
+                        conn.close()
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 
@@ -364,15 +382,14 @@ class MemberTabsWidget(QWidget):
         form.addRow("Days:", days_widget)
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
                                 QDialogButtonBox.StandardButton.Cancel)
-        btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
         form.addRow(btns)
+        # Override accepted to validate before closing
+        btns.accepted.connect(lambda: dlg.accept() if any(cb.isChecked() for cb in day_checks.values())
+                               else QMessageBox.warning(dlg, "Validation", "Select at least one day."))
 
         if dlg.exec():
             selected_days = {n for n, cb in day_checks.items() if cb.isChecked()}
-            if not selected_days:
-                QMessageBox.warning(self, "Validation", "Select at least one day.")
-                return
             try:
                 insert_authorization(
                     self._center_id,
@@ -384,13 +401,15 @@ class MemberTabsWidget(QWidget):
                 self._refresh_tab(2, self._make_auths_tab())
                 if self._events_path:
                     conn = open_db(self._events_path)
-                    m = self._member
-                    insert_event(conn, "AUTH", self._center_id,
-                        f"{m.get('last_name')}, {m.get('first_name')}",
-                        f"Auth added: {auth_start.date().toString('MM/dd/yyyy')} – "
-                        f"{auth_end.date().toString('MM/dd/yyyy')} · "
-                        f"{encode_auth_days(selected_days)}")
-                    conn.close()
+                    try:
+                        m = self._member
+                        insert_event(conn, "AUTH", self._center_id,
+                            f"{m.get('last_name')}, {m.get('first_name')}",
+                            f"Auth added: {auth_start.date().toString('MM/dd/yyyy')} – "
+                            f"{auth_end.date().toString('MM/dd/yyyy')} · "
+                            f"{encode_auth_days(selected_days)}")
+                    finally:
+                        conn.close()
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 
@@ -472,11 +491,13 @@ class MemberTabsWidget(QWidget):
                 self._refresh_tab(3, self._make_avail_tab())
                 if self._events_path:
                     conn = open_db(self._events_path)
-                    m = self._member
-                    insert_event(conn, "AVAIL", self._center_id,
-                        f"{m.get('last_name')}, {m.get('first_name')}",
-                        f"Availability added: {day_name} {ts}–{te}")
-                    conn.close()
+                    try:
+                        m = self._member
+                        insert_event(conn, "AVAIL", self._center_id,
+                            f"{m.get('last_name')}, {m.get('first_name')}",
+                            f"Availability added: {day_name} {ts}–{te}")
+                    finally:
+                        conn.close()
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 
@@ -548,11 +569,13 @@ class MemberTabsWidget(QWidget):
                 self._refresh_tab(4, self._make_absences_tab())
                 if self._events_path:
                     conn = open_db(self._events_path)
-                    m = self._member
-                    insert_event(conn, "ABS", self._center_id,
-                        f"{m.get('last_name')}, {m.get('first_name')}",
-                        f"Absence added: {lt} · {s} – {e}")
-                    conn.close()
+                    try:
+                        m = self._member
+                        insert_event(conn, "ABS", self._center_id,
+                            f"{m.get('last_name')}, {m.get('first_name')}",
+                            f"Absence added: {lt} · {s} – {e}")
+                    finally:
+                        conn.close()
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 
