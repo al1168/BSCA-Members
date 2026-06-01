@@ -62,7 +62,7 @@ class MemberTabsWidget(QWidget):
             painter = QPainter(pix)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.setBrush(QBrush(QColor("#3a3a3a")))
-            painter.setPen(QtCore.NoPen)
+            painter.setPen(QtCore.PenStyle.NoPen)
             painter.drawEllipse(0, 0, 80, 80)
             painter.setBrush(QBrush(QColor("#888888")))
             painter.drawEllipse(28, 12, 24, 24)
