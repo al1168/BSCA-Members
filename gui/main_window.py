@@ -196,6 +196,9 @@ class MainWindow(QMainWindow):
         if dlg.exec():
             self._settings.update(dlg.result_settings())
             save_settings(self._settings, self._settings_path)
+            # Drop cached DB handles so the new path is used on next access.
+            from db.members import close_connections
+            close_connections()
             from gui.theme import apply_theme
             apply_theme(QApplication.instance(), self._settings["theme"])
             self._update_db_indicator()

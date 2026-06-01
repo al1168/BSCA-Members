@@ -174,3 +174,47 @@ def test_get_member_context_returns_all_contact_fields():
     ):
         assert key in m, f"Missing key in member context: {key}"
         assert m[key] is not None, f"Key {key!r} is None (should be '' for missing)"
+
+
+# ── connection caching ─────────────────────────────────────────────────
+
+def test_repeated_context_reads_are_consistent():
+    """Reusing the cached read connection must return stable data."""
+    from db.members import get_all_members, get_member_context, close_connections
+    close_connections()
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    first = get_member_context(cid, TEST_DB)["member"]
+    for _ in range(3):
+        again = get_member_context(cid, TEST_DB)["member"]
+        assert again == first
+
+
+def test_write_is_visible_through_cached_read_connection():
+    """A committed update_contact() must be visible to the cached read
+    connection (regression: ACE does not propagate commits across connections,
+    so _connect() invalidates the cached read connection)."""
+    import time
+    from db.members import (
+        get_all_members, get_member_context, update_contact, close_connections,
+    )
+    close_connections()
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    m = get_member_context(cid, TEST_DB)["member"]  # prime the cache
+    original = m["notes"]
+    marker = f"CACHETEST-{int(time.time())}"
+
+    def write(notes):
+        update_contact(
+            cid, m["last_name"], m["first_name"], m["chinese_name"], m["gender"],
+            m["dob"], m["member_id"], m["health_plan"], m["medicaid"], m["medicare"],
+            m["ssn"], m["language"], m["case_manager"], m["home_tell"], m["cell"],
+            m["address"], m["emergency"], m["pcp"], m["hospital"], m["hha"],
+            m["admission_date"], notes, TEST_DB,
+        )
+
+    try:
+        write(marker)
+        assert get_member_context(cid, TEST_DB)["member"]["notes"] == marker
+    finally:
+        write(original)
+    assert get_member_context(cid, TEST_DB)["member"]["notes"] == original

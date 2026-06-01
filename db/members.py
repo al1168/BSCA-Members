@@ -91,13 +91,88 @@ def _hhmm_to_datetime(hhmm: str) -> datetime:
 
 
 def _connect(db_path: str):
+    """Open a fresh transactional connection (autocommit=False).
+
+    Used for writes and bulk/exists reads — never during member browsing.
+    Opening one invalidates the cached read connection (see _read_connection)
+    so the next read reflects any committed change: the ACE engine does not
+    propagate one connection's commits to another connection's read cache.
+    """
     if not os.path.exists(db_path):
         raise FileNotFoundError(f"Database not found: {db_path}")
+    _drop_read_connection(db_path)
     import pyodbc
     try:
         return pyodbc.connect(build_connection_string(db_path), autocommit=False)
     except pyodbc.Error as exc:
         raise RuntimeError(f"Could not open Access database: {exc}") from exc
+
+
+# ── Per-click connection caches ──────────────────────────────────────────
+# Opening a fresh connection on every member click is the dominant latency:
+# ~135 ms for pyodbc and ~115 ms for DAO OpenDatabase, while the queries
+# themselves take only a few ms. The GUI is single-threaded and clicks are
+# serialized, so we cache one read connection and one DAO database handle per
+# db_path and reuse them. Writes still use _connect() (short-lived,
+# autocommit=False) so they remain transactional and visible to the cached
+# autocommit read connection.
+_read_conn_cache: dict = {}
+_dao_db_cache: dict = {}
+
+
+def _read_connection(db_path: str):
+    """Return a cached autocommit read connection for db_path, opening if needed."""
+    if not os.path.exists(db_path):
+        raise FileNotFoundError(f"Database not found: {db_path}")
+    conn = _read_conn_cache.get(db_path)
+    if conn is None:
+        import pyodbc
+        try:
+            conn = pyodbc.connect(build_connection_string(db_path), autocommit=True)
+        except pyodbc.Error as exc:
+            raise RuntimeError(f"Could not open Access database: {exc}") from exc
+        _read_conn_cache[db_path] = conn
+    return conn
+
+
+def _drop_read_connection(db_path: str) -> None:
+    conn = _read_conn_cache.pop(db_path, None)
+    if conn is not None:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _dao_database(db_path: str):
+    """Return a cached shared/read-only DAO Database handle, opening if needed."""
+    cached = _dao_db_cache.get(db_path)
+    if cached is not None:
+        return cached[1]
+    import win32com.client
+    engine = win32com.client.Dispatch("DAO.DBEngine.120")
+    # OpenDatabase(Name, Options=False -> shared, ReadOnly=True): a shared
+    # read-only handle won't block pyodbc writes to the same file.
+    db = engine.OpenDatabase(db_path, False, True)
+    _dao_db_cache[db_path] = (engine, db)
+    return db
+
+
+def _drop_dao_database(db_path: str) -> None:
+    cached = _dao_db_cache.pop(db_path, None)
+    if cached is not None:
+        try:
+            cached[1].Close()
+        except Exception:
+            pass
+
+
+def close_connections() -> None:
+    """Close all cached read/DAO handles (call when the DB path changes)."""
+    for path in list(_read_conn_cache):
+        _drop_read_connection(path)
+    for path in list(_dao_db_cache):
+        _drop_dao_database(path)
 
 
 def get_all_members(db_path: str) -> list[dict]:
@@ -129,11 +204,9 @@ def get_member_photo(center_id: int, db_path: str) -> bytes | None:
     """
     if not os.path.exists(db_path):
         return None
-    try:
-        import win32com.client
-        dao = win32com.client.Dispatch("DAO.DBEngine.120")
-        db = dao.OpenDatabase(db_path)
+    for attempt in (1, 2):
         try:
+            db = _dao_database(db_path)
             rs = db.OpenRecordset(
                 f"SELECT * FROM [Contacts] WHERE [Center ID]={center_id}"
             )
@@ -160,20 +233,23 @@ def get_member_photo(center_id: int, db_path: str) -> bytes | None:
             attach_rs.Close()
             rs.Close()
             return data
-        finally:
-            db.Close()
-    except Exception:
-        return None
+        except Exception:
+            # The cached DAO handle may be stale; drop it and retry once.
+            _drop_dao_database(db_path)
+            if attempt == 2:
+                return None
 
 
-def get_member_context(center_id: int, db_path: str) -> dict:
-    """Fetch member + all 4 supporting tables in one connection.
+def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dict:
+    """Fetch member + all 4 supporting tables over a cached connection.
 
     Returns dict with keys: member, enrollments, authorizations,
-    availability, absences.  Reusing one connection cuts the per-click
-    latency from ~5 × 230 ms to ~230 ms (5× speedup).
+    availability, absences.  The read connection is cached per db_path
+    (see _read_connection), so the ~135 ms pyodbc connect cost is paid
+    once instead of on every member click.
     """
-    conn = _connect(db_path)
+    import pyodbc
+    conn = _read_connection(db_path)
     try:
         c = conn.cursor()
 
@@ -251,8 +327,12 @@ def get_member_context(center_id: int, db_path: str) -> dict:
             "availability": availability,
             "absences": absences,
         }
-    finally:
-        conn.close()
+    except pyodbc.Error:
+        # Cached connection may be stale (file moved, lock dropped); reopen once.
+        _drop_read_connection(db_path)
+        if _retry:
+            return get_member_context(center_id, db_path, _retry=False)
+        raise
 
 
 def center_id_exists(center_id: int, db_path: str) -> bool:
