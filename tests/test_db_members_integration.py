@@ -157,3 +157,20 @@ def test_get_member_photo_missing_id_returns_none():
     from db.members import get_member_photo
     result = get_member_photo(999999999, TEST_DB)
     assert result is None
+
+
+def test_get_member_context_returns_all_contact_fields():
+    from db.members import get_all_members, get_member_context
+    members = get_all_members(TEST_DB)
+    ctx = get_member_context(members[0]["center_id"], TEST_DB)
+    m = ctx["member"]
+    for key in (
+        "center_id", "last_name", "first_name", "chinese_name",
+        "gender", "dob", "member_id", "health_plan",
+        "medicaid", "medicare", "ssn", "language",
+        "case_manager", "home_tell", "cell", "address",
+        "emergency", "pcp", "hospital", "hha",
+        "admission_date", "notes",
+    ):
+        assert key in m, f"Missing key in member context: {key}"
+        assert m[key] is not None, f"Key {key!r} is None (should be '' for missing)"

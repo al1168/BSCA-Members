@@ -67,3 +67,15 @@ def test_decode_auth_days_empty_string():
 def test_get_all_members_missing_db_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         get_all_members(str(tmp_path / "nope.accdb"))
+
+
+def test_update_contact_targets_all_editable_fields():
+    from db.members import UPDATE_CONTACT
+    for col in (
+        "[Last Name]", "[First Name]", "[Chinese Name]", "[Gender]", "[DOB]",
+        "[Member ID]", "[Health Plan]", "[Medicaid]", "[Medicare]", "[SSN]",
+        "[Language]", "[Case Manager]", "[Home Tell]", "[Cell]", "[Address]",
+        "[Emergency]", "[PCP]", "[Hospital]", "[HHA]", "[Admission Date]", "[Notes]",
+    ):
+        assert col in UPDATE_CONTACT, f"Missing column in UPDATE_CONTACT: {col}"
+    assert "WHERE [Center ID]=?" in UPDATE_CONTACT

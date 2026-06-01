@@ -34,8 +34,12 @@ INSERT_CONTACT = (
 )
 
 UPDATE_CONTACT = (
-    "UPDATE [Contacts] SET [Last Name]=?, [First Name]=?, "
-    "[Health Plan]=?, [Address]=? WHERE [Center ID]=?"
+    "UPDATE [Contacts] SET "
+    "[Last Name]=?, [First Name]=?, [Chinese Name]=?, [Gender]=?, [DOB]=?, "
+    "[Member ID]=?, [Health Plan]=?, [Medicaid]=?, [Medicare]=?, [SSN]=?, "
+    "[Language]=?, [Case Manager]=?, [Home Tell]=?, [Cell]=?, [Address]=?, "
+    "[Emergency]=?, [PCP]=?, [Hospital]=?, [HHA]=?, [Admission Date]=?, [Notes]=? "
+    "WHERE [Center ID]=?"
 )
 
 INSERT_ENROLLMENT = (
@@ -174,12 +178,41 @@ def get_member_context(center_id: int, db_path: str) -> dict:
         c = conn.cursor()
 
         c.execute(
-            "SELECT [Center ID],[Last Name],[First Name],[Health Plan],"
-            "[Address],[Long Lat] FROM [Contacts] WHERE [Center ID]=?",
+            "SELECT [Center ID],[Last Name],[First Name],[Chinese Name],[DOB],"
+            "[Health Plan],[Member ID],[Medicaid],[Medicare],[SSN],[Language],"
+            "[Case Manager],[Home Tell],[Cell],[Address],[Emergency],[PCP],"
+            "[Hospital],[HHA],[Notes],[Gender],[Admission Date] "
+            "FROM [Contacts] WHERE [Center ID]=?",
             center_id,
         )
         row = c.fetchone()
-        member = map_member_row(row) if row else {}
+        if row:
+            member = {
+                "center_id":      int(row[0]) if row[0] is not None else center_id,
+                "last_name":      row[1]  or "",
+                "first_name":     row[2]  or "",
+                "chinese_name":   row[3]  or "",
+                "dob":            str(row[4]) if row[4] else "",
+                "health_plan":    row[5]  or "",
+                "member_id":      row[6]  or "",
+                "medicaid":       row[7]  or "",
+                "medicare":       row[8]  or "",
+                "ssn":            row[9]  or "",
+                "language":       row[10] or "",
+                "case_manager":   row[11] or "",
+                "home_tell":      row[12] or "",
+                "cell":           row[13] or "",
+                "address":        row[14] or "",
+                "emergency":      row[15] or "",
+                "pcp":            row[16] or "",
+                "hospital":       row[17] or "",
+                "hha":            row[18] or "",
+                "notes":          row[19] or "",
+                "gender":         row[20] or "",
+                "admission_date": str(row[21]) if row[21] else "",
+            }
+        else:
+            member = {}
 
         c.execute(
             "SELECT [ID],[Center ID],[start_date],[end_date] "
@@ -286,14 +319,38 @@ def update_contact(
     center_id: int,
     last_name: str,
     first_name: str,
+    chinese_name: str,
+    gender: str,
+    dob: str,
+    member_id: str,
     health_plan: str,
+    medicaid: str,
+    medicare: str,
+    ssn: str,
+    language: str,
+    case_manager: str,
+    home_tell: str,
+    cell: str,
     address: str,
+    emergency: str,
+    pcp: str,
+    hospital: str,
+    hha: str,
+    admission_date: str,
+    notes: str,
     db_path: str,
 ) -> None:
     conn = _connect(db_path)
     try:
         conn.cursor().execute(
-            UPDATE_CONTACT, (last_name, first_name, health_plan, address, center_id)
+            UPDATE_CONTACT,
+            (
+                last_name, first_name, chinese_name, gender, dob,
+                member_id, health_plan, medicaid, medicare, ssn,
+                language, case_manager, home_tell, cell, address,
+                emergency, pcp, hospital, hha, admission_date, notes,
+                center_id,
+            ),
         )
         conn.commit()
     except Exception:
