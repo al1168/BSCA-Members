@@ -35,6 +35,69 @@ class MemberTabsWidget(QWidget):
         except Exception as exc:
             QMessageBox.critical(self, "Load Error", str(exc))
 
+    def _make_photo_label(self) -> QLabel:
+        """Return an 80×80 QLabel showing the member photo or a gray placeholder."""
+        from PyQt6.QtGui import QPixmap, QPainter, QColor, QBrush
+        from PyQt6.QtCore import Qt as QtCore
+        from db.members import get_member_photo
+
+        lbl = QLabel()
+        lbl.setFixedSize(80, 80)
+        lbl.setStyleSheet("border-radius: 40px; overflow: hidden;")
+
+        photo_bytes = get_member_photo(self._center_id, self._db_path)
+        if photo_bytes:
+            pix = QPixmap()
+            pix.loadFromData(photo_bytes)
+            pix = pix.scaled(80, 80, QtCore.AspectRatioMode.KeepAspectRatioByExpanding,
+                             QtCore.TransformationMode.SmoothTransformation)
+            if pix.width() > 80 or pix.height() > 80:
+                x = (pix.width() - 80) // 2
+                y = (pix.height() - 80) // 2
+                pix = pix.copy(x, y, 80, 80)
+            lbl.setPixmap(pix)
+        else:
+            pix = QPixmap(80, 80)
+            pix.fill(QtCore.GlobalColor.transparent)
+            painter = QPainter(pix)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setBrush(QBrush(QColor("#3a3a3a")))
+            painter.setPen(QtCore.NoPen)
+            painter.drawEllipse(0, 0, 80, 80)
+            painter.setBrush(QBrush(QColor("#888888")))
+            painter.drawEllipse(28, 12, 24, 24)
+            painter.drawEllipse(12, 46, 56, 40)
+            painter.end()
+            lbl.setPixmap(pix)
+
+        return lbl
+
+    @staticmethod
+    def decode_auth_days_static(value: str) -> set[int]:
+        if not value:
+            return set()
+        return {int(x) for x in value.split(",") if x.strip()}
+
+    @staticmethod
+    def _active_authorization(authorizations: list[dict]) -> dict | None:
+        """Return the auth row covering today, preferring latest start. None if none."""
+        from datetime import date
+        today = date.today()
+        candidates = [
+            a for a in authorizations
+            if a.get("effective_start") and a.get("effective_end")
+            and a["effective_start"] <= today <= a["effective_end"]
+        ]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda a: a["effective_start"])
+
+    @staticmethod
+    def _enrollment_start(enrollments: list[dict]):
+        """Return the earliest enrollment start_date, or None."""
+        dates = [e["start_date"] for e in enrollments if e.get("start_date")]
+        return min(dates) if dates else None
+
     def _missing(self) -> list[str]:
         missing = []
         if not self._authorizations:
@@ -50,12 +113,21 @@ class MemberTabsWidget(QWidget):
 
         # Header row
         header = QHBoxLayout()
+        header.setSpacing(14)
+
+        # Photo
+        header.addWidget(self._make_photo_label())
+
+        # Name + ID
+        name_col = QVBoxLayout()
         name = f"{self._member.get('last_name', '')}, {self._member.get('first_name', '')}"
         cid = str(self._center_id)
         name_label = QLabel(f"<b style='font-size:15px'>{name}</b>"
                             f"<span style='color:gray;font-size:12px'> &nbsp;ID {cid}</span>")
         name_label.setTextFormat(Qt.TextFormat.RichText)
-        header.addWidget(name_label)
+        name_col.addWidget(name_label)
+        name_col.addStretch()
+        header.addLayout(name_col)
         header.addStretch()
 
         missing = self._missing()
@@ -94,42 +166,150 @@ class MemberTabsWidget(QWidget):
     # ── Info tab (Task 9) ──────────────────────────────────────────────────
 
     def _make_info_tab(self) -> QWidget:
-        from PyQt6.QtWidgets import QFormLayout, QLineEdit, QComboBox
+        from PyQt6.QtWidgets import (
+            QFormLayout, QLineEdit, QComboBox, QTextEdit,
+            QGroupBox, QScrollArea,
+        )
         from db.members import HEALTH_PLANS
 
-        w = QWidget()
-        outer = QVBoxLayout(w)
-        outer.setContentsMargins(0, 12, 0, 0)
+        m = self._member
 
-        form = QFormLayout()
-        form.setSpacing(12)
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        def field(key: str) -> QLineEdit:
+            return QLineEdit(m.get(key, "") or "")
 
-        self._info_first = QLineEdit(self._member.get("first_name", "") or "")
-        self._info_last = QLineEdit(self._member.get("last_name", "") or "")
+        # ── Identity ─────────────────────────────────────────────────────
+        grp_identity = QGroupBox("Identity")
+        f_identity = QFormLayout(grp_identity)
+        f_identity.setSpacing(8)
+
+        self._info_first    = field("first_name")
+        self._info_last     = field("last_name")
+        self._info_chinese  = field("chinese_name")
+        self._info_gender   = field("gender")
+        self._info_dob      = field("dob")
+        self._info_cid      = QLineEdit(str(self._center_id))
+        self._info_cid.setReadOnly(True)
+        self._info_member_id = field("member_id")
+
+        for lbl, w in [
+            ("First Name",   self._info_first),
+            ("Last Name",    self._info_last),
+            ("Chinese Name", self._info_chinese),
+            ("Gender",       self._info_gender),
+            ("DOB",          self._info_dob),
+            ("Center ID",    self._info_cid),
+            ("Member ID",    self._info_member_id),
+        ]:
+            f_identity.addRow(lbl, w)
+
+        # ── Contact ──────────────────────────────────────────────────────
+        grp_contact = QGroupBox("Contact")
+        f_contact = QFormLayout(grp_contact)
+        f_contact.setSpacing(8)
+
+        self._info_address   = field("address")
+        self._info_home_tell = field("home_tell")
+        self._info_cell      = field("cell")
+        self._info_emergency = field("emergency")
+
+        for lbl, w in [
+            ("Address",    self._info_address),
+            ("Home Phone", self._info_home_tell),
+            ("Cell",       self._info_cell),
+            ("Emergency",  self._info_emergency),
+        ]:
+            f_contact.addRow(lbl, w)
+
+        # ── Medical ──────────────────────────────────────────────────────
+        grp_medical = QGroupBox("Medical")
+        f_medical = QFormLayout(grp_medical)
+        f_medical.setSpacing(8)
+
         self._info_plan = QComboBox()
         self._info_plan.addItems(HEALTH_PLANS)
-        current_plan = self._member.get("health_plan", "")
-        idx = self._info_plan.findText(current_plan)
-        if idx >= 0:
-            self._info_plan.setCurrentIndex(idx)
-        else:
-            self._info_plan.setCurrentIndex(0)
-        self._info_cid = QLineEdit(str(self._center_id))
-        self._info_cid.setReadOnly(True)
-        self._info_address = QLineEdit(self._member.get("address", "") or "")
+        idx = self._info_plan.findText(m.get("health_plan", ""))
+        self._info_plan.setCurrentIndex(idx if idx >= 0 else 0)
 
-        for lbl, widget in [
-            ("First Name", self._info_first),
-            ("Last Name", self._info_last),
+        self._info_medicaid = field("medicaid")
+        self._info_medicare = field("medicare")
+        self._info_ssn      = field("ssn")
+        self._info_pcp      = field("pcp")
+        self._info_hospital = field("hospital")
+        self._info_hha      = field("hha")
+        self._info_language = field("language")
+
+        for lbl, w in [
             ("Health Plan", self._info_plan),
-            ("Center ID", self._info_cid),
-            ("Address", self._info_address),
+            ("Medicaid",    self._info_medicaid),
+            ("Medicare",    self._info_medicare),
+            ("SSN",         self._info_ssn),
+            ("PCP",         self._info_pcp),
+            ("Hospital",    self._info_hospital),
+            ("HHA",         self._info_hha),
+            ("Language",    self._info_language),
         ]:
-            form.addRow(lbl, widget)
+            f_medical.addRow(lbl, w)
 
-        outer.addLayout(form)
-        outer.addStretch()
+        # ── Care ─────────────────────────────────────────────────────────
+        grp_care = QGroupBox("Care")
+        f_care = QFormLayout(grp_care)
+        f_care.setSpacing(8)
+
+        self._info_case_manager   = field("case_manager")
+        self._info_admission_date = field("admission_date")
+        self._info_notes = QTextEdit(m.get("notes", "") or "")
+        self._info_notes.setFixedHeight(72)
+
+        f_care.addRow("Case Manager",   self._info_case_manager)
+        f_care.addRow("Admission Date", self._info_admission_date)
+        f_care.addRow("Notes",          self._info_notes)
+
+        # ── Schedule Summary (read-only) ──────────────────────────────────
+        grp_sched = QGroupBox("Schedule Summary")
+        f_sched = QFormLayout(grp_sched)
+        f_sched.setSpacing(8)
+
+        enroll_start = self._enrollment_start(self._enrollments)
+        enroll_lbl = QLineEdit(str(enroll_start) if enroll_start else "—")
+        enroll_lbl.setReadOnly(True)
+
+        active_auth = self._active_authorization(self._authorizations)
+        if active_auth:
+            day_map = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri"}
+            days_str = " ".join(
+                day_map[d] for d in sorted(
+                    self.decode_auth_days_static(active_auth.get("auth_days", ""))
+                )
+            )
+            auth_text = (f"{active_auth['effective_start']} – "
+                         f"{active_auth['effective_end']}  [{days_str}]")
+        else:
+            auth_text = "None"
+        auth_lbl = QLineEdit(auth_text)
+        auth_lbl.setReadOnly(True)
+
+        f_sched.addRow("Enrollment Start", enroll_lbl)
+        f_sched.addRow("Active Auth",      auth_lbl)
+
+        # ── Assemble in scroll area ───────────────────────────────────────
+        scroll_content = QWidget()
+        vbox = QVBoxLayout(scroll_content)
+        vbox.setSpacing(10)
+        vbox.setContentsMargins(0, 8, 8, 8)
+        for grp in (grp_identity, grp_contact, grp_medical, grp_care, grp_sched):
+            vbox.addWidget(grp)
+        vbox.addStretch()
+
+        scroll = QScrollArea()
+        scroll.setWidget(scroll_content)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+
+        outer = QWidget()
+        outer_layout = QVBoxLayout(outer)
+        outer_layout.setContentsMargins(0, 8, 0, 0)
+        outer_layout.setSpacing(8)
+        outer_layout.addWidget(scroll)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -140,57 +320,111 @@ class MemberTabsWidget(QWidget):
         btn_save.clicked.connect(self._save_info)
         btn_row.addWidget(btn_discard)
         btn_row.addWidget(btn_save)
-        outer.addLayout(btn_row)
-        return w
+        outer_layout.addLayout(btn_row)
+
+        return outer
 
     def _discard_info(self):
-        self._info_first.setText(self._member.get("first_name", "") or "")
-        self._info_last.setText(self._member.get("last_name", "") or "")
-        self._info_address.setText(self._member.get("address", "") or "")
-        plan = self._member.get("health_plan", "")
-        idx = self._info_plan.findText(plan)
-        if idx >= 0:
-            self._info_plan.setCurrentIndex(idx)
-        else:
-            self._info_plan.setCurrentIndex(0)
+        m = self._member
+        self._info_first.setText(m.get("first_name", "") or "")
+        self._info_last.setText(m.get("last_name", "") or "")
+        self._info_chinese.setText(m.get("chinese_name", "") or "")
+        self._info_gender.setText(m.get("gender", "") or "")
+        self._info_dob.setText(m.get("dob", "") or "")
+        self._info_member_id.setText(m.get("member_id", "") or "")
+        idx = self._info_plan.findText(m.get("health_plan", ""))
+        self._info_plan.setCurrentIndex(idx if idx >= 0 else 0)
+        self._info_medicaid.setText(m.get("medicaid", "") or "")
+        self._info_medicare.setText(m.get("medicare", "") or "")
+        self._info_ssn.setText(m.get("ssn", "") or "")
+        self._info_pcp.setText(m.get("pcp", "") or "")
+        self._info_hospital.setText(m.get("hospital", "") or "")
+        self._info_hha.setText(m.get("hha", "") or "")
+        self._info_language.setText(m.get("language", "") or "")
+        self._info_address.setText(m.get("address", "") or "")
+        self._info_home_tell.setText(m.get("home_tell", "") or "")
+        self._info_cell.setText(m.get("cell", "") or "")
+        self._info_emergency.setText(m.get("emergency", "") or "")
+        self._info_case_manager.setText(m.get("case_manager", "") or "")
+        self._info_admission_date.setText(m.get("admission_date", "") or "")
+        self._info_notes.setPlainText(m.get("notes", "") or "")
         self._dirty = False
 
     def _save_info(self):
         from db.members import update_contact
         from db.events import open_db, insert_event
-        old = self._member
-        new_first = self._info_first.text().strip()
-        new_last = self._info_last.text().strip()
-        new_plan = self._info_plan.currentText()
-        new_address = self._info_address.text().strip()
 
-        changes = []
-        if new_first != (old.get("first_name") or ""):
-            changes.append(f"First Name: {old.get('first_name')} → {new_first}")
-        if new_last != (old.get("last_name") or ""):
-            changes.append(f"Last Name: {old.get('last_name')} → {new_last}")
-        if new_plan != (old.get("health_plan") or ""):
-            changes.append(f"Health Plan: {old.get('health_plan')} → {new_plan}")
-        if new_address != (old.get("address") or ""):
-            changes.append("Address updated")
+        old = self._member
+        fields = {
+            "last_name":      self._info_last.text().strip(),
+            "first_name":     self._info_first.text().strip(),
+            "chinese_name":   self._info_chinese.text().strip(),
+            "gender":         self._info_gender.text().strip(),
+            "dob":            self._info_dob.text().strip(),
+            "member_id":      self._info_member_id.text().strip(),
+            "health_plan":    self._info_plan.currentText(),
+            "medicaid":       self._info_medicaid.text().strip(),
+            "medicare":       self._info_medicare.text().strip(),
+            "ssn":            self._info_ssn.text().strip(),
+            "language":       self._info_language.text().strip(),
+            "case_manager":   self._info_case_manager.text().strip(),
+            "home_tell":      self._info_home_tell.text().strip(),
+            "cell":           self._info_cell.text().strip(),
+            "address":        self._info_address.text().strip(),
+            "emergency":      self._info_emergency.text().strip(),
+            "pcp":            self._info_pcp.text().strip(),
+            "hospital":       self._info_hospital.text().strip(),
+            "hha":            self._info_hha.text().strip(),
+            "admission_date": self._info_admission_date.text().strip(),
+            "notes":          self._info_notes.toPlainText().strip(),
+        }
+
+        changes = [
+            f"{k}: {old.get(k)!r} → {v!r}"
+            for k, v in fields.items()
+            if v != (old.get(k) or "")
+        ]
 
         if not changes:
             self._dirty = False
             return
 
         try:
-            update_contact(self._center_id, new_last, new_first, new_plan,
-                           new_address, self._db_path)
-            self._member["first_name"] = new_first
-            self._member["last_name"] = new_last
-            self._member["health_plan"] = new_plan
-            self._member["address"] = new_address
+            update_contact(
+                center_id=self._center_id,
+                last_name=fields["last_name"],
+                first_name=fields["first_name"],
+                chinese_name=fields["chinese_name"],
+                gender=fields["gender"],
+                dob=fields["dob"],
+                member_id=fields["member_id"],
+                health_plan=fields["health_plan"],
+                medicaid=fields["medicaid"],
+                medicare=fields["medicare"],
+                ssn=fields["ssn"],
+                language=fields["language"],
+                case_manager=fields["case_manager"],
+                home_tell=fields["home_tell"],
+                cell=fields["cell"],
+                address=fields["address"],
+                emergency=fields["emergency"],
+                pcp=fields["pcp"],
+                hospital=fields["hospital"],
+                hha=fields["hha"],
+                admission_date=fields["admission_date"],
+                notes=fields["notes"],
+                db_path=self._db_path,
+            )
+            self._member.update(fields)
             self._dirty = False
             if self._events_path:
                 conn = open_db(self._events_path)
                 try:
-                    insert_event(conn, "EDIT", self._center_id,
-                        f"{new_last}, {new_first}", "; ".join(changes))
+                    insert_event(
+                        conn, "EDIT", self._center_id,
+                        f"{fields['last_name']}, {fields['first_name']}",
+                        "; ".join(changes[:5]),
+                    )
                 finally:
                     conn.close()
         except Exception as exc:
@@ -200,9 +434,19 @@ class MemberTabsWidget(QWidget):
 
     def _setup_dirty_tracking(self):
         self._dirty = False
-        for widget in (self._info_first, self._info_last, self._info_address):
-            widget.textChanged.connect(lambda: setattr(self, '_dirty', True))
+        line_edits = (
+            self._info_first, self._info_last, self._info_chinese,
+            self._info_gender, self._info_dob, self._info_member_id,
+            self._info_medicaid, self._info_medicare, self._info_ssn,
+            self._info_language, self._info_case_manager,
+            self._info_home_tell, self._info_cell, self._info_address,
+            self._info_emergency, self._info_pcp, self._info_hospital,
+            self._info_hha, self._info_admission_date,
+        )
+        for w in line_edits:
+            w.textChanged.connect(lambda: setattr(self, '_dirty', True))
         self._info_plan.currentIndexChanged.connect(lambda: setattr(self, '_dirty', True))
+        self._info_notes.textChanged.connect(lambda: setattr(self, '_dirty', True))
 
     def is_dirty(self) -> bool:
         return self._dirty
