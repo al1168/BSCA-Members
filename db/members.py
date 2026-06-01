@@ -116,6 +116,52 @@ def get_all_members(db_path: str) -> list[dict]:
         conn.close()
 
 
+def get_member_photo(center_id: int, db_path: str) -> bytes | None:
+    """Return raw JPEG bytes from the Access Attachment field, or None.
+
+    Access Attachment fields are not readable via pyodbc; this function
+    uses DAO (win32com) instead. Failures are silently swallowed because
+    the photo is non-critical — the UI falls back to a placeholder.
+    """
+    if not os.path.exists(db_path):
+        return None
+    try:
+        import win32com.client
+        dao = win32com.client.Dispatch("DAO.DBEngine.120")
+        db = dao.OpenDatabase(db_path)
+        try:
+            rs = db.OpenRecordset(
+                f"SELECT * FROM [Contacts] WHERE [Center ID]={center_id}"
+            )
+            if rs.EOF:
+                rs.Close()
+                return None
+            photo_field = rs.Fields("Photo")
+            attach_rs = photo_field.Value
+            if attach_rs.EOF:
+                attach_rs.Close()
+                rs.Close()
+                return None
+            raw = attach_rs.Fields("FileData").Value
+            if raw is None:
+                attach_rs.Close()
+                rs.Close()
+                return None
+            data = bytes(raw)
+            # Access stores attachment metadata before the actual file data.
+            # The JPEG data starts at the first FF D8 FF marker.
+            jpeg_start = data.find(b'\xff\xd8\xff')
+            if jpeg_start >= 0:
+                data = data[jpeg_start:]
+            attach_rs.Close()
+            rs.Close()
+            return data
+        finally:
+            db.Close()
+    except Exception:
+        return None
+
+
 def get_member_context(center_id: int, db_path: str) -> dict:
     """Fetch member + all 4 supporting tables in one connection.
 

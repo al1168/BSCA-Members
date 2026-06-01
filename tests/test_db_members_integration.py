@@ -130,3 +130,30 @@ def test_get_absences_returns_list():
     members = get_all_members(TEST_DB)
     result = get_absences(members[0]["center_id"], TEST_DB)
     assert isinstance(result, list)
+
+
+# ── get_member_photo ──────────────────────────────────────────────────
+
+def test_get_member_photo_returns_bytes_or_none():
+    from db.members import get_all_members, get_member_photo
+    members = get_all_members(TEST_DB)
+    first = members[0]
+    result = get_member_photo(first["center_id"], TEST_DB)
+    assert result is None or isinstance(result, bytes)
+
+
+def test_get_member_photo_bytes_start_with_jpeg_header():
+    """If a photo exists it must be a valid JPEG (starts with FF D8)."""
+    from db.members import get_all_members, get_member_photo
+    members = get_all_members(TEST_DB)
+    for m in members[:20]:
+        data = get_member_photo(m["center_id"], TEST_DB)
+        if data is not None:
+            assert data[:2] == b'\xff\xd8', f"Not a JPEG for center_id={m['center_id']}"
+            return
+
+
+def test_get_member_photo_missing_id_returns_none():
+    from db.members import get_member_photo
+    result = get_member_photo(999999999, TEST_DB)
+    assert result is None
