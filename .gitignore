@@ -10,3 +10,4 @@ bsca_members_settings.json
 build/
 dist/
 *.spec.bak
+.claude/
