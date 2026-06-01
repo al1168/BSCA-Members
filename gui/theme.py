@@ -182,6 +182,38 @@ QTabBar::tab:selected {{
 QTabBar::tab:hover:!selected {{
     color: {t['text2']};
 }}
+QToolBar#main_toolbar {{
+    background-color: {t['surface']};
+    border-bottom: 1px solid {t['border_mid']};
+    padding: 5px 10px;
+    spacing: 6px;
+}}
+QPushButton#btn_settings {{
+    background-color: {t['accent_bg']};
+    color: {t['accent_text']};
+    border: 1px solid {t['accent']};
+    border-radius: 7px;
+    padding: 7px 16px;
+    font-size: 12px;
+    font-weight: 600;
+}}
+QPushButton#btn_settings:hover {{
+    background-color: {t['accent']};
+    color: #ffffff;
+}}
+QLabel#db_indicator {{
+    background-color: transparent;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 6px;
+    color: {t['text2']};
+}}
+QLabel#db_indicator[connected="true"] {{
+    color: {t['accent_text']};
+}}
+QLabel#db_indicator[connected="false"] {{
+    color: {t['warning']};
+}}
 QLabel {{
     background-color: transparent;
     color: {t['text']};

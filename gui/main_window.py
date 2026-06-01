@@ -1,7 +1,9 @@
+import os
+
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QListWidget, QListWidgetItem, QPushButton, QLineEdit, QLabel,
-    QStackedWidget, QApplication, QMessageBox,
+    QStackedWidget, QApplication, QMessageBox, QSizePolicy,
 )
 from PyQt6.QtCore import Qt
 
@@ -61,16 +63,43 @@ class MainWindow(QMainWindow):
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._detail_stack.addWidget(self._placeholder)  # index 0
 
-        # ── Toolbar with settings gear ────────────────────────
+        # ── Toolbar: current DB indicator + settings ──────────
         toolbar = self.addToolBar("Main")
+        toolbar.setObjectName("main_toolbar")
         toolbar.setMovable(False)
-        btn_settings = QPushButton("⚙")
-        btn_settings.setFixedSize(32, 32)
+
+        self._db_indicator = QLabel()
+        self._db_indicator.setObjectName("db_indicator")
+        toolbar.addWidget(self._db_indicator)
+
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(spacer)
+
+        btn_settings = QPushButton("⚙  Settings")
+        btn_settings.setObjectName("btn_settings")
         btn_settings.clicked.connect(self._open_settings)
         toolbar.addWidget(btn_settings)
 
+        self._update_db_indicator()
+
         root.addWidget(sidebar)
         root.addWidget(self._detail_stack)
+
+    def _update_db_indicator(self):
+        """Show the current database filename in the toolbar."""
+        db_path = self._settings.get("db_path", "")
+        if db_path:
+            self._db_indicator.setText(f"  📁  {os.path.basename(db_path)}")
+            self._db_indicator.setToolTip(db_path)
+            self._db_indicator.setProperty("connected", True)
+        else:
+            self._db_indicator.setText("  ⚠  No database selected")
+            self._db_indicator.setToolTip("Open Settings to choose a database")
+            self._db_indicator.setProperty("connected", False)
+        # Re-polish so the [connected] property selector restyles the label.
+        self._db_indicator.style().unpolish(self._db_indicator)
+        self._db_indicator.style().polish(self._db_indicator)
 
     def _load_members(self):
         self._all_members = []
@@ -169,4 +198,5 @@ class MainWindow(QMainWindow):
             save_settings(self._settings, self._settings_path)
             from gui.theme import apply_theme
             apply_theme(QApplication.instance(), self._settings["theme"])
+            self._update_db_indicator()
             self._load_members()
