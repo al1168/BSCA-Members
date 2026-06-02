@@ -218,3 +218,22 @@ def test_write_is_visible_through_cached_read_connection():
     finally:
         write(original)
     assert get_member_context(cid, TEST_DB)["member"]["notes"] == original
+
+
+def test_terminate_enrollment_sets_end_to_today():
+    from datetime import date
+    from db.members import (
+        get_all_members, insert_enrollment, terminate_enrollment, delete_enrollment,
+    )
+    from monthly_schedule.db import get_enrollments
+
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    before = {e["id"] for e in get_enrollments(cid, TEST_DB)}
+    insert_enrollment(cid, date(2020, 1, 1), None, TEST_DB)
+    new_id = ({e["id"] for e in get_enrollments(cid, TEST_DB)} - before).pop()
+    try:
+        terminate_enrollment(new_id, TEST_DB)
+        row = next(e for e in get_enrollments(cid, TEST_DB) if e["id"] == new_id)
+        assert row["end_date"] == date.today()
+    finally:
+        delete_enrollment(new_id, TEST_DB)

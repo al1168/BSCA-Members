@@ -48,6 +48,7 @@ INSERT_ENROLLMENT = (
 )
 
 DELETE_ENROLLMENT = "DELETE FROM [Enrollment] WHERE [ID]=?"
+UPDATE_ENROLLMENT_END = "UPDATE [Enrollment] SET [end_date]=? WHERE [ID]=?"
 
 INSERT_AUTHORIZATION = (
     "INSERT INTO [Authorization] ([Center ID], [auth_start], [auth_end], "
@@ -456,6 +457,19 @@ def delete_enrollment(record_id: int, db_path: str) -> None:
     conn = _connect(db_path)
     try:
         conn.cursor().execute(DELETE_ENROLLMENT, (record_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def terminate_enrollment(record_id: int, db_path: str) -> None:
+    """Set an enrollment's end date to today (used by the Terminate button)."""
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(UPDATE_ENROLLMENT_END, (date.today(), record_id))
         conn.commit()
     except Exception:
         conn.rollback()

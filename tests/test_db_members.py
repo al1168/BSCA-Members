@@ -79,3 +79,10 @@ def test_update_contact_targets_all_editable_fields():
     ):
         assert col in UPDATE_CONTACT, f"Missing column in UPDATE_CONTACT: {col}"
     assert "WHERE [Center ID]=?" in UPDATE_CONTACT
+
+
+def test_update_enrollment_end_targets_correct_columns():
+    from db.members import UPDATE_ENROLLMENT_END
+    assert "UPDATE [Enrollment]" in UPDATE_ENROLLMENT_END
+    assert "[end_date]=?" in UPDATE_ENROLLMENT_END
+    assert "WHERE [ID]=?" in UPDATE_ENROLLMENT_END
