@@ -364,6 +364,17 @@ def get_authorizations(center_id: int, db_path: str, _retry: bool = True) -> lis
         raise
 
 
+def latest_authorization(authorizations: list[dict]) -> dict | None:
+    """The 'current' authorization: latest by (auth_start, id).
+
+    Returns None if the list is empty or no row has an auth_start.
+    """
+    candidates = [a for a in authorizations if a.get("auth_start")]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda a: (a["auth_start"], a["id"]))
+
+
 def center_id_exists(center_id: int, db_path: str) -> bool:
     conn = _connect(db_path)
     try:

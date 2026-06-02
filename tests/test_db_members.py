@@ -92,3 +92,20 @@ def test_insert_authorization_includes_health_plan():
     from db.members import INSERT_AUTHORIZATION
     assert "[Health Plan]" in INSERT_AUTHORIZATION
     assert INSERT_AUTHORIZATION.count("?") == 7
+
+
+def test_latest_authorization_picks_latest_start_then_id():
+    from datetime import date
+    from db.members import latest_authorization
+    auths = [
+        {"id": 1, "auth_start": date(2025, 1, 1), "health_plan": "AE"},
+        {"id": 2, "auth_start": date(2026, 1, 1), "health_plan": "Aetna"},
+        {"id": 3, "auth_start": date(2026, 1, 1), "health_plan": "BCBS"},
+    ]
+    assert latest_authorization(auths)["id"] == 3  # same start -> highest id
+
+
+def test_latest_authorization_empty_returns_none():
+    from db.members import latest_authorization
+    assert latest_authorization([]) is None
+    assert latest_authorization([{"id": 1, "auth_start": None}]) is None
