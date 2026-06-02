@@ -58,6 +58,11 @@ INSERT_AUTHORIZATION = (
 
 DELETE_AUTHORIZATION = "DELETE FROM [Authorization] WHERE [ID]=?"
 
+UPDATE_AUTHORIZATION = (
+    "UPDATE [Authorization] SET [auth_start]=?, [auth_end]=?, "
+    "[auth_days]=?, [Health Plan]=? WHERE [ID]=?"
+)
+
 AUTHORIZATION_SELECT = (
     "SELECT [ID],[Center ID],[auth_start],[auth_end],"
     "[effective_start],[effective_end],[auth_days],[Health Plan] "
@@ -562,6 +567,29 @@ def insert_authorization(
             INSERT_AUTHORIZATION,
             (center_id, auth_start, auth_end, effective_start, effective_end,
              encode_auth_days(auth_days), health_plan),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def update_authorization(
+    record_id: int,
+    auth_start: date,
+    auth_end: date,
+    auth_days: set[int],
+    health_plan: str,
+    db_path: str,
+) -> None:
+    """Update an existing authorization's dates, days, and plan."""
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(
+            UPDATE_AUTHORIZATION,
+            (auth_start, auth_end, encode_auth_days(auth_days), health_plan, record_id),
         )
         conn.commit()
     except Exception:

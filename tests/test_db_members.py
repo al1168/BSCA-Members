@@ -109,3 +109,11 @@ def test_latest_authorization_empty_returns_none():
     from db.members import latest_authorization
     assert latest_authorization([]) is None
     assert latest_authorization([{"id": 1, "auth_start": None}]) is None
+
+
+def test_update_authorization_targets_correct_columns():
+    from db.members import UPDATE_AUTHORIZATION
+    assert "UPDATE [Authorization]" in UPDATE_AUTHORIZATION
+    for col in ("[auth_start]=?", "[auth_end]=?", "[auth_days]=?", "[Health Plan]=?"):
+        assert col in UPDATE_AUTHORIZATION
+    assert "WHERE [ID]=?" in UPDATE_AUTHORIZATION

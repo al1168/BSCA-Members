@@ -298,3 +298,28 @@ def test_sync_noop_when_no_authorizations():
         if not get_authorizations(mem["center_id"], TEST_DB):
             assert sync_health_plan_from_latest_auth(mem["center_id"], TEST_DB) is None
             return
+
+
+def test_update_authorization_round_trips_changes():
+    from datetime import date
+    from db.members import (
+        get_all_members, insert_authorization, update_authorization,
+        get_authorizations, delete_authorization,
+    )
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    before = {a["id"] for a in get_authorizations(cid, TEST_DB)}
+    insert_authorization(
+        cid, date(2026, 1, 1), date(2026, 6, 30), {1, 2}, None, None, "AE", TEST_DB,
+    )
+    new_id = ({a["id"] for a in get_authorizations(cid, TEST_DB)} - before).pop()
+    try:
+        update_authorization(
+            new_id, date(2026, 2, 1), date(2026, 7, 31), {3, 4, 5}, "HF", TEST_DB,
+        )
+        row = next(a for a in get_authorizations(cid, TEST_DB) if a["id"] == new_id)
+        assert row["auth_start"] == date(2026, 2, 1)
+        assert row["auth_end"] == date(2026, 7, 31)
+        assert row["auth_days"] == "3,4,5"
+        assert row["health_plan"] == "HF"
+    finally:
+        delete_authorization(new_id, TEST_DB)
