@@ -292,7 +292,11 @@ class MemberTabsWidget(QWidget):
 
         self._info_case_manager   = field("case_manager")
         self._info_admission_date = field("admission_date")
-        self._info_notes = QTextEdit(m.get("notes", "") or "")
+        self._info_notes = QTextEdit()
+        # Load as plain text: the QTextEdit(text) constructor auto-detects rich
+        # text and collapses newlines into spaces, which loses line breaks and
+        # makes an untouched note read back differently than it was stored.
+        self._info_notes.setPlainText(m.get("notes", "") or "")
         self._info_notes.setFixedHeight(72)
 
         f_care.addRow("Case Manager",   self._info_case_manager)
