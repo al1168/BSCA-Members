@@ -167,10 +167,9 @@ class MemberTabsWidget(QWidget):
 
     def _make_info_tab(self) -> QWidget:
         from PyQt6.QtWidgets import (
-            QFormLayout, QLineEdit, QComboBox, QTextEdit,
+            QFormLayout, QLineEdit, QTextEdit,
             QGroupBox, QScrollArea,
         )
-        from db.members import HEALTH_PLANS
 
         m = self._member
 
@@ -225,10 +224,8 @@ class MemberTabsWidget(QWidget):
         f_medical = QFormLayout(grp_medical)
         f_medical.setSpacing(8)
 
-        self._info_plan = QComboBox()
-        self._info_plan.addItems(HEALTH_PLANS)
-        idx = self._info_plan.findText(m.get("health_plan", ""))
-        self._info_plan.setCurrentIndex(idx if idx >= 0 else 0)
+        self._info_plan = QLineEdit(m.get("health_plan", "") or "")
+        self._info_plan.setReadOnly(True)
 
         self._info_medicaid = field("medicaid")
         self._info_medicare = field("medicare")
@@ -332,8 +329,6 @@ class MemberTabsWidget(QWidget):
         self._info_gender.setText(m.get("gender", "") or "")
         self._info_dob.setText(m.get("dob", "") or "")
         self._info_member_id.setText(m.get("member_id", "") or "")
-        idx = self._info_plan.findText(m.get("health_plan", ""))
-        self._info_plan.setCurrentIndex(idx if idx >= 0 else 0)
         self._info_medicaid.setText(m.get("medicaid", "") or "")
         self._info_medicare.setText(m.get("medicare", "") or "")
         self._info_ssn.setText(m.get("ssn", "") or "")
@@ -362,7 +357,7 @@ class MemberTabsWidget(QWidget):
             "gender":         self._info_gender.text().strip(),
             "dob":            self._info_dob.text().strip(),
             "member_id":      self._info_member_id.text().strip(),
-            "health_plan":    self._info_plan.currentText(),
+            "health_plan":    self._member.get("health_plan", "") or "",
             "medicaid":       self._info_medicaid.text().strip(),
             "medicare":       self._info_medicare.text().strip(),
             "ssn":            self._info_ssn.text().strip(),
@@ -445,7 +440,6 @@ class MemberTabsWidget(QWidget):
         )
         for w in line_edits:
             w.textChanged.connect(lambda: setattr(self, '_dirty', True))
-        self._info_plan.currentIndexChanged.connect(lambda: setattr(self, '_dirty', True))
         self._info_notes.textChanged.connect(lambda: setattr(self, '_dirty', True))
 
     def is_dirty(self) -> bool:
