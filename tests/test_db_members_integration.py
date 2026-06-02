@@ -218,3 +218,108 @@ def test_write_is_visible_through_cached_read_connection():
     finally:
         write(original)
     assert get_member_context(cid, TEST_DB)["member"]["notes"] == original
+
+
+def test_terminate_enrollment_sets_end_to_today():
+    from datetime import date
+    from db.members import (
+        get_all_members, insert_enrollment, terminate_enrollment, delete_enrollment,
+    )
+    from monthly_schedule.db import get_enrollments
+
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    before = {e["id"] for e in get_enrollments(cid, TEST_DB)}
+    insert_enrollment(cid, date(2020, 1, 1), None, TEST_DB)
+    new_id = ({e["id"] for e in get_enrollments(cid, TEST_DB)} - before).pop()
+    try:
+        terminate_enrollment(new_id, TEST_DB)
+        row = next(e for e in get_enrollments(cid, TEST_DB) if e["id"] == new_id)
+        assert row["end_date"] == date.today()
+    finally:
+        delete_enrollment(new_id, TEST_DB)
+
+
+def test_insert_authorization_persists_health_plan():
+    from datetime import date
+    from db.members import (
+        get_all_members, insert_authorization, get_authorizations,
+        delete_authorization,
+    )
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    before = {a["id"] for a in get_authorizations(cid, TEST_DB)}
+    insert_authorization(
+        cid, date(2026, 1, 1), date(2026, 12, 31), {1, 3, 5},
+        None, None, "Aetna", TEST_DB,
+    )
+    new_id = ({a["id"] for a in get_authorizations(cid, TEST_DB)} - before).pop()
+    try:
+        row = next(a for a in get_authorizations(cid, TEST_DB) if a["id"] == new_id)
+        assert row["health_plan"] == "Aetna"
+    finally:
+        delete_authorization(new_id, TEST_DB)
+
+
+def test_sync_writes_latest_auth_plan_into_contacts():
+    from datetime import date
+    from db.members import (
+        get_all_members, get_member_context, insert_authorization,
+        delete_authorization, get_authorizations, update_contact,
+        sync_health_plan_from_latest_auth,
+    )
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    m = get_member_context(cid, TEST_DB)["member"]
+    original_plan = m["health_plan"]
+    before = {a["id"] for a in get_authorizations(cid, TEST_DB)}
+    # Insert an authorization with a far-future start so it is the latest.
+    insert_authorization(
+        cid, date(2099, 1, 1), date(2099, 12, 31), {1}, None, None, "VCM", TEST_DB,
+    )
+    new_id = ({a["id"] for a in get_authorizations(cid, TEST_DB)} - before).pop()
+    try:
+        returned = sync_health_plan_from_latest_auth(cid, TEST_DB)
+        assert returned == "VCM"
+        assert get_member_context(cid, TEST_DB)["member"]["health_plan"] == "VCM"
+    finally:
+        delete_authorization(new_id, TEST_DB)
+        # Restore the member's original Contacts plan.
+        update_contact(
+            cid, m["last_name"], m["first_name"], m["chinese_name"], m["gender"],
+            m["dob"], m["member_id"], original_plan, m["medicaid"], m["medicare"],
+            m["ssn"], m["language"], m["case_manager"], m["home_tell"], m["cell"],
+            m["address"], m["emergency"], m["pcp"], m["hospital"], m["hha"],
+            m["admission_date"], m["notes"], TEST_DB,
+        )
+
+
+def test_sync_noop_when_no_authorizations():
+    from db.members import get_all_members, get_authorizations, sync_health_plan_from_latest_auth
+    members = get_all_members(TEST_DB)
+    for mem in members:
+        if not get_authorizations(mem["center_id"], TEST_DB):
+            assert sync_health_plan_from_latest_auth(mem["center_id"], TEST_DB) is None
+            return
+
+
+def test_update_authorization_round_trips_changes():
+    from datetime import date
+    from db.members import (
+        get_all_members, insert_authorization, update_authorization,
+        get_authorizations, delete_authorization,
+    )
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    before = {a["id"] for a in get_authorizations(cid, TEST_DB)}
+    insert_authorization(
+        cid, date(2026, 1, 1), date(2026, 6, 30), {1, 2}, None, None, "AE", TEST_DB,
+    )
+    new_id = ({a["id"] for a in get_authorizations(cid, TEST_DB)} - before).pop()
+    try:
+        update_authorization(
+            new_id, date(2026, 2, 1), date(2026, 7, 31), {3, 4, 5}, "HF", TEST_DB,
+        )
+        row = next(a for a in get_authorizations(cid, TEST_DB) if a["id"] == new_id)
+        assert row["auth_start"] == date(2026, 2, 1)
+        assert row["auth_end"] == date(2026, 7, 31)
+        assert row["auth_days"] == "3,4,5"
+        assert row["health_plan"] == "HF"
+    finally:
+        delete_authorization(new_id, TEST_DB)

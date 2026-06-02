@@ -167,10 +167,9 @@ class MemberTabsWidget(QWidget):
 
     def _make_info_tab(self) -> QWidget:
         from PyQt6.QtWidgets import (
-            QFormLayout, QLineEdit, QComboBox, QTextEdit,
+            QFormLayout, QLineEdit, QTextEdit,
             QGroupBox, QScrollArea,
         )
-        from db.members import HEALTH_PLANS
 
         m = self._member
 
@@ -225,10 +224,8 @@ class MemberTabsWidget(QWidget):
         f_medical = QFormLayout(grp_medical)
         f_medical.setSpacing(8)
 
-        self._info_plan = QComboBox()
-        self._info_plan.addItems(HEALTH_PLANS)
-        idx = self._info_plan.findText(m.get("health_plan", ""))
-        self._info_plan.setCurrentIndex(idx if idx >= 0 else 0)
+        self._info_plan = QLineEdit(m.get("health_plan", "") or "")
+        self._info_plan.setReadOnly(True)
 
         self._info_medicaid = field("medicaid")
         self._info_medicare = field("medicare")
@@ -281,8 +278,10 @@ class MemberTabsWidget(QWidget):
                     self.decode_auth_days_static(active_auth.get("auth_days", ""))
                 )
             )
+            plan = active_auth.get("health_plan", "")
             auth_text = (f"{active_auth['effective_start']} – "
-                         f"{active_auth['effective_end']}  [{days_str}]")
+                         f"{active_auth['effective_end']}  [{days_str}]"
+                         + (f"  ·  {plan}" if plan else ""))
         else:
             auth_text = "None"
         auth_lbl = QLineEdit(auth_text)
@@ -332,8 +331,6 @@ class MemberTabsWidget(QWidget):
         self._info_gender.setText(m.get("gender", "") or "")
         self._info_dob.setText(m.get("dob", "") or "")
         self._info_member_id.setText(m.get("member_id", "") or "")
-        idx = self._info_plan.findText(m.get("health_plan", ""))
-        self._info_plan.setCurrentIndex(idx if idx >= 0 else 0)
         self._info_medicaid.setText(m.get("medicaid", "") or "")
         self._info_medicare.setText(m.get("medicare", "") or "")
         self._info_ssn.setText(m.get("ssn", "") or "")
@@ -362,7 +359,7 @@ class MemberTabsWidget(QWidget):
             "gender":         self._info_gender.text().strip(),
             "dob":            self._info_dob.text().strip(),
             "member_id":      self._info_member_id.text().strip(),
-            "health_plan":    self._info_plan.currentText(),
+            "health_plan":    self._member.get("health_plan", "") or "",
             "medicaid":       self._info_medicaid.text().strip(),
             "medicare":       self._info_medicare.text().strip(),
             "ssn":            self._info_ssn.text().strip(),
@@ -445,7 +442,6 @@ class MemberTabsWidget(QWidget):
         )
         for w in line_edits:
             w.textChanged.connect(lambda: setattr(self, '_dirty', True))
-        self._info_plan.currentIndexChanged.connect(lambda: setattr(self, '_dirty', True))
         self._info_notes.textChanged.connect(lambda: setattr(self, '_dirty', True))
 
     def is_dirty(self) -> bool:
@@ -495,14 +491,49 @@ class MemberTabsWidget(QWidget):
     # ── Enrollments tab ────────────────────────────────────────────────────
 
     def _make_enrollments_tab(self) -> QWidget:
-        rows = [
-            [e["id"], str(e["start_date"]), str(e["end_date"]) if e["end_date"] else "ongoing"]
-            for e in self._enrollments
-        ]
-        w, self._enroll_table = self._make_table_tab(
-            ["ID", "Start Date", "End Date"],
-            rows, self._add_enrollment, self._delete_enrollment,
-        )
+        from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView
+        from datetime import date
+
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(0, 12, 0, 0)
+
+        columns = ["ID", "Start Date", "End Date", "Status"]
+        table = QTableWidget(len(self._enrollments), len(columns))
+        table.setHorizontalHeaderLabels(columns)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.horizontalHeader().setStretchLastSection(True)
+        table.verticalHeader().setVisible(False)
+
+        today = date.today()
+        for r, e in enumerate(self._enrollments):
+            end = e["end_date"]
+            table.setItem(r, 0, QTableWidgetItem(str(e["id"])))
+            table.setItem(r, 1, QTableWidgetItem(str(e["start_date"])))
+            table.setItem(r, 2, QTableWidgetItem(str(end) if end else "ongoing"))
+            if end is None or end > today:
+                btn = QPushButton("Terminate")
+                btn.setObjectName("btn_terminate")
+                btn.clicked.connect(
+                    lambda _=False, rid=e["id"]: self._terminate_enrollment(rid)
+                )
+                table.setCellWidget(r, 3, btn)
+            else:
+                table.setItem(r, 3, QTableWidgetItem("Ended"))
+
+        self._enroll_table = table
+        layout.addWidget(table)
+
+        btn_row = QHBoxLayout()
+        btn_add = QPushButton("+ Add")
+        btn_add.clicked.connect(self._add_enrollment)
+        btn_del = QPushButton("Delete Selected")
+        btn_del.clicked.connect(lambda: self._delete_enrollment(table))
+        btn_row.addWidget(btn_add)
+        btn_row.addStretch()
+        btn_row.addWidget(btn_del)
+        layout.addLayout(btn_row)
         return w
 
     def _add_enrollment(self):
@@ -563,82 +594,209 @@ class MemberTabsWidget(QWidget):
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 
+    def _terminate_enrollment(self, record_id: int):
+        from datetime import date
+        from db.members import terminate_enrollment
+        from db.events import open_db, insert_event
+        from monthly_schedule.db import get_enrollments
+
+        today = date.today()
+        reply = QMessageBox.question(
+            self, "Terminate Enrollment",
+            f"Terminate this enrollment? The end date will be set to today "
+            f"({today.isoformat()}). This can't be undone.",
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            terminate_enrollment(record_id, self._db_path)
+            self._enrollments = get_enrollments(self._center_id, self._db_path)
+            self._refresh_tab(1, self._make_enrollments_tab())
+            if self._events_path:
+                conn = open_db(self._events_path)
+                try:
+                    m = self._member
+                    insert_event(conn, "ENROLL", self._center_id,
+                        f"{m.get('last_name')}, {m.get('first_name')}",
+                        f"Enrollment terminated: end set to {today.isoformat()}")
+                finally:
+                    conn.close()
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
+
     # ── Authorizations tab ─────────────────────────────────────────────────
 
     def _make_auths_tab(self) -> QWidget:
-        rows = [
-            [a["id"], str(a["auth_start"]), str(a["auth_end"]), a["auth_days"] or ""]
-            for a in self._authorizations
-        ]
-        w, self._auth_table = self._make_table_tab(
-            ["ID", "Auth Start", "Auth End", "Days (1=Mon…5=Fri)"],
-            rows, self._add_auth, self._delete_auth,
-        )
+        from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView
+        from db.members import latest_authorization
+
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(0, 12, 0, 0)
+
+        columns = ["ID", "Auth Start", "Auth End", "Days (1=Mon…5=Fri)",
+                   "Health Plan", "Action"]
+        table = QTableWidget(len(self._authorizations), len(columns))
+        table.setHorizontalHeaderLabels(columns)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.horizontalHeader().setStretchLastSection(True)
+        table.verticalHeader().setVisible(False)
+
+        latest = latest_authorization(self._authorizations)
+        latest_id = latest["id"] if latest else None
+        for r, a in enumerate(self._authorizations):
+            table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
+            table.setItem(r, 1, QTableWidgetItem(str(a["auth_start"])))
+            table.setItem(r, 2, QTableWidgetItem(str(a["auth_end"])))
+            table.setItem(r, 3, QTableWidgetItem(a["auth_days"] or ""))
+            table.setItem(r, 4, QTableWidgetItem(a.get("health_plan", "") or ""))
+            if a["id"] == latest_id:
+                btn = QPushButton("Edit")
+                btn.setObjectName("btn_edit")
+                btn.clicked.connect(lambda _=False, auth=a: self._edit_auth(auth))
+                table.setCellWidget(r, 5, btn)
+
+        self._auth_table = table
+        layout.addWidget(table)
+
+        btn_row = QHBoxLayout()
+        btn_add = QPushButton("+ Add")
+        btn_add.clicked.connect(self._add_auth)
+        btn_del = QPushButton("Delete Selected")
+        btn_del.clicked.connect(lambda: self._delete_auth(table))
+        btn_row.addWidget(btn_add)
+        btn_row.addStretch()
+        btn_row.addWidget(btn_del)
+        layout.addLayout(btn_row)
         return w
 
-    def _add_auth(self):
+    def _after_auth_change(self, description: str | None):
+        """Re-sync the plan, reload auths, refresh the tab, and (optionally)
+        log an AUTH event. Called after add/edit/delete of an authorization."""
+        from db.members import get_authorizations, sync_health_plan_from_latest_auth
+        from db.events import open_db, insert_event
+
+        synced = sync_health_plan_from_latest_auth(self._center_id, self._db_path)
+        if synced:
+            self._member["health_plan"] = synced
+            if hasattr(self, "_info_plan"):
+                self._info_plan.setText(synced)
+        self._authorizations = get_authorizations(self._center_id, self._db_path)
+        self._refresh_tab(2, self._make_auths_tab())
+        if description and self._events_path:
+            m = self._member
+            conn = open_db(self._events_path)
+            try:
+                insert_event(conn, "AUTH", self._center_id,
+                    f"{m.get('last_name')}, {m.get('first_name')}", description)
+            finally:
+                conn.close()
+
+    def _open_auth_dialog(self, existing: dict | None = None) -> dict | None:
+        """Build the Add/Edit Authorization dialog. Returns a dict with
+        auth_start, auth_end, days, health_plan — or None if cancelled.
+        Pre-fills from `existing` when editing."""
         from PyQt6.QtWidgets import (
-            QDialog, QFormLayout, QDateEdit, QCheckBox,
+            QDialog, QFormLayout, QDateEdit, QCheckBox, QComboBox,
             QHBoxLayout, QDialogButtonBox, QWidget,
         )
         from PyQt6.QtCore import QDate
-        from db.members import insert_authorization, encode_auth_days
-        from db.events import open_db, insert_event
-        from monthly_schedule.db import get_authorizations
+        from db.members import HEALTH_PLANS
 
         dlg = QDialog(self)
-        dlg.setWindowTitle("Add Authorization")
+        dlg.setWindowTitle("Edit Authorization" if existing else "Add Authorization")
         form = QFormLayout(dlg)
 
-        auth_start = QDateEdit(QDate.currentDate())
+        auth_start = QDateEdit()
         auth_start.setCalendarPopup(True)
-        auth_end = QDateEdit(QDate.currentDate().addYears(1))
+        auth_end = QDateEdit()
         auth_end.setCalendarPopup(True)
+        if existing:
+            s, e = existing["auth_start"], existing["auth_end"]
+            auth_start.setDate(QDate(s.year, s.month, s.day))
+            auth_end.setDate(QDate(e.year, e.month, e.day))
+        else:
+            auth_start.setDate(QDate.currentDate())
+            auth_end.setDate(QDate.currentDate().addYears(1))
 
+        existing_days = (
+            self.decode_auth_days_static(existing["auth_days"]) if existing else set()
+        )
         day_checks = {}
         days_widget = QWidget()
         days_hl = QHBoxLayout(days_widget)
         days_hl.setContentsMargins(0, 0, 0, 0)
         for num, label in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri")]:
             cb = QCheckBox(label)
+            cb.setChecked(num in existing_days)
             day_checks[num] = cb
             days_hl.addWidget(cb)
+
+        plan_combo = QComboBox()
+        plan_combo.addItems(HEALTH_PLANS)
+        if existing:
+            idx = plan_combo.findText(existing.get("health_plan", ""))
+            if idx >= 0:
+                plan_combo.setCurrentIndex(idx)
 
         form.addRow("Auth Start:", auth_start)
         form.addRow("Auth End:", auth_end)
         form.addRow("Days:", days_widget)
+        form.addRow("Health Plan:", plan_combo)
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
                                 QDialogButtonBox.StandardButton.Cancel)
         btns.rejected.connect(dlg.reject)
         form.addRow(btns)
-        # Override accepted to validate before closing
-        btns.accepted.connect(lambda: dlg.accept() if any(cb.isChecked() for cb in day_checks.values())
-                               else QMessageBox.warning(dlg, "Validation", "Select at least one day."))
+        btns.accepted.connect(
+            lambda: dlg.accept() if any(cb.isChecked() for cb in day_checks.values())
+            else QMessageBox.warning(dlg, "Validation", "Select at least one day.")
+        )
 
-        if dlg.exec():
-            selected_days = {n for n, cb in day_checks.items() if cb.isChecked()}
-            try:
-                insert_authorization(
-                    self._center_id,
-                    auth_start.date().toPyDate(),
-                    auth_end.date().toPyDate(),
-                    selected_days, None, None, self._db_path,
-                )
-                self._authorizations = get_authorizations(self._center_id, self._db_path)
-                self._refresh_tab(2, self._make_auths_tab())
-                if self._events_path:
-                    conn = open_db(self._events_path)
-                    try:
-                        m = self._member
-                        insert_event(conn, "AUTH", self._center_id,
-                            f"{m.get('last_name')}, {m.get('first_name')}",
-                            f"Auth added: {auth_start.date().toString('MM/dd/yyyy')} – "
-                            f"{auth_end.date().toString('MM/dd/yyyy')} · "
-                            f"{encode_auth_days(selected_days)}")
-                    finally:
-                        conn.close()
-            except Exception as exc:
-                QMessageBox.critical(self, "Error", str(exc))
+        if not dlg.exec():
+            return None
+        return {
+            "auth_start": auth_start.date().toPyDate(),
+            "auth_end": auth_end.date().toPyDate(),
+            "days": {n for n, cb in day_checks.items() if cb.isChecked()},
+            "health_plan": plan_combo.currentText(),
+        }
+
+    def _add_auth(self):
+        from db.members import insert_authorization, encode_auth_days
+
+        result = self._open_auth_dialog()
+        if not result:
+            return
+        try:
+            insert_authorization(
+                self._center_id, result["auth_start"], result["auth_end"],
+                result["days"], None, None, result["health_plan"], self._db_path,
+            )
+            self._after_auth_change(
+                f"Auth added: {result['auth_start']} – {result['auth_end']} · "
+                f"{encode_auth_days(result['days'])} · {result['health_plan']}"
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
+
+    def _edit_auth(self, auth: dict):
+        from db.members import update_authorization, encode_auth_days
+
+        result = self._open_auth_dialog(existing=auth)
+        if not result:
+            return
+        try:
+            update_authorization(
+                auth["id"], result["auth_start"], result["auth_end"],
+                result["days"], result["health_plan"], self._db_path,
+            )
+            self._after_auth_change(
+                f"Auth edited: {result['auth_start']} – {result['auth_end']} · "
+                f"{encode_auth_days(result['days'])} · {result['health_plan']}"
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
 
     def _delete_auth(self, table):
         row = table.currentRow()
@@ -648,11 +806,9 @@ class MemberTabsWidget(QWidget):
         if QMessageBox.question(self, "Confirm", "Delete this authorization?") \
                 == QMessageBox.StandardButton.Yes:
             from db.members import delete_authorization
-            from monthly_schedule.db import get_authorizations
             try:
                 delete_authorization(record_id, self._db_path)
-                self._authorizations = get_authorizations(self._center_id, self._db_path)
-                self._refresh_tab(2, self._make_auths_tab())
+                self._after_auth_change(None)
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 

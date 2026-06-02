@@ -48,13 +48,26 @@ INSERT_ENROLLMENT = (
 )
 
 DELETE_ENROLLMENT = "DELETE FROM [Enrollment] WHERE [ID]=?"
+UPDATE_ENROLLMENT_END = "UPDATE [Enrollment] SET [end_date]=? WHERE [ID]=?"
 
 INSERT_AUTHORIZATION = (
     "INSERT INTO [Authorization] ([Center ID], [auth_start], [auth_end], "
-    "[effective_start], [effective_end], [auth_days]) VALUES (?, ?, ?, ?, ?, ?)"
+    "[effective_start], [effective_end], [auth_days], [Health Plan]) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?)"
 )
 
 DELETE_AUTHORIZATION = "DELETE FROM [Authorization] WHERE [ID]=?"
+
+UPDATE_AUTHORIZATION = (
+    "UPDATE [Authorization] SET [auth_start]=?, [auth_end]=?, "
+    "[auth_days]=?, [Health Plan]=? WHERE [ID]=?"
+)
+
+AUTHORIZATION_SELECT = (
+    "SELECT [ID],[Center ID],[auth_start],[auth_end],"
+    "[effective_start],[effective_end],[auth_days],[Health Plan] "
+    "FROM [Authorization] WHERE [Center ID]=?"
+)
 
 INSERT_AVAILABILITY = (
     "INSERT INTO [Availability] ([Center ID], [effective_start_date], "
@@ -297,13 +310,8 @@ def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dic
         )
         enrollments = [map_enrollment_row(r) for r in c.fetchall()]
 
-        c.execute(
-            "SELECT [ID],[Center ID],[auth_start],[auth_end],"
-            "[effective_start],[effective_end],[auth_days] "
-            "FROM [Authorization] WHERE [Center ID]=?",
-            center_id,
-        )
-        authorizations = [map_authorization_row(r) for r in c.fetchall()]
+        c.execute(AUTHORIZATION_SELECT, center_id)
+        authorizations = [_map_auth_row(r) for r in c.fetchall()]
 
         c.execute(
             "SELECT [ID],[Center ID],[effective_start_date],"
@@ -333,6 +341,71 @@ def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dic
         if _retry:
             return get_member_context(center_id, db_path, _retry=False)
         raise
+
+
+def _map_auth_row(row) -> dict:
+    """bsca-core maps 7 columns by index; add the local [Health Plan] (row[7])."""
+    d = map_authorization_row(row)
+    d["health_plan"] = row[7] or ""
+    return d
+
+
+def get_authorizations(center_id: int, db_path: str, _retry: bool = True) -> list[dict]:
+    """Authorizations for a member, including health_plan (cached read connection).
+
+    Replaces monthly_schedule.db.get_authorizations whose query has no
+    [Health Plan] column. Mirrors get_member_context's stale-connection retry.
+    """
+    import pyodbc
+    conn = _read_connection(db_path)
+    try:
+        c = conn.cursor()
+        c.execute(AUTHORIZATION_SELECT, center_id)
+        return [_map_auth_row(r) for r in c.fetchall()]
+    except pyodbc.Error:
+        _drop_read_connection(db_path)
+        if _retry:
+            return get_authorizations(center_id, db_path, _retry=False)
+        raise
+
+
+def latest_authorization(authorizations: list[dict]) -> dict | None:
+    """The 'current' authorization: latest by (auth_start, id).
+
+    Returns None if the list is empty or no row has an auth_start.
+    """
+    candidates = [a for a in authorizations if a.get("auth_start")]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda a: (a["auth_start"], a["id"]))
+
+
+def sync_health_plan_from_latest_auth(center_id: int, db_path: str) -> str | None:
+    """Set Contacts.[Health Plan] to the latest authorization's plan.
+
+    Returns the plan written, or None when nothing changed. Never blanks an
+    existing plan: if there are no authorizations, or the latest one's plan is
+    empty, Contacts is left untouched.
+    """
+    latest = latest_authorization(get_authorizations(center_id, db_path))
+    if not latest:
+        return None
+    plan = (latest.get("health_plan") or "").strip()
+    if not plan:
+        return None
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(
+            "UPDATE [Contacts] SET [Health Plan]=? WHERE [Center ID]=?",
+            (plan, center_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return plan
 
 
 def center_id_exists(center_id: int, db_path: str) -> bool:
@@ -373,6 +446,7 @@ def insert_member(
                     authorization.get("effective_start"),
                     authorization.get("effective_end"),
                     encode_auth_days(authorization["auth_days"]),
+                    authorization.get("health_plan", ""),
                 ),
             )
         for row in availability_rows:
@@ -464,6 +538,19 @@ def delete_enrollment(record_id: int, db_path: str) -> None:
         conn.close()
 
 
+def terminate_enrollment(record_id: int, db_path: str) -> None:
+    """Set an enrollment's end date to today (used by the Terminate button)."""
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(UPDATE_ENROLLMENT_END, (date.today(), record_id))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def insert_authorization(
     center_id: int,
     auth_start: date,
@@ -471,6 +558,7 @@ def insert_authorization(
     auth_days: set[int],
     effective_start: date | None,
     effective_end: date | None,
+    health_plan: str,
     db_path: str,
 ) -> None:
     conn = _connect(db_path)
@@ -478,7 +566,30 @@ def insert_authorization(
         conn.cursor().execute(
             INSERT_AUTHORIZATION,
             (center_id, auth_start, auth_end, effective_start, effective_end,
-             encode_auth_days(auth_days)),
+             encode_auth_days(auth_days), health_plan),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def update_authorization(
+    record_id: int,
+    auth_start: date,
+    auth_end: date,
+    auth_days: set[int],
+    health_plan: str,
+    db_path: str,
+) -> None:
+    """Update an existing authorization's dates, days, and plan."""
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(
+            UPDATE_AUTHORIZATION,
+            (auth_start, auth_end, encode_auth_days(auth_days), health_plan, record_id),
         )
         conn.commit()
     except Exception:
