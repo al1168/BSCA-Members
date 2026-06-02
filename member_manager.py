@@ -29,6 +29,8 @@ SETTINGS_PATH = _settings_path()
 
 def main():
     app = QApplication(sys.argv)
+    import crash_log
+    crash_log.install()
     settings = load_settings(SETTINGS_PATH)
     apply_theme(app, settings.get("theme", "dark"))
     window = MainWindow(settings, SETTINGS_PATH)
