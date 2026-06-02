@@ -86,3 +86,9 @@ def test_update_enrollment_end_targets_correct_columns():
     assert "UPDATE [Enrollment]" in UPDATE_ENROLLMENT_END
     assert "[end_date]=?" in UPDATE_ENROLLMENT_END
     assert "WHERE [ID]=?" in UPDATE_ENROLLMENT_END
+
+
+def test_insert_authorization_includes_health_plan():
+    from db.members import INSERT_AUTHORIZATION
+    assert "[Health Plan]" in INSERT_AUTHORIZATION
+    assert INSERT_AUTHORIZATION.count("?") == 7

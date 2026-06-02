@@ -52,10 +52,17 @@ UPDATE_ENROLLMENT_END = "UPDATE [Enrollment] SET [end_date]=? WHERE [ID]=?"
 
 INSERT_AUTHORIZATION = (
     "INSERT INTO [Authorization] ([Center ID], [auth_start], [auth_end], "
-    "[effective_start], [effective_end], [auth_days]) VALUES (?, ?, ?, ?, ?, ?)"
+    "[effective_start], [effective_end], [auth_days], [Health Plan]) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?)"
 )
 
 DELETE_AUTHORIZATION = "DELETE FROM [Authorization] WHERE [ID]=?"
+
+AUTHORIZATION_SELECT = (
+    "SELECT [ID],[Center ID],[auth_start],[auth_end],"
+    "[effective_start],[effective_end],[auth_days],[Health Plan] "
+    "FROM [Authorization] WHERE [Center ID]=?"
+)
 
 INSERT_AVAILABILITY = (
     "INSERT INTO [Availability] ([Center ID], [effective_start_date], "
@@ -298,13 +305,8 @@ def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dic
         )
         enrollments = [map_enrollment_row(r) for r in c.fetchall()]
 
-        c.execute(
-            "SELECT [ID],[Center ID],[auth_start],[auth_end],"
-            "[effective_start],[effective_end],[auth_days] "
-            "FROM [Authorization] WHERE [Center ID]=?",
-            center_id,
-        )
-        authorizations = [map_authorization_row(r) for r in c.fetchall()]
+        c.execute(AUTHORIZATION_SELECT, center_id)
+        authorizations = [_map_auth_row(r) for r in c.fetchall()]
 
         c.execute(
             "SELECT [ID],[Center ID],[effective_start_date],"
@@ -333,6 +335,32 @@ def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dic
         _drop_read_connection(db_path)
         if _retry:
             return get_member_context(center_id, db_path, _retry=False)
+        raise
+
+
+def _map_auth_row(row) -> dict:
+    """bsca-core maps 7 columns by index; add the local [Health Plan] (row[7])."""
+    d = map_authorization_row(row)
+    d["health_plan"] = row[7] or ""
+    return d
+
+
+def get_authorizations(center_id: int, db_path: str, _retry: bool = True) -> list[dict]:
+    """Authorizations for a member, including health_plan (cached read connection).
+
+    Replaces monthly_schedule.db.get_authorizations whose query has no
+    [Health Plan] column. Mirrors get_member_context's stale-connection retry.
+    """
+    import pyodbc
+    conn = _read_connection(db_path)
+    try:
+        c = conn.cursor()
+        c.execute(AUTHORIZATION_SELECT, center_id)
+        return [_map_auth_row(r) for r in c.fetchall()]
+    except pyodbc.Error:
+        _drop_read_connection(db_path)
+        if _retry:
+            return get_authorizations(center_id, db_path, _retry=False)
         raise
 
 
@@ -374,6 +402,7 @@ def insert_member(
                     authorization.get("effective_start"),
                     authorization.get("effective_end"),
                     encode_auth_days(authorization["auth_days"]),
+                    authorization.get("health_plan", ""),
                 ),
             )
         for row in availability_rows:
@@ -485,6 +514,7 @@ def insert_authorization(
     auth_days: set[int],
     effective_start: date | None,
     effective_end: date | None,
+    health_plan: str,
     db_path: str,
 ) -> None:
     conn = _connect(db_path)
@@ -492,7 +522,7 @@ def insert_authorization(
         conn.cursor().execute(
             INSERT_AUTHORIZATION,
             (center_id, auth_start, auth_end, effective_start, effective_end,
-             encode_auth_days(auth_days)),
+             encode_auth_days(auth_days), health_plan),
         )
         conn.commit()
     except Exception:
