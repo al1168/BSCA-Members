@@ -401,15 +401,23 @@ class MemberTabsWidget(QWidget):
             "notes":          self._info_notes.toPlainText().strip(),
         }
 
-        changes = [
-            f"{k}: {old.get(k)!r} → {v!r}"
-            for k, v in fields.items()
-            if v != (old.get(k) or "")
-        ]
-
-        if not changes:
+        summary = build_change_summary(old, fields)
+        if not summary:
             self._dirty = False
             return
+
+        name = f"{old.get('last_name', '')}, {old.get('first_name', '')}"
+        confirm = QMessageBox(self)
+        confirm.setWindowTitle("Confirm Changes")
+        confirm.setIcon(QMessageBox.Icon.Question)
+        confirm.setText(f"Confirm changes for {name}?")
+        confirm.setInformativeText("\n".join(summary))
+        confirm.setStandardButtons(
+            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel
+        )
+        confirm.setDefaultButton(QMessageBox.StandardButton.Save)
+        if confirm.exec() != QMessageBox.StandardButton.Save:
+            return  # user cancelled — keep edits, stay dirty
 
         try:
             update_contact(
@@ -445,7 +453,7 @@ class MemberTabsWidget(QWidget):
                     insert_event(
                         conn, "EDIT", self._center_id,
                         f"{fields['last_name']}, {fields['first_name']}",
-                        "; ".join(changes[:5]),
+                        "; ".join(summary[:5]),
                     )
                 finally:
                     conn.close()
