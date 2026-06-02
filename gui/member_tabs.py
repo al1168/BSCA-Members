@@ -278,8 +278,10 @@ class MemberTabsWidget(QWidget):
                     self.decode_auth_days_static(active_auth.get("auth_days", ""))
                 )
             )
+            plan = active_auth.get("health_plan", "")
             auth_text = (f"{active_auth['effective_start']} – "
-                         f"{active_auth['effective_end']}  [{days_str}]")
+                         f"{active_auth['effective_end']}  [{days_str}]"
+                         + (f"  ·  {plan}" if plan else ""))
         else:
             auth_text = "None"
         auth_lbl = QLineEdit(auth_text)
