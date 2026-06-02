@@ -830,10 +830,11 @@ class MemberTabsWidget(QWidget):
 
     def _add_avail(self):
         from PyQt6.QtWidgets import (
-            QDialog, QFormLayout, QComboBox, QTimeEdit, QDateEdit, QDialogButtonBox,
+            QDialog, QFormLayout, QComboBox, QLineEdit, QDateEdit,
+            QDialogButtonBox, QWidget, QHBoxLayout,
         )
-        from PyQt6.QtCore import QDate, QTime
-        from db.members import insert_availability
+        from PyQt6.QtCore import QDate
+        from db.members import insert_availability, time_12h_to_24h
         from db.events import open_db, insert_event
         from monthly_schedule.db import get_availability
 
@@ -845,26 +846,50 @@ class MemberTabsWidget(QWidget):
         for num, name in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri")]:
             day_combo.addItem(name, num)
 
-        t_start = QTimeEdit(QTime(8, 0))
-        t_end = QTimeEdit(QTime(16, 0))
+        def time_row(default_text: str, default_period: str):
+            container = QWidget()
+            hl = QHBoxLayout(container)
+            hl.setContentsMargins(0, 0, 0, 0)
+            edit = QLineEdit(default_text)
+            edit.setPlaceholderText("h:mm")
+            period = QComboBox()
+            period.addItems(["AM", "PM"])
+            period.setCurrentText(default_period)
+            hl.addWidget(edit)
+            hl.addWidget(period)
+            return container, edit, period
+
+        start_row, start_edit, start_period = time_row("8:00", "AM")
+        end_row, end_edit, end_period = time_row("4:00", "PM")
         eff_start = QDateEdit(QDate.currentDate())
         eff_start.setCalendarPopup(True)
 
         form.addRow("Day:", day_combo)
-        form.addRow("Start Time:", t_start)
-        form.addRow("End Time:", t_end)
+        form.addRow("Start Time:", start_row)
+        form.addRow("End Time:", end_row)
         form.addRow("Effective From:", eff_start)
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
                                 QDialogButtonBox.StandardButton.Cancel)
-        btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
         form.addRow(btns)
+
+        def on_accept():
+            try:
+                time_12h_to_24h(start_edit.text(), start_period.currentText())
+                time_12h_to_24h(end_edit.text(), end_period.currentText())
+            except ValueError:
+                QMessageBox.warning(dlg, "Validation",
+                    "Enter times as h:mm with hour 1-12 and minute 00-59.")
+                return
+            dlg.accept()
+
+        btns.accepted.connect(on_accept)
 
         if dlg.exec():
             day = day_combo.currentData()
             day_name = day_combo.currentText()
-            ts = t_start.time().toString("HH:mm")
-            te = t_end.time().toString("HH:mm")
+            ts = time_12h_to_24h(start_edit.text(), start_period.currentText())
+            te = time_12h_to_24h(end_edit.text(), end_period.currentText())
             try:
                 insert_availability(
                     self._center_id, day, ts, te,
