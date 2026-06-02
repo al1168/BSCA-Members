@@ -257,3 +257,44 @@ def test_insert_authorization_persists_health_plan():
         assert row["health_plan"] == "Aetna"
     finally:
         delete_authorization(new_id, TEST_DB)
+
+
+def test_sync_writes_latest_auth_plan_into_contacts():
+    from datetime import date
+    from db.members import (
+        get_all_members, get_member_context, insert_authorization,
+        delete_authorization, get_authorizations, update_contact,
+        sync_health_plan_from_latest_auth,
+    )
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    m = get_member_context(cid, TEST_DB)["member"]
+    original_plan = m["health_plan"]
+    before = {a["id"] for a in get_authorizations(cid, TEST_DB)}
+    # Insert an authorization with a far-future start so it is the latest.
+    insert_authorization(
+        cid, date(2099, 1, 1), date(2099, 12, 31), {1}, None, None, "VCM", TEST_DB,
+    )
+    new_id = ({a["id"] for a in get_authorizations(cid, TEST_DB)} - before).pop()
+    try:
+        returned = sync_health_plan_from_latest_auth(cid, TEST_DB)
+        assert returned == "VCM"
+        assert get_member_context(cid, TEST_DB)["member"]["health_plan"] == "VCM"
+    finally:
+        delete_authorization(new_id, TEST_DB)
+        # Restore the member's original Contacts plan.
+        update_contact(
+            cid, m["last_name"], m["first_name"], m["chinese_name"], m["gender"],
+            m["dob"], m["member_id"], original_plan, m["medicaid"], m["medicare"],
+            m["ssn"], m["language"], m["case_manager"], m["home_tell"], m["cell"],
+            m["address"], m["emergency"], m["pcp"], m["hospital"], m["hha"],
+            m["admission_date"], m["notes"], TEST_DB,
+        )
+
+
+def test_sync_noop_when_no_authorizations():
+    from db.members import get_all_members, get_authorizations, sync_health_plan_from_latest_auth
+    members = get_all_members(TEST_DB)
+    for mem in members:
+        if not get_authorizations(mem["center_id"], TEST_DB):
+            assert sync_health_plan_from_latest_auth(mem["center_id"], TEST_DB) is None
+            return

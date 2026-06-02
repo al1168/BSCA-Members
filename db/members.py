@@ -375,6 +375,34 @@ def latest_authorization(authorizations: list[dict]) -> dict | None:
     return max(candidates, key=lambda a: (a["auth_start"], a["id"]))
 
 
+def sync_health_plan_from_latest_auth(center_id: int, db_path: str) -> str | None:
+    """Set Contacts.[Health Plan] to the latest authorization's plan.
+
+    Returns the plan written, or None when nothing changed. Never blanks an
+    existing plan: if there are no authorizations, or the latest one's plan is
+    empty, Contacts is left untouched.
+    """
+    latest = latest_authorization(get_authorizations(center_id, db_path))
+    if not latest:
+        return None
+    plan = (latest.get("health_plan") or "").strip()
+    if not plan:
+        return None
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(
+            "UPDATE [Contacts] SET [Health Plan]=? WHERE [Center ID]=?",
+            (plan, center_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return plan
+
+
 def center_id_exists(center_id: int, db_path: str) -> bool:
     conn = _connect(db_path)
     try:
