@@ -26,3 +26,21 @@ def test_summary_renders_empty_placeholder():
 def test_summary_empty_when_no_changes():
     from gui.member_tabs import build_change_summary
     assert build_change_summary({"first_name": "Mary"}, {"first_name": "Mary"}) == []
+
+
+def test_summary_ignores_whitespace_and_newline_normalization():
+    """Regression: stored values may have trailing spaces (Access) and CRLF
+    notes, while widget read-back is stripped with LF. An untouched form must
+    report no changes."""
+    from gui.member_tabs import build_change_summary
+    old = {
+        "first_name": "Mary ",            # trailing space from storage
+        "address": "  12 Elm St  ",       # surrounding whitespace
+        "notes": "line1\r\nline2",        # Access CRLF
+    }
+    fields = {
+        "first_name": "Mary",             # widget .text().strip()
+        "address": "12 Elm St",
+        "notes": "line1\nline2",          # QTextEdit .toPlainText() -> LF
+    }
+    assert build_change_summary(old, fields) == []

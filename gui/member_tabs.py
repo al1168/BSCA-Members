@@ -18,17 +18,30 @@ FIELD_LABELS = {
 }
 
 
+def _normalize_value(v) -> str:
+    """Normalize a field value for change comparison/display.
+
+    Stored values may carry trailing whitespace (Access) and CRLF line
+    endings (memo fields), while widget read-back is stripped with LF. Unify
+    both so cosmetic-only differences are not reported as changes.
+    """
+    return (v or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
 def build_change_summary(old: dict, fields: dict) -> list[str]:
     """Friendly 'Label: old → new' lines for each field whose value changed.
 
-    Blank values render as '(empty)'. Order follows `fields` iteration order.
+    Values are normalized (newlines unified, surrounding whitespace stripped)
+    before comparison, so trailing spaces or CRLF/LF differences do not count
+    as changes. Blank values render as '(empty)'. Order follows `fields`.
     """
     lines = []
     for key, new_val in fields.items():
-        old_val = old.get(key) or ""
-        if new_val != old_val:
+        old_norm = _normalize_value(old.get(key))
+        new_norm = _normalize_value(new_val)
+        if new_norm != old_norm:
             label = FIELD_LABELS.get(key, key)
-            lines.append(f"{label}: {old_val or '(empty)'} → {new_val or '(empty)'}")
+            lines.append(f"{label}: {old_norm or '(empty)'} → {new_norm or '(empty)'}")
     return lines
 
 
