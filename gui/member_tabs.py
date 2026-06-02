@@ -635,6 +635,75 @@ class MemberTabsWidget(QWidget):
         )
         return w
 
+    def _open_auth_dialog(self, existing: dict | None = None) -> dict | None:
+        """Build the Add/Edit Authorization dialog. Returns a dict with
+        auth_start, auth_end, days, health_plan — or None if cancelled.
+        Pre-fills from `existing` when editing."""
+        from PyQt6.QtWidgets import (
+            QDialog, QFormLayout, QDateEdit, QCheckBox, QComboBox,
+            QHBoxLayout, QDialogButtonBox, QWidget,
+        )
+        from PyQt6.QtCore import QDate
+        from db.members import HEALTH_PLANS
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Edit Authorization" if existing else "Add Authorization")
+        form = QFormLayout(dlg)
+
+        auth_start = QDateEdit()
+        auth_start.setCalendarPopup(True)
+        auth_end = QDateEdit()
+        auth_end.setCalendarPopup(True)
+        if existing:
+            s, e = existing["auth_start"], existing["auth_end"]
+            auth_start.setDate(QDate(s.year, s.month, s.day))
+            auth_end.setDate(QDate(e.year, e.month, e.day))
+        else:
+            auth_start.setDate(QDate.currentDate())
+            auth_end.setDate(QDate.currentDate().addYears(1))
+
+        existing_days = (
+            self.decode_auth_days_static(existing["auth_days"]) if existing else set()
+        )
+        day_checks = {}
+        days_widget = QWidget()
+        days_hl = QHBoxLayout(days_widget)
+        days_hl.setContentsMargins(0, 0, 0, 0)
+        for num, label in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri")]:
+            cb = QCheckBox(label)
+            cb.setChecked(num in existing_days)
+            day_checks[num] = cb
+            days_hl.addWidget(cb)
+
+        plan_combo = QComboBox()
+        plan_combo.addItems(HEALTH_PLANS)
+        if existing:
+            idx = plan_combo.findText(existing.get("health_plan", ""))
+            if idx >= 0:
+                plan_combo.setCurrentIndex(idx)
+
+        form.addRow("Auth Start:", auth_start)
+        form.addRow("Auth End:", auth_end)
+        form.addRow("Days:", days_widget)
+        form.addRow("Health Plan:", plan_combo)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
+                                QDialogButtonBox.StandardButton.Cancel)
+        btns.rejected.connect(dlg.reject)
+        form.addRow(btns)
+        btns.accepted.connect(
+            lambda: dlg.accept() if any(cb.isChecked() for cb in day_checks.values())
+            else QMessageBox.warning(dlg, "Validation", "Select at least one day.")
+        )
+
+        if not dlg.exec():
+            return None
+        return {
+            "auth_start": auth_start.date().toPyDate(),
+            "auth_end": auth_end.date().toPyDate(),
+            "days": {n for n, cb in day_checks.items() if cb.isChecked()},
+            "health_plan": plan_combo.currentText(),
+        }
+
     def _add_auth(self):
         from PyQt6.QtWidgets import (
             QDialog, QFormLayout, QDateEdit, QCheckBox,
