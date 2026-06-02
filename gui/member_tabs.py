@@ -627,20 +627,26 @@ class MemberTabsWidget(QWidget):
     # ── Authorizations tab ─────────────────────────────────────────────────
 
     def _make_auths_tab(self) -> QWidget:
-        from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView
+        from PyQt6.QtWidgets import (
+            QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView,
+        )
         from db.members import latest_authorization
 
         w = QWidget()
         layout = QVBoxLayout(w)
         layout.setContentsMargins(0, 12, 0, 0)
 
-        columns = ["ID", "Auth Start", "Auth End", "Days (1=Mon…5=Fri)",
-                   "Health Plan", "Action"]
+        columns = ["ID", "Auth Start", "Auth End", "Days", "Health Plan", "Action"]
         table = QTableWidget(len(self._authorizations), len(columns))
         table.setHorizontalHeaderLabels(columns)
+        table.horizontalHeaderItem(3).setToolTip("1=Mon  2=Tue  3=Wed  4=Thu  5=Fri")
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        table.horizontalHeader().setStretchLastSection(True)
+        hdr = table.horizontalHeader()
+        hdr.setStretchLastSection(False)
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setVisible(False)
 
         latest = latest_authorization(self._authorizations)
