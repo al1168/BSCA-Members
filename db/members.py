@@ -103,6 +103,34 @@ def _hhmm_to_datetime(hhmm: str) -> datetime:
     return datetime(1899, 12, 30, h, m)
 
 
+def time_12h_to_24h(text: str, period: str) -> str:
+    """Convert a typed 12-hour time + AM/PM to 24-hour 'HH:mm'.
+
+    '8:00','AM'  -> '08:00'
+    '12:00','AM' -> '00:00'
+    '12:00','PM' -> '12:00'
+    '4:30','PM'  -> '16:30'
+
+    Raises ValueError if the text is not 'h:mm', hour not in 1..12,
+    minute not in 0..59, or period not 'AM'/'PM' (case-insensitive).
+    """
+    parts = text.strip().split(":")
+    if len(parts) != 2:
+        raise ValueError(f"Invalid time: {text!r}")
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1])
+    except ValueError:
+        raise ValueError(f"Invalid time: {text!r}")
+    if not (1 <= hour <= 12) or not (0 <= minute <= 59):
+        raise ValueError(f"Time out of range: {text!r}")
+    p = period.strip().upper()
+    if p not in ("AM", "PM"):
+        raise ValueError(f"Invalid period: {period!r}")
+    h24 = hour % 12 if p == "AM" else (hour % 12) + 12
+    return f"{h24:02d}:{minute:02d}"
+
+
 def _connect(db_path: str):
     """Open a fresh transactional connection (autocommit=False).
 

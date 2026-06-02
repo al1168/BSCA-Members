@@ -117,3 +117,31 @@ def test_update_authorization_targets_correct_columns():
     for col in ("[auth_start]=?", "[auth_end]=?", "[auth_days]=?", "[Health Plan]=?"):
         assert col in UPDATE_AUTHORIZATION
     assert "WHERE [ID]=?" in UPDATE_AUTHORIZATION
+
+
+@pytest.mark.parametrize("text,period,expected", [
+    ("8:00", "AM", "08:00"),
+    ("12:00", "AM", "00:00"),
+    ("12:00", "PM", "12:00"),
+    ("4:30", "PM", "16:30"),
+    ("11:59", "PM", "23:59"),
+    ("8:05", "am", "08:05"),
+])
+def test_time_12h_to_24h_valid(text, period, expected):
+    from db.members import time_12h_to_24h
+    assert time_12h_to_24h(text, period) == expected
+
+
+@pytest.mark.parametrize("text,period", [
+    ("8", "AM"),       # no colon
+    ("13:00", "AM"),   # hour > 12
+    ("0:00", "AM"),    # hour < 1
+    ("8:60", "AM"),    # minute > 59
+    ("abc", "AM"),     # non-numeric
+    ("8:", "AM"),      # empty minute
+    ("8:00", "XM"),    # bad period
+])
+def test_time_12h_to_24h_invalid(text, period):
+    from db.members import time_12h_to_24h
+    with pytest.raises(ValueError):
+        time_12h_to_24h(text, period)
