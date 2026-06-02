@@ -7,6 +7,31 @@ from PyQt6.QtCore import Qt
 from db.members import get_member_context
 
 
+FIELD_LABELS = {
+    "first_name": "First Name", "last_name": "Last Name",
+    "chinese_name": "Chinese Name", "gender": "Gender", "dob": "DOB",
+    "member_id": "Member ID", "medicaid": "Medicaid", "medicare": "Medicare",
+    "ssn": "SSN", "language": "Language", "case_manager": "Case Manager",
+    "home_tell": "Home Phone", "cell": "Cell", "address": "Address",
+    "emergency": "Emergency", "pcp": "PCP", "hospital": "Hospital",
+    "hha": "HHA", "admission_date": "Admission Date", "notes": "Notes",
+}
+
+
+def build_change_summary(old: dict, fields: dict) -> list[str]:
+    """Friendly 'Label: old → new' lines for each field whose value changed.
+
+    Blank values render as '(empty)'. Order follows `fields` iteration order.
+    """
+    lines = []
+    for key, new_val in fields.items():
+        old_val = old.get(key) or ""
+        if new_val != old_val:
+            label = FIELD_LABELS.get(key, key)
+            lines.append(f"{label}: {old_val or '(empty)'} → {new_val or '(empty)'}")
+    return lines
+
+
 class MemberTabsWidget(QWidget):
     def __init__(self, center_id: int, db_path: str, events_path: str, parent=None):
         super().__init__(parent)
@@ -376,15 +401,23 @@ class MemberTabsWidget(QWidget):
             "notes":          self._info_notes.toPlainText().strip(),
         }
 
-        changes = [
-            f"{k}: {old.get(k)!r} → {v!r}"
-            for k, v in fields.items()
-            if v != (old.get(k) or "")
-        ]
-
-        if not changes:
+        summary = build_change_summary(old, fields)
+        if not summary:
             self._dirty = False
             return
+
+        name = f"{old.get('last_name', '')}, {old.get('first_name', '')}"
+        confirm = QMessageBox(self)
+        confirm.setWindowTitle("Confirm Changes")
+        confirm.setIcon(QMessageBox.Icon.Question)
+        confirm.setText(f"Confirm changes for {name}?")
+        confirm.setInformativeText("\n".join(summary))
+        confirm.setStandardButtons(
+            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel
+        )
+        confirm.setDefaultButton(QMessageBox.StandardButton.Save)
+        if confirm.exec() != QMessageBox.StandardButton.Save:
+            return  # user cancelled — keep edits, stay dirty
 
         try:
             update_contact(
@@ -420,7 +453,7 @@ class MemberTabsWidget(QWidget):
                     insert_event(
                         conn, "EDIT", self._center_id,
                         f"{fields['last_name']}, {fields['first_name']}",
-                        "; ".join(changes[:5]),
+                        "; ".join(summary[:5]),
                     )
                 finally:
                     conn.close()

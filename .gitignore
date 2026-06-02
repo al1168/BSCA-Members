@@ -11,3 +11,4 @@ build/
 dist/
 *.spec.bak
 .claude/
+logs/

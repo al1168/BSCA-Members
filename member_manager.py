@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 from gui.main_window import MainWindow
 from gui.theme import apply_theme
 from settings import load_settings
+import crash_log
 
 
 def _settings_path() -> str:
@@ -29,6 +30,7 @@ SETTINGS_PATH = _settings_path()
 
 def main():
     app = QApplication(sys.argv)
+    crash_log.install()
     settings = load_settings(SETTINGS_PATH)
     apply_theme(app, settings.get("theme", "dark"))
     window = MainWindow(settings, SETTINGS_PATH)
