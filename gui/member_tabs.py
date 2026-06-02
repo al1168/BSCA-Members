@@ -489,14 +489,49 @@ class MemberTabsWidget(QWidget):
     # ── Enrollments tab ────────────────────────────────────────────────────
 
     def _make_enrollments_tab(self) -> QWidget:
-        rows = [
-            [e["id"], str(e["start_date"]), str(e["end_date"]) if e["end_date"] else "ongoing"]
-            for e in self._enrollments
-        ]
-        w, self._enroll_table = self._make_table_tab(
-            ["ID", "Start Date", "End Date"],
-            rows, self._add_enrollment, self._delete_enrollment,
-        )
+        from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView
+        from datetime import date
+
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(0, 12, 0, 0)
+
+        columns = ["ID", "Start Date", "End Date", "Status"]
+        table = QTableWidget(len(self._enrollments), len(columns))
+        table.setHorizontalHeaderLabels(columns)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.horizontalHeader().setStretchLastSection(True)
+        table.verticalHeader().setVisible(False)
+
+        today = date.today()
+        for r, e in enumerate(self._enrollments):
+            end = e["end_date"]
+            table.setItem(r, 0, QTableWidgetItem(str(e["id"])))
+            table.setItem(r, 1, QTableWidgetItem(str(e["start_date"])))
+            table.setItem(r, 2, QTableWidgetItem(str(end) if end else "ongoing"))
+            if end is None or end > today:
+                btn = QPushButton("Terminate")
+                btn.setObjectName("btn_terminate")
+                btn.clicked.connect(
+                    lambda _=False, rid=e["id"]: self._terminate_enrollment(rid)
+                )
+                table.setCellWidget(r, 3, btn)
+            else:
+                table.setItem(r, 3, QTableWidgetItem("Ended"))
+
+        self._enroll_table = table
+        layout.addWidget(table)
+
+        btn_row = QHBoxLayout()
+        btn_add = QPushButton("+ Add")
+        btn_add.clicked.connect(self._add_enrollment)
+        btn_del = QPushButton("Delete Selected")
+        btn_del.clicked.connect(lambda: self._delete_enrollment(table))
+        btn_row.addWidget(btn_add)
+        btn_row.addStretch()
+        btn_row.addWidget(btn_del)
+        layout.addLayout(btn_row)
         return w
 
     def _add_enrollment(self):
@@ -556,6 +591,36 @@ class MemberTabsWidget(QWidget):
                 self._refresh_tab(1, self._make_enrollments_tab())
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
+
+    def _terminate_enrollment(self, record_id: int):
+        from datetime import date
+        from db.members import terminate_enrollment
+        from db.events import open_db, insert_event
+        from monthly_schedule.db import get_enrollments
+
+        today = date.today()
+        reply = QMessageBox.question(
+            self, "Terminate Enrollment",
+            f"Terminate this enrollment? The end date will be set to today "
+            f"({today.isoformat()}). This can't be undone.",
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            terminate_enrollment(record_id, self._db_path)
+            self._enrollments = get_enrollments(self._center_id, self._db_path)
+            self._refresh_tab(1, self._make_enrollments_tab())
+            if self._events_path:
+                conn = open_db(self._events_path)
+                try:
+                    m = self._member
+                    insert_event(conn, "ENROLL", self._center_id,
+                        f"{m.get('last_name')}, {m.get('first_name')}",
+                        f"Enrollment terminated: end set to {today.isoformat()}")
+                finally:
+                    conn.close()
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
 
     # ── Authorizations tab ─────────────────────────────────────────────────
 

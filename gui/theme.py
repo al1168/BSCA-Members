@@ -214,6 +214,29 @@ QLabel#db_indicator[connected="true"] {{
 QLabel#db_indicator[connected="false"] {{
     color: {t['warning']};
 }}
+QPushButton#btn_terminate {{
+    background-color: {t['error']};
+    color: #ffffff;
+    border: none;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 5px;
+}}
+QPushButton#btn_terminate:hover {{
+    background-color: {t['error_text']};
+}}
+QPushButton#btn_edit {{
+    background-color: {t['accent_bg']};
+    color: {t['accent_text']};
+    border: 1px solid {t['accent']};
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 5px;
+}}
+QPushButton#btn_edit:hover {{
+    background-color: {t['accent']};
+    color: #ffffff;
+}}
 QLabel {{
     background-color: transparent;
     color: {t['text']};
