@@ -17,6 +17,18 @@ FIELD_LABELS = {
     "hha": "HHA", "admission_date": "Admission Date", "notes": "Notes",
 }
 
+WEEKDAY_NAMES = {
+    1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat", 7: "Sun",
+}
+
+
+def format_auth_days(auth_days: str) -> str:
+    """'1,3,6' -> 'Mon Wed Sat'. Unknown day numbers fall back to their digit."""
+    if not auth_days:
+        return ""
+    days = sorted(int(x) for x in auth_days.split(",") if x.strip())
+    return " ".join(WEEKDAY_NAMES.get(d, str(d)) for d in days)
+
 
 def _normalize_value(v) -> str:
     """Normalize a field value for change comparison/display.
@@ -314,12 +326,7 @@ class MemberTabsWidget(QWidget):
 
         active_auth = self._active_authorization(self._authorizations)
         if active_auth:
-            day_map = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri"}
-            days_str = " ".join(
-                day_map[d] for d in sorted(
-                    self.decode_auth_days_static(active_auth.get("auth_days", ""))
-                )
-            )
+            days_str = format_auth_days(active_auth.get("auth_days", ""))
             plan = active_auth.get("health_plan", "")
             auth_text = (f"{active_auth['effective_start']} – "
                          f"{active_auth['effective_end']}  [{days_str}]"
@@ -874,7 +881,7 @@ class MemberTabsWidget(QWidget):
         from PyQt6.QtWidgets import (
             QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView,
         )
-        day_names = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri"}
+        day_names = WEEKDAY_NAMES
 
         w = QWidget()
         layout = QVBoxLayout(w)
@@ -925,7 +932,7 @@ class MemberTabsWidget(QWidget):
         from db.events import open_db, insert_event
         from monthly_schedule.db import get_availability
 
-        day_names = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri"}
+        day_names = WEEKDAY_NAMES
         day_name = day_names.get(avail["day_of_week"], str(avail["day_of_week"]))
 
         dlg = QDialog(self)
