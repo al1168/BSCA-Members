@@ -871,18 +871,96 @@ class MemberTabsWidget(QWidget):
     # ── Availability tab ───────────────────────────────────────────────────
 
     def _make_avail_tab(self) -> QWidget:
-        day_names = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri"}
-        rows = [
-            [a["id"], day_names.get(a["day_of_week"], str(a["day_of_week"])),
-             a["avail_start"] or "", a["avail_end"] or "",
-             str(a["effective_start_date"])]
-            for a in self._availability
-        ]
-        w, self._avail_table = self._make_table_tab(
-            ["ID", "Day", "Start", "End", "Effective From"],
-            rows, self._add_avail, self._delete_avail,
+        from PyQt6.QtWidgets import (
+            QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView,
         )
+        day_names = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri"}
+
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(0, 12, 0, 0)
+
+        columns = ["ID", "Day", "Start", "End", "Effective From", "Action"]
+        table = QTableWidget(len(self._availability), len(columns))
+        table.setHorizontalHeaderLabels(columns)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        hdr = table.horizontalHeader()
+        hdr.setStretchLastSection(False)
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        table.verticalHeader().setVisible(False)
+
+        for r, a in enumerate(self._availability):
+            table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
+            table.setItem(r, 1, QTableWidgetItem(
+                day_names.get(a["day_of_week"], str(a["day_of_week"]))))
+            table.setItem(r, 2, QTableWidgetItem(a["avail_start"] or ""))
+            table.setItem(r, 3, QTableWidgetItem(a["avail_end"] or ""))
+            table.setItem(r, 4, QTableWidgetItem(str(a["effective_start_date"])))
+            btn = QPushButton("Edit")
+            btn.setObjectName("btn_edit")
+            btn.clicked.connect(lambda _=False, av=a: self._edit_avail(av))
+            table.setCellWidget(r, 5, btn)
+
+        self._avail_table = table
+        layout.addWidget(table)
+
+        btn_row = QHBoxLayout()
+        btn_add = QPushButton("+ Add")
+        btn_add.clicked.connect(self._add_avail)
+        btn_del = QPushButton("Delete Selected")
+        btn_del.clicked.connect(lambda: self._delete_avail(table))
+        btn_row.addWidget(btn_add)
+        btn_row.addStretch()
+        btn_row.addWidget(btn_del)
+        layout.addLayout(btn_row)
         return w
+
+    def _edit_avail(self, avail: dict):
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QDialogButtonBox
+        from gui.time_range_editor import TimeRangeEditor
+        from db.members import update_availability
+        from db.events import open_db, insert_event
+        from monthly_schedule.db import get_availability
+
+        day_names = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri"}
+        day_name = day_names.get(avail["day_of_week"], str(avail["day_of_week"]))
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Edit Availability — {day_name}")
+        v = QVBoxLayout(dlg)
+        v.addWidget(QLabel(f"Day: {day_name}"))
+
+        editor = TimeRangeEditor()
+        editor.set_window(avail["avail_start"] or "08:00", avail["avail_end"] or "16:00")
+        v.addWidget(editor)
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Save |
+                                QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        v.addWidget(btns)
+
+        if not dlg.exec():
+            return
+        ts, te = editor.start_hhmm(), editor.end_hhmm()
+        try:
+            update_availability(avail["id"], ts, te, self._db_path)
+            self._availability = get_availability(self._center_id, self._db_path)
+            self._refresh_tab(3, self._make_avail_tab())
+            if self._events_path:
+                conn = open_db(self._events_path)
+                try:
+                    m = self._member
+                    insert_event(conn, "AVAIL", self._center_id,
+                        f"{m.get('last_name')}, {m.get('first_name')}",
+                        f"Availability edited: {day_name} {ts}–{te}")
+                finally:
+                    conn.close()
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
 
     def _add_avail(self):
         from PyQt6.QtWidgets import (
