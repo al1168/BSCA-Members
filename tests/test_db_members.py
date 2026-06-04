@@ -48,6 +48,14 @@ def test_insert_absence_targets_correct_table():
         assert col in INSERT_ABSENCE
 
 
+def test_update_availability_targets_correct_columns():
+    from db.members import UPDATE_AVAILABILITY
+    assert "UPDATE [Availability]" in UPDATE_AVAILABILITY
+    assert "[avail_start]=?" in UPDATE_AVAILABILITY
+    assert "[avail_end]=?" in UPDATE_AVAILABILITY
+    assert "WHERE [ID]=?" in UPDATE_AVAILABILITY
+
+
 def test_encode_auth_days_sorted():
     assert encode_auth_days({3, 1, 5}) == "1,3,5"
 

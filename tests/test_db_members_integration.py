@@ -323,3 +323,24 @@ def test_update_authorization_round_trips_changes():
         assert row["health_plan"] == "HF"
     finally:
         delete_authorization(new_id, TEST_DB)
+
+
+def test_update_availability_round_trips_changes():
+    from datetime import date
+    from db.members import (
+        get_all_members, insert_availability, update_availability,
+        delete_availability,
+    )
+    from monthly_schedule.db import get_availability
+
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    before = {a["id"] for a in get_availability(cid, TEST_DB)}
+    insert_availability(cid, 1, "08:00", "16:00", date(2026, 1, 1), None, TEST_DB)
+    new_id = ({a["id"] for a in get_availability(cid, TEST_DB)} - before).pop()
+    try:
+        update_availability(new_id, "09:30", "14:45", TEST_DB)
+        row = next(a for a in get_availability(cid, TEST_DB) if a["id"] == new_id)
+        assert row["avail_start"] == "09:30"
+        assert row["avail_end"] == "14:45"
+    finally:
+        delete_availability(new_id, TEST_DB)

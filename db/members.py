@@ -77,6 +77,10 @@ INSERT_AVAILABILITY = (
 
 DELETE_AVAILABILITY = "DELETE FROM [Availability] WHERE [ID]=?"
 
+UPDATE_AVAILABILITY = (
+    "UPDATE [Availability] SET [avail_start]=?, [avail_end]=? WHERE [ID]=?"
+)
+
 INSERT_ABSENCE = (
     "INSERT INTO [Absences] ([Center ID], [Leave Type], [Start_Date], [End_Date]) "
     "VALUES (?, ?, ?, ?)"
@@ -654,6 +658,23 @@ def insert_availability(
             INSERT_AVAILABILITY,
             (center_id, effective_start, effective_end, day_of_week,
              _hhmm_to_datetime(avail_start), _hhmm_to_datetime(avail_end)),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def update_availability(record_id: int, avail_start: str, avail_end: str,
+                        db_path: str) -> None:
+    """Update an availability row's start/end times (24-hour 'HH:mm')."""
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(
+            UPDATE_AVAILABILITY,
+            (_hhmm_to_datetime(avail_start), _hhmm_to_datetime(avail_end), record_id),
         )
         conn.commit()
     except Exception:
