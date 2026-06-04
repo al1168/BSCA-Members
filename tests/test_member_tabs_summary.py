@@ -44,3 +44,14 @@ def test_summary_ignores_whitespace_and_newline_normalization():
         "notes": "line1\nline2",          # QTextEdit .toPlainText() -> LF
     }
     assert build_change_summary(old, fields) == []
+
+
+def test_format_auth_days_includes_weekend():
+    """Regression: an auth covering Sat/Sun must not crash and must read
+    'Sat'/'Sun' (KeyError: 6 previously crashed the member view)."""
+    from gui.member_tabs import format_auth_days
+    assert format_auth_days("1,3,5") == "Mon Wed Fri"
+    assert format_auth_days("6,7") == "Sat Sun"
+    assert format_auth_days("1,6") == "Mon Sat"
+    assert format_auth_days("") == ""
+    assert format_auth_days("9") == "9"  # unknown day falls back to the digit
