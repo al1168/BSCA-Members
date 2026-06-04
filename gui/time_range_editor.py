@@ -4,7 +4,10 @@ Pure helpers (minutes <-> 'HH:mm', clamp, snap, 12-hour formatting) are unit
 tested; the RangeSlider/TimeRangeEditor widgets are verified manually.
 """
 
-from PyQt6.QtWidgets import QWidget, QSizePolicy
+from PyQt6.QtWidgets import (
+    QWidget, QSizePolicy, QVBoxLayout, QHBoxLayout, QLabel,
+    QLineEdit, QComboBox, QMessageBox,
+)
 from PyQt6.QtCore import Qt, pyqtSignal, QRectF
 from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QFont
 
@@ -165,3 +168,120 @@ class RangeSlider(QWidget):
             return
         self.update()
         self.windowChanged.emit(self._start, self._end)
+
+
+def _format_duration(minutes: int) -> str:
+    h, m = divmod(minutes, 60)
+    return f"{h}h {m}m"
+
+
+class TimeRangeEditor(QWidget):
+    """Range slider + manual Start/End (h:mm + AM/PM) kept in two-way sync.
+
+    Drag snaps to 15 min; typing accepts any minute in 08:00-16:00 and clamps
+    to bounds / enforces the 15-min minimum window. start_hhmm()/end_hhmm()
+    return 24-hour 'HH:mm' for saving.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        from db.members import time_12h_to_24h  # reuse existing parser
+        self._parse_12h = time_12h_to_24h
+        self._start = MIN_MINUTES
+        self._end = MAX_MINUTES
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        self._readout = QLabel()
+        self._readout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self._readout.setStyleSheet("font-size:16px; font-weight:700;")
+        layout.addWidget(self._readout)
+
+        self._slider = RangeSlider()
+        self._slider.windowChanged.connect(self._on_slider)
+        layout.addWidget(self._slider)
+
+        self._start_edit, self._start_period = self._time_field(layout, "Start")
+        self._end_edit, self._end_period = self._time_field(layout, "End")
+
+        self._refresh()
+
+    def _time_field(self, layout, label):
+        row = QHBoxLayout()
+        row.addWidget(QLabel(f"{label}:"))
+        edit = QLineEdit()
+        edit.setPlaceholderText("h:mm")
+        period = QComboBox()
+        period.addItems(["AM", "PM"])
+        row.addWidget(edit)
+        row.addWidget(period)
+        row.addStretch()
+        layout.addLayout(row)
+        commit = self._commit_start if label == "Start" else self._commit_end
+        edit.editingFinished.connect(commit)
+        period.currentIndexChanged.connect(commit)
+        return edit, period
+
+    # ── public API ───────────────────────────────────────────────────────
+    def set_window(self, start_hhmm: str, end_hhmm: str) -> None:
+        self._start = clamp_minutes(hhmm_to_minutes(start_hhmm))
+        self._end = clamp_minutes(hhmm_to_minutes(end_hhmm))
+        if self._end < self._start + MIN_WINDOW:
+            self._end = clamp_minutes(self._start + MIN_WINDOW)
+        self._refresh()
+
+    def start_hhmm(self) -> str:
+        return minutes_to_hhmm(self._start)
+
+    def end_hhmm(self) -> str:
+        return minutes_to_hhmm(self._end)
+
+    # ── sync ─────────────────────────────────────────────────────────────
+    def _on_slider(self, start_min: int, end_min: int) -> None:
+        self._start, self._end = start_min, end_min
+        self._refresh()
+
+    def _commit_start(self) -> None:
+        m = self._parse_field(self._start_edit, self._start_period)
+        if m is None:
+            return
+        self._start = clamp_minutes(min(m, self._end - MIN_WINDOW))
+        self._refresh()
+
+    def _commit_end(self) -> None:
+        m = self._parse_field(self._end_edit, self._end_period)
+        if m is None:
+            return
+        self._end = clamp_minutes(max(m, self._start + MIN_WINDOW))
+        self._refresh()
+
+    def _parse_field(self, edit: QLineEdit, period: QComboBox):
+        try:
+            hhmm = self._parse_12h(edit.text(), period.currentText())
+            return clamp_minutes(hhmm_to_minutes(hhmm))
+        except ValueError:
+            QMessageBox.warning(self, "Validation",
+                "Enter times as h:mm with hour 1-12 and minute 00-59.")
+            self._refresh()  # revert field to last valid value
+            return None
+
+    def _refresh(self) -> None:
+        """Push current state to the slider, both fields, and the readout."""
+        self._slider.set_window(self._start, self._end)
+        st, sp = minutes_to_12h(self._start)
+        et, ep = minutes_to_12h(self._end)
+        for edit, period, text, per in (
+            (self._start_edit, self._start_period, st, sp),
+            (self._end_edit, self._end_period, et, ep),
+        ):
+            edit.blockSignals(True)
+            period.blockSignals(True)
+            edit.setText(text)
+            period.setCurrentText(per)
+            edit.blockSignals(False)
+            period.blockSignals(False)
+        self._readout.setText(
+            f"{st} {sp}  –  {et} {ep}   ·   {_format_duration(self._end - self._start)}"
+        )
