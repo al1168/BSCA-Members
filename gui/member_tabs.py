@@ -119,6 +119,24 @@ class MemberTabsWidget(QWidget):
         except Exception as exc:
             QMessageBox.critical(self, "Load Error", str(exc))
 
+    def _log_event(self, event_type: str, description: str) -> None:
+        """Record an event for this member (when an events log is configured)
+        and refresh the member's Events tab."""
+        if self._events_path:
+            from db.events import open_db, insert_event
+            m = self._member
+            conn = open_db(self._events_path)
+            try:
+                insert_event(
+                    conn, event_type, self._center_id,
+                    f"{m.get('last_name', '')}, {m.get('first_name', '')}",
+                    description,
+                )
+            finally:
+                conn.close()
+        if hasattr(self, "_tab_events"):
+            self._tab_events.refresh()
+
     def _make_photo_label(self) -> QLabel:
         """Return an 80×80 QLabel showing the member photo or a gray placeholder."""
         from PyQt6.QtGui import QPixmap, QPainter, QColor, QBrush
@@ -444,7 +462,6 @@ class MemberTabsWidget(QWidget):
 
     def _save_info(self):
         from db.members import update_contact
-        from db.events import open_db, insert_event
 
         old = self._member
         fields = {
@@ -521,16 +538,7 @@ class MemberTabsWidget(QWidget):
             if new_long_lat:
                 from db.members import set_member_long_lat
                 set_member_long_lat(self._center_id, new_long_lat, self._db_path)
-            if self._events_path:
-                conn = open_db(self._events_path)
-                try:
-                    insert_event(
-                        conn, "EDIT", self._center_id,
-                        f"{fields['last_name']}, {fields['first_name']}",
-                        "; ".join(summary[:5]),
-                    )
-                finally:
-                    conn.close()
+            self._log_event("EDIT", "; ".join(summary))
         except Exception as exc:
             QMessageBox.critical(self, "Save Error", str(exc))
 
@@ -649,7 +657,6 @@ class MemberTabsWidget(QWidget):
         from PyQt6.QtWidgets import QDialog, QFormLayout, QDateEdit, QDialogButtonBox
         from PyQt6.QtCore import QDate
         from db.members import insert_enrollment
-        from db.events import open_db, insert_event
         from monthly_schedule.db import get_enrollments
 
         dlg = QDialog(self)
@@ -675,15 +682,7 @@ class MemberTabsWidget(QWidget):
                 insert_enrollment(self._center_id, s, e, self._db_path)
                 self._enrollments = get_enrollments(self._center_id, self._db_path)
                 self._refresh_tab(1, self._make_enrollments_tab())
-                if self._events_path:
-                    conn = open_db(self._events_path)
-                    try:
-                        m = self._member
-                        insert_event(conn, "ENROLL", self._center_id,
-                            f"{m.get('last_name')}, {m.get('first_name')}",
-                            f"Enrollment added: {s} – {e or 'ongoing'}")
-                    finally:
-                        conn.close()
+                self._log_event("ENROLL", f"Enrollment added: {s} – {e or 'ongoing'}")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 
@@ -706,7 +705,6 @@ class MemberTabsWidget(QWidget):
     def _terminate_enrollment(self, record_id: int):
         from datetime import date
         from db.members import terminate_enrollment
-        from db.events import open_db, insert_event
         from monthly_schedule.db import get_enrollments
 
         today = date.today()
@@ -721,15 +719,8 @@ class MemberTabsWidget(QWidget):
             terminate_enrollment(record_id, self._db_path)
             self._enrollments = get_enrollments(self._center_id, self._db_path)
             self._refresh_tab(1, self._make_enrollments_tab())
-            if self._events_path:
-                conn = open_db(self._events_path)
-                try:
-                    m = self._member
-                    insert_event(conn, "ENROLL", self._center_id,
-                        f"{m.get('last_name')}, {m.get('first_name')}",
-                        f"Enrollment terminated: end set to {today.isoformat()}")
-                finally:
-                    conn.close()
+            self._log_event("ENROLL",
+                            f"Enrollment terminated: end set to {today.isoformat()}")
         except Exception as exc:
             QMessageBox.critical(self, "Error", str(exc))
 
@@ -791,7 +782,6 @@ class MemberTabsWidget(QWidget):
         """Re-sync the plan, reload auths, refresh the tab, and (optionally)
         log an AUTH event. Called after add/edit/delete of an authorization."""
         from db.members import get_authorizations, sync_health_plan_from_latest_auth
-        from db.events import open_db, insert_event
 
         synced = sync_health_plan_from_latest_auth(self._center_id, self._db_path)
         if synced:
@@ -800,14 +790,8 @@ class MemberTabsWidget(QWidget):
                 self._info_plan.setText(synced)
         self._authorizations = get_authorizations(self._center_id, self._db_path)
         self._refresh_tab(2, self._make_auths_tab())
-        if description and self._events_path:
-            m = self._member
-            conn = open_db(self._events_path)
-            try:
-                insert_event(conn, "AUTH", self._center_id,
-                    f"{m.get('last_name')}, {m.get('first_name')}", description)
-            finally:
-                conn.close()
+        if description:
+            self._log_event("AUTH", description)
 
     def _open_auth_dialog(self, existing: dict | None = None) -> dict | None:
         """Build the Add/Edit Authorization dialog. Returns a dict with
@@ -984,7 +968,6 @@ class MemberTabsWidget(QWidget):
         from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QDialogButtonBox
         from gui.time_range_editor import TimeRangeEditor
         from db.members import update_availability
-        from db.events import open_db, insert_event
         from monthly_schedule.db import get_availability
 
         day_names = WEEKDAY_NAMES
@@ -1012,15 +995,7 @@ class MemberTabsWidget(QWidget):
             update_availability(avail["id"], ts, te, self._db_path)
             self._availability = get_availability(self._center_id, self._db_path)
             self._refresh_tab(3, self._make_avail_tab())
-            if self._events_path:
-                conn = open_db(self._events_path)
-                try:
-                    m = self._member
-                    insert_event(conn, "AVAIL", self._center_id,
-                        f"{m.get('last_name')}, {m.get('first_name')}",
-                        f"Availability edited: {day_name} {ts}–{te}")
-                finally:
-                    conn.close()
+            self._log_event("AVAIL", f"Availability edited: {day_name} {ts}–{te}")
         except Exception as exc:
             QMessageBox.critical(self, "Error", str(exc))
 
@@ -1031,7 +1006,6 @@ class MemberTabsWidget(QWidget):
         )
         from PyQt6.QtCore import QDate
         from db.members import insert_availability, time_12h_to_24h
-        from db.events import open_db, insert_event
         from monthly_schedule.db import get_availability
 
         dlg = QDialog(self)
@@ -1094,15 +1068,7 @@ class MemberTabsWidget(QWidget):
                 )
                 self._availability = get_availability(self._center_id, self._db_path)
                 self._refresh_tab(3, self._make_avail_tab())
-                if self._events_path:
-                    conn = open_db(self._events_path)
-                    try:
-                        m = self._member
-                        insert_event(conn, "AVAIL", self._center_id,
-                            f"{m.get('last_name')}, {m.get('first_name')}",
-                            f"Availability added: {day_name} {ts}–{te}")
-                    finally:
-                        conn.close()
+                self._log_event("AVAIL", f"Availability added: {day_name} {ts}–{te}")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 
@@ -1141,7 +1107,6 @@ class MemberTabsWidget(QWidget):
         )
         from PyQt6.QtCore import QDate
         from db.members import insert_absence, LEAVE_TYPES
-        from db.events import open_db, insert_event
         from monthly_schedule.db import get_absences
 
         dlg = QDialog(self)
@@ -1172,15 +1137,7 @@ class MemberTabsWidget(QWidget):
                 insert_absence(self._center_id, lt, s, e, self._db_path)
                 self._absences = get_absences(self._center_id, self._db_path)
                 self._refresh_tab(4, self._make_absences_tab())
-                if self._events_path:
-                    conn = open_db(self._events_path)
-                    try:
-                        m = self._member
-                        insert_event(conn, "ABS", self._center_id,
-                            f"{m.get('last_name')}, {m.get('first_name')}",
-                            f"Absence added: {lt} · {s} – {e}")
-                    finally:
-                        conn.close()
+                self._log_event("ABS", f"Absence added: {lt} · {s} – {e}")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 
