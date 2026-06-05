@@ -41,6 +41,11 @@ class SettingsDialog(QDialog):
         ev_hl.addWidget(btn_browse_ev)
         form.addRow("Events log path:", ev_row)
 
+        # Google API key
+        self._api_key = QLineEdit(self._settings.get("google_api_key", ""))
+        self._api_key.setPlaceholderText("Google Maps Platform API key (Places API)")
+        form.addRow("Google API key:", self._api_key)
+
         # Theme
         theme_row = QWidget()
         theme_hl = QHBoxLayout(theme_row)
@@ -87,4 +92,5 @@ class SettingsDialog(QDialog):
             "db_path": self._db_path.text().strip(),
             "events_db_path": self._events_path.text().strip(),
             "theme": "light" if self._radio_light.isChecked() else "dark",
+            "google_api_key": self._api_key.text().strip(),
         }

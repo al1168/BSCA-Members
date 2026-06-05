@@ -5,6 +5,7 @@ DEFAULT_SETTINGS = {
     "db_path": "",
     "theme": "dark",
     "events_db_path": "",
+    "google_api_key": "",
 }
 
 
