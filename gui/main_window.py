@@ -17,7 +17,7 @@ class MainWindow(QMainWindow):
         self._settings = settings
         self._settings_path = settings_path
         self.setWindowTitle("BSCA Member Manager")
-        self.resize(1000, 640)
+        self.resize(1240, 800)
         self._build_ui()
         self._load_members()
 

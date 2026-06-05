@@ -18,7 +18,7 @@ class AddMemberWizard(QDialog):
         self._events_path = events_path
         self._api_key = api_key or ""
         self.setWindowTitle("Add New Member")
-        self.setMinimumSize(700, 640)
+        self.setMinimumSize(880, 660)
         self._current = 0
         self._build_ui()
 

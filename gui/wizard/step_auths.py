@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-    QDateEdit, QCheckBox, QTimeEdit, QPushButton,
+    QDateEdit, QCheckBox, QTimeEdit, QPushButton, QAbstractSpinBox, QGridLayout,
 )
 from PyQt6.QtCore import QDate, QTime
 
@@ -20,19 +20,14 @@ class StepAuths(QWidget):
             "until this information is filled in."
         )
         warning.setWordWrap(True)
-        warning.setStyleSheet(
-            "background: #281f0a; color: #c08a2a; border: 1px solid #4a3810;"
-            "border-radius: 7px; padding: 10px; font-size: 11px;"
-        )
+        warning.setObjectName("wizard_warning")
         layout.addWidget(warning)
 
         panels = QHBoxLayout()
 
         # ── Authorization sub-panel ──────────────────────────────
         auth_box = QWidget()
-        auth_box.setStyleSheet(
-            "background: #181b20; border: 1px solid #232730; border-radius: 10px;"
-        )
+        auth_box.setObjectName("wizard_panel")
         auth_layout = QFormLayout(auth_box)
         auth_layout.setContentsMargins(14, 14, 14, 14)
         auth_layout.setSpacing(10)
@@ -49,22 +44,24 @@ class StepAuths(QWidget):
         auth_layout.addRow("Auth End:", self.auth_end)
 
         days_widget = QWidget()
-        days_hl = QHBoxLayout(days_widget)
-        days_hl.setContentsMargins(0, 0, 0, 0)
+        days_grid = QGridLayout(days_widget)
+        days_grid.setContentsMargins(0, 0, 0, 0)
+        days_grid.setHorizontalSpacing(8)
+        days_grid.setVerticalSpacing(4)
         self._day_checks: dict[int, QCheckBox] = {}
-        for num, lbl in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri")]:
+        day_list = [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"),
+                    (5, "Fri"), (6, "Sat"), (7, "Sun")]
+        for i, (num, lbl) in enumerate(day_list):
             cb = QCheckBox(lbl)
             self._day_checks[num] = cb
-            days_hl.addWidget(cb)
+            days_grid.addWidget(cb, i // 4, i % 4)   # 4 per row -> Mon-Thu / Fri-Sun
         auth_layout.addRow("Days:", days_widget)
 
         panels.addWidget(auth_box)
 
         # ── Availability sub-panel ───────────────────────────────
         avail_box = QWidget()
-        avail_box.setStyleSheet(
-            "background: #181b20; border: 1px solid #232730; border-radius: 10px;"
-        )
+        avail_box.setObjectName("wizard_panel")
         avail_layout = QVBoxLayout(avail_box)
         avail_layout.setContentsMargins(14, 14, 14, 14)
 
@@ -93,17 +90,24 @@ class StepAuths(QWidget):
         hl.setContentsMargins(0, 0, 0, 0)
 
         day_combo = QComboBox()
-        for num, name in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri")]:
+        for num, name in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"),
+                          (5, "Fri"), (6, "Sat"), (7, "Sun")]:
             day_combo.addItem(name, num)
         day_combo.setFixedWidth(60)
 
         t_start = QTimeEdit(QTime(8, 0))
         t_end = QTimeEdit(QTime(16, 0))
+        for te in (t_start, t_end):
+            # Drop the native up/down spin arrows (they clash with the theme);
+            # the time is typed or adjusted with the keyboard.
+            te.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+            te.setFixedWidth(88)
 
         hl.addWidget(day_combo)
         hl.addWidget(t_start)
         hl.addWidget(QLabel("–"))
         hl.addWidget(t_end)
+        hl.addStretch()
 
         self._avail_container.addWidget(row_widget)
         self._avail_rows.append({

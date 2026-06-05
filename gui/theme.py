@@ -241,6 +241,18 @@ QLabel {{
     background-color: transparent;
     color: {t['text']};
 }}
+QLabel#section_header {{
+    color: {t['accent_text']};
+    font-size: 10px;
+    font-weight: 700;
+    border-bottom: 1px solid {t['border_mid']};
+    padding: 6px 0 2px 0;
+}}
+QLabel#field_label {{
+    color: {t['text3']};
+    font-size: 11px;
+    padding-right: 2px;
+}}
 QLabel#label_field {{
     color: {t['text3']};
     font-size: 10px;
@@ -254,6 +266,19 @@ QLabel#warning_badge {{
     padding: 3px 10px;
     font-size: 10px;
     font-weight: 500;
+}}
+QLabel#wizard_warning {{
+    background-color: {t['warning_bg']};
+    color: {t['warning']};
+    border: 1px solid {t['warning']};
+    border-radius: 7px;
+    padding: 10px;
+    font-size: 11px;
+}}
+QWidget#wizard_panel {{
+    background-color: {t['surface']};
+    border: 1px solid {t['border_mid']};
+    border-radius: 10px;
 }}
 QScrollBar:vertical {{
     background: {t['surface']};

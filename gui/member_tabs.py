@@ -1,10 +1,42 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QLabel,
-    QPushButton, QMessageBox,
+    QPushButton, QMessageBox, QTextEdit, QSizePolicy,
 )
 from PyQt6.QtCore import Qt
 
 from db.members import get_member_context
+
+
+class _NotesEdit(QTextEdit):
+    """A QTextEdit that grows and shrinks its height to fit its content.
+
+    Short notes stay compact; longer notes expand up to a cap (then scroll).
+    """
+    _MIN_H = 36
+    _MAX_H = 150
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # Fixed vertical policy: without this, QTextEdit's default Expanding
+        # policy makes the whole header greedy for height and spreads its rows.
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.textChanged.connect(self._fit)
+
+    def setPlainText(self, text: str) -> None:
+        super().setPlainText(text)
+        self._fit()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit()
+
+    def _fit(self) -> None:
+        doc = self.document()
+        doc.setTextWidth(self.viewport().width())
+        h = int(doc.size().height()) + 2 * self.frameWidth() + 4
+        self.setFixedHeight(max(self._MIN_H, min(h, self._MAX_H)))
 
 
 FIELD_LABELS = {
@@ -160,34 +192,47 @@ class MemberTabsWidget(QWidget):
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 16, 20, 12)
-        layout.setSpacing(12)
+        layout.setContentsMargins(20, 10, 20, 8)
+        layout.setSpacing(8)
 
-        # Header row
+        # Header: photo on the left; a right column with the name + missing
+        # badge on top, and the Notes editor (auto-sizing) filling the rest of
+        # the otherwise-empty band. Notes is created here (before the tabs) so
+        # the Info tab's save/discard/dirty tracking can reference it.
         header = QHBoxLayout()
         header.setSpacing(14)
+        header.addWidget(self._make_photo_label(),
+                         alignment=Qt.AlignmentFlag.AlignTop)
 
-        # Photo
-        header.addWidget(self._make_photo_label())
+        right = QVBoxLayout()
+        right.setSpacing(6)
 
-        # Name + ID
-        name_col = QVBoxLayout()
+        top_row = QHBoxLayout()
         name = f"{self._member.get('last_name', '')}, {self._member.get('first_name', '')}"
         cid = str(self._center_id)
         name_label = QLabel(f"<b style='font-size:15px'>{name}</b>"
                             f"<span style='color:gray;font-size:12px'> &nbsp;ID {cid}</span>")
         name_label.setTextFormat(Qt.TextFormat.RichText)
-        name_col.addWidget(name_label)
-        name_col.addStretch()
-        header.addLayout(name_col)
-        header.addStretch()
-
+        top_row.addWidget(name_label)
+        top_row.addStretch()
         missing = self._missing()
         if missing:
             badge = QLabel("⚠ Missing: " + ", ".join(missing))
             badge.setObjectName("warning_badge")
-            header.addWidget(badge)
+            badge.setMaximumHeight(26)
+            top_row.addWidget(badge, alignment=Qt.AlignmentFlag.AlignVCenter)
+        right.addLayout(top_row)
 
+        notes_row = QHBoxLayout()
+        notes_lbl = QLabel("Notes")
+        notes_lbl.setObjectName("field_label")
+        notes_row.addWidget(notes_lbl, alignment=Qt.AlignmentFlag.AlignTop)
+        self._info_notes = _NotesEdit()
+        self._info_notes.setPlainText(self._member.get("notes", "") or "")
+        notes_row.addWidget(self._info_notes, 1)
+        right.addLayout(notes_row)
+
+        header.addLayout(right, 1)
         layout.addLayout(header)
 
         # Tabs
@@ -219,44 +264,24 @@ class MemberTabsWidget(QWidget):
 
     def _make_info_tab(self) -> QWidget:
         from PyQt6.QtWidgets import (
-            QFormLayout, QLineEdit, QTextEdit,
-            QGroupBox, QScrollArea,
+            QLineEdit, QScrollArea, QGridLayout,
         )
+        from PyQt6.QtGui import QFont
 
         m = self._member
 
         def field(key: str) -> QLineEdit:
             return QLineEdit(m.get(key, "") or "")
 
-        # ── Identity ─────────────────────────────────────────────────────
-        grp_identity = QGroupBox("Identity")
-        f_identity = QFormLayout(grp_identity)
-        f_identity.setSpacing(8)
-
-        self._info_first    = field("first_name")
-        self._info_last     = field("last_name")
-        self._info_chinese  = field("chinese_name")
-        self._info_gender   = field("gender")
-        self._info_dob      = field("dob")
-        self._info_cid      = QLineEdit(str(self._center_id))
+        # ── Widgets (attribute names unchanged so save/discard/dirty work) ──
+        self._info_first     = field("first_name")
+        self._info_last      = field("last_name")
+        self._info_chinese   = field("chinese_name")
+        self._info_gender    = field("gender")
+        self._info_dob       = field("dob")
+        self._info_cid       = QLineEdit(str(self._center_id))
         self._info_cid.setReadOnly(True)
         self._info_member_id = field("member_id")
-
-        for lbl, w in [
-            ("First Name",   self._info_first),
-            ("Last Name",    self._info_last),
-            ("Chinese Name", self._info_chinese),
-            ("Gender",       self._info_gender),
-            ("DOB",          self._info_dob),
-            ("Center ID",    self._info_cid),
-            ("Member ID",    self._info_member_id),
-        ]:
-            f_identity.addRow(lbl, w)
-
-        # ── Contact ──────────────────────────────────────────────────────
-        grp_contact = QGroupBox("Contact")
-        f_contact = QFormLayout(grp_contact)
-        f_contact.setSpacing(8)
 
         from gui.address_autocomplete import AddressAutocomplete
         self._info_address = AddressAutocomplete(self._api_key)
@@ -265,22 +290,8 @@ class MemberTabsWidget(QWidget):
         self._info_cell      = field("cell")
         self._info_emergency = field("emergency")
 
-        for lbl, w in [
-            ("Address",    self._info_address),
-            ("Home Phone", self._info_home_tell),
-            ("Cell",       self._info_cell),
-            ("Emergency",  self._info_emergency),
-        ]:
-            f_contact.addRow(lbl, w)
-
-        # ── Medical ──────────────────────────────────────────────────────
-        grp_medical = QGroupBox("Medical")
-        f_medical = QFormLayout(grp_medical)
-        f_medical.setSpacing(8)
-
         self._info_plan = QLineEdit(m.get("health_plan", "") or "")
         self._info_plan.setReadOnly(True)
-
         self._info_medicaid = field("medicaid")
         self._info_medicare = field("medicare")
         self._info_ssn      = field("ssn")
@@ -289,45 +300,13 @@ class MemberTabsWidget(QWidget):
         self._info_hha      = field("hha")
         self._info_language = field("language")
 
-        for lbl, w in [
-            ("Health Plan", self._info_plan),
-            ("Medicaid",    self._info_medicaid),
-            ("Medicare",    self._info_medicare),
-            ("SSN",         self._info_ssn),
-            ("PCP",         self._info_pcp),
-            ("Hospital",    self._info_hospital),
-            ("HHA",         self._info_hha),
-            ("Language",    self._info_language),
-        ]:
-            f_medical.addRow(lbl, w)
-
-        # ── Care ─────────────────────────────────────────────────────────
-        grp_care = QGroupBox("Care")
-        f_care = QFormLayout(grp_care)
-        f_care.setSpacing(8)
-
         self._info_case_manager   = field("case_manager")
         self._info_admission_date = field("admission_date")
-        self._info_notes = QTextEdit()
-        # Load as plain text: the QTextEdit(text) constructor auto-detects rich
-        # text and collapses newlines into spaces, which loses line breaks and
-        # makes an untouched note read back differently than it was stored.
-        self._info_notes.setPlainText(m.get("notes", "") or "")
-        self._info_notes.setFixedHeight(72)
-
-        f_care.addRow("Case Manager",   self._info_case_manager)
-        f_care.addRow("Admission Date", self._info_admission_date)
-        f_care.addRow("Notes",          self._info_notes)
-
-        # ── Schedule Summary (read-only) ──────────────────────────────────
-        grp_sched = QGroupBox("Schedule Summary")
-        f_sched = QFormLayout(grp_sched)
-        f_sched.setSpacing(8)
+        # Notes is built in the header (always-visible band), not here.
 
         enroll_start = self._enrollment_start(self._enrollments)
         enroll_lbl = QLineEdit(str(enroll_start) if enroll_start else "—")
         enroll_lbl.setReadOnly(True)
-
         active_auth = self._active_authorization(self._authorizations)
         if active_auth:
             days_str = format_auth_days(active_auth.get("auth_days", ""))
@@ -340,20 +319,83 @@ class MemberTabsWidget(QWidget):
         auth_lbl = QLineEdit(auth_text)
         auth_lbl.setReadOnly(True)
 
-        f_sched.addRow("Enrollment Start", enroll_lbl)
-        f_sched.addRow("Active Auth",      auth_lbl)
+        # ── Dense sectioned grid: 3 field columns, no card chrome ──────────
+        grid = QGridLayout()
+        grid.setContentsMargins(4, 4, 8, 4)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(5)
+        for wcol in (1, 3, 5):            # the three widget columns stretch
+            grid.setColumnStretch(wcol, 1)
+        state = {"row": 0}
 
-        # ── Assemble in scroll area ───────────────────────────────────────
-        scroll_content = QWidget()
-        vbox = QVBoxLayout(scroll_content)
-        vbox.setSpacing(10)
-        vbox.setContentsMargins(0, 8, 8, 8)
-        for grp in (grp_identity, grp_contact, grp_medical, grp_care, grp_sched):
-            vbox.addWidget(grp)
-        vbox.addStretch()
+        def section(title: str):
+            h = QLabel(title.upper())
+            h.setObjectName("section_header")
+            f = h.font()
+            f.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 108)
+            h.setFont(f)
+            grid.addWidget(h, state["row"], 0, 1, 6)
+            state["row"] += 1
+
+        def cell(slot: int, label_text: str, widget, wspan: int = 1):
+            lab = QLabel(label_text)
+            lab.setObjectName("field_label")
+            grid.addWidget(lab, state["row"], slot * 2,
+                           Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            grid.addWidget(widget, state["row"], slot * 2 + 1, 1, wspan * 2 - 1)
+
+        section("Identity")
+        cell(0, "First Name", self._info_first)
+        cell(1, "Last Name", self._info_last)
+        cell(2, "Chinese Name", self._info_chinese)
+        state["row"] += 1
+        cell(0, "Gender", self._info_gender)
+        cell(1, "DOB", self._info_dob)
+        cell(2, "Member ID", self._info_member_id)
+        state["row"] += 1
+        cell(0, "Center ID", self._info_cid)
+        state["row"] += 1
+
+        section("Contact")
+        cell(0, "Address", self._info_address, wspan=3)
+        state["row"] += 1
+        cell(0, "Home Phone", self._info_home_tell)
+        cell(1, "Cell", self._info_cell)
+        cell(2, "Emergency", self._info_emergency)
+        state["row"] += 1
+
+        section("Medical")
+        cell(0, "Health Plan", self._info_plan)
+        cell(1, "Medicaid", self._info_medicaid)
+        cell(2, "Medicare", self._info_medicare)
+        state["row"] += 1
+        cell(0, "SSN", self._info_ssn)
+        cell(1, "PCP", self._info_pcp)
+        cell(2, "Hospital", self._info_hospital)
+        state["row"] += 1
+        cell(0, "HHA", self._info_hha)
+        cell(1, "Language", self._info_language)
+        state["row"] += 1
+
+        section("Care")
+        cell(0, "Case Manager", self._info_case_manager)
+        cell(1, "Admission Date", self._info_admission_date)
+        state["row"] += 1
+
+        section("Schedule")
+        cell(0, "Enrollment Start", enroll_lbl)
+        cell(1, "Active Auth", auth_lbl, wspan=2)
+        state["row"] += 1
+
+        # ── Assemble (scroll area is a safety net; content fits unscrolled) ─
+        content = QWidget()
+        cvbox = QVBoxLayout(content)
+        cvbox.setContentsMargins(0, 4, 0, 4)
+        cvbox.addLayout(grid)
+        cvbox.addStretch()
 
         scroll = QScrollArea()
-        scroll.setWidget(scroll_content)
+        scroll.setWidget(content)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
 
@@ -801,7 +843,8 @@ class MemberTabsWidget(QWidget):
         days_widget = QWidget()
         days_hl = QHBoxLayout(days_widget)
         days_hl.setContentsMargins(0, 0, 0, 0)
-        for num, label in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri")]:
+        for num, label in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri"),
+                          (6, "Sat"), (7, "Sun")]:
             cb = QCheckBox(label)
             cb.setChecked(num in existing_days)
             day_checks[num] = cb
@@ -996,7 +1039,8 @@ class MemberTabsWidget(QWidget):
         form = QFormLayout(dlg)
 
         day_combo = QComboBox()
-        for num, name in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri")]:
+        for num, name in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri"),
+                          (6, "Sat"), (7, "Sun")]:
             day_combo.addItem(name, num)
 
         def time_row(default_text: str, default_period: str):
