@@ -16,6 +16,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._settings = settings
         self._settings_path = settings_path
+        self._last_center_id = None
         self.setWindowTitle("BSCA Member Manager")
         self.resize(1240, 800)
         self._build_ui()
@@ -159,6 +160,7 @@ class MainWindow(QMainWindow):
         self._show_member(center_id)
 
     def _show_member(self, center_id: int):
+        self._last_center_id = center_id
         from gui.member_tabs import MemberTabsWidget
         db_path = self._settings.get("db_path", "")
         events_path = self._settings.get("events_db_path", "")
@@ -177,8 +179,18 @@ class MainWindow(QMainWindow):
     def _show_global_events(self):
         from gui.events_view import GlobalEventsWidget
         events_path = self._settings.get("events_db_path", "")
-        widget = GlobalEventsWidget(events_path)
+        widget = GlobalEventsWidget(events_path, on_back=self._back_from_events)
         self._set_detail(widget)
+
+    def _back_from_events(self):
+        if self._last_center_id is not None:
+            self._show_member(self._last_center_id)
+        else:
+            while self._detail_stack.count() > 1:
+                w = self._detail_stack.widget(1)
+                self._detail_stack.removeWidget(w)
+                w.deleteLater()
+            self._detail_stack.setCurrentIndex(0)
 
     def _open_wizard(self):
         db_path = self._settings.get("db_path", "")

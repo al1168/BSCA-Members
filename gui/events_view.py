@@ -106,8 +106,16 @@ class EventsTableWidget(QWidget):
 
 
 class GlobalEventsWidget(QWidget):
-    def __init__(self, events_path: str, parent=None):
+    def __init__(self, events_path: str, on_back=None, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 16, 20, 12)
+        if on_back is not None:
+            from PyQt6.QtWidgets import QPushButton
+            back_row = QHBoxLayout()
+            btn_back = QPushButton("← Back")
+            btn_back.clicked.connect(on_back)
+            back_row.addWidget(btn_back)
+            back_row.addStretch()
+            layout.addLayout(back_row)
         layout.addWidget(EventsTableWidget(events_path, center_id=None))
