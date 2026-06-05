@@ -21,7 +21,7 @@ def test_no_key_is_plain_field(qtbot):
     assert w.text() == "123 Main St, New York, NY"
     assert w.address() == "123 Main St, New York, NY"
     assert w.long_lat() == ""
-    assert w._popup is None  # no autocomplete machinery without a key
+    assert w._completer is None  # no autocomplete machinery without a key
 
 
 def test_setplaceholder_and_textchanged_proxy(qtbot):

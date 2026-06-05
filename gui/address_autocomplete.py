@@ -8,8 +8,8 @@ import json
 import uuid
 from urllib.parse import urlencode
 
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QListWidget, QLabel
-from PyQt6.QtCore import Qt, QTimer, QUrl, QPoint, pyqtSignal
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QLabel, QCompleter
+from PyQt6.QtCore import Qt, QTimer, QUrl, QStringListModel, pyqtSignal
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 
 AUTOCOMPLETE_URL = "https://maps.googleapis.com/maps/api/place/autocomplete/json"
@@ -44,7 +44,7 @@ class AddressAutocomplete(QWidget):
         self._long_lat = ""
         self._expecting_details = False
         self._session = uuid.uuid4().hex
-        self._predictions = []  # list of (description, place_id)
+        self._pred_by_desc = {}  # description -> place_id for the current suggestions
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -60,17 +60,25 @@ class AddressAutocomplete(QWidget):
         layout.addWidget(self._status)
 
         if self._api_key:
-            self._popup = QListWidget()
-            self._popup.setWindowFlags(Qt.WindowType.Popup)
-            self._popup.itemClicked.connect(self._on_pick)
             self._nam = QNetworkAccessManager(self)
             self._timer = QTimer(self)
             self._timer.setSingleShot(True)
             self._timer.setInterval(300)
             self._timer.timeout.connect(self._request_predictions)
+
+            # A QCompleter anchors its popup under the line edit and keeps focus
+            # in the editor (so typing continues). We feed it suggestions from
+            # the Places API and show them with UnfilteredPopupCompletion.
+            self._model = QStringListModel(self)
+            self._completer = QCompleter(self._model, self)
+            self._completer.setCompletionMode(
+                QCompleter.CompletionMode.UnfilteredPopupCompletion)
+            self._completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            self._completer.activated[str].connect(self._on_pick)
+            self._edit.setCompleter(self._completer)
             self._edit.textEdited.connect(self._on_typed)
         else:
-            self._popup = None
+            self._completer = None
 
     # ── QLineEdit-ish API ─────────────────────────────────────────────────
     def text(self) -> str:
@@ -96,12 +104,12 @@ class AddressAutocomplete(QWidget):
         self._long_lat = ""        # editing invalidates a prior pick
         self._expecting_details = False
         self._status.hide()
+        self._model.setStringList([])   # drop stale suggestions while we fetch
         self._timer.start()
 
     def _request_predictions(self):
         text = self._edit.text().strip()
         if len(text) < 3:
-            self._popup.hide()
             return
         params = urlencode({
             "input": text, "key": self._api_key, "sessiontoken": self._session,
@@ -117,28 +125,24 @@ class AddressAutocomplete(QWidget):
             data = {}
         finally:
             reply.deleteLater()
-        self._predictions = [
+        preds = [
             (p.get("description", ""), p.get("place_id", ""))
             for p in data.get("predictions", [])
         ][:5]
-        if not self._predictions:
-            self._popup.hide()
-            return
-        self._popup.clear()
-        for desc, _pid in self._predictions:
-            self._popup.addItem(desc)
-        pos = self._edit.mapToGlobal(QPoint(0, self._edit.height()))
-        self._popup.move(pos)
-        self._popup.setFixedWidth(self._edit.width())
-        self._popup.show()
+        self._pred_by_desc = {desc: pid for desc, pid in preds}
+        descriptions = [desc for desc, _pid in preds]
+        self._model.setStringList(descriptions)
+        if descriptions:
+            self._completer.complete()        # show the popup under the line edit
+        else:
+            self._completer.popup().hide()
 
-    def _on_pick(self, _item):
-        idx = self._popup.currentRow()
-        if idx < 0 or idx >= len(self._predictions):
+    def _on_pick(self, description: str):
+        # The completer has already filled the line edit with `description`
+        # (programmatic -> no _on_typed, no lookup). Fetch its coordinates.
+        place_id = self._pred_by_desc.get(description, "")
+        if not place_id:
             return
-        desc, place_id = self._predictions[idx]
-        self._popup.hide()
-        self._edit.setText(desc)   # programmatic -> no _on_typed, no lookup
         self._expecting_details = True
         self._request_details(place_id)
 
