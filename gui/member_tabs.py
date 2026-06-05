@@ -695,10 +695,16 @@ class MemberTabsWidget(QWidget):
                 == QMessageBox.StandardButton.Yes:
             from db.members import delete_enrollment
             from monthly_schedule.db import get_enrollments
+            entry = next((e for e in self._enrollments if e["id"] == record_id), None)
             try:
                 delete_enrollment(record_id, self._db_path)
                 self._enrollments = get_enrollments(self._center_id, self._db_path)
                 self._refresh_tab(1, self._make_enrollments_tab())
+                if entry:
+                    self._log_event(
+                        "ENROLL",
+                        f"Enrollment deleted: {entry['start_date']} – "
+                        f"{entry['end_date'] or 'ongoing'}")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 
@@ -907,9 +913,17 @@ class MemberTabsWidget(QWidget):
         if QMessageBox.question(self, "Confirm", "Delete this authorization?") \
                 == QMessageBox.StandardButton.Yes:
             from db.members import delete_authorization
+            entry = next((a for a in self._authorizations if a["id"] == record_id), None)
             try:
                 delete_authorization(record_id, self._db_path)
                 self._after_auth_change(None)
+                if entry:
+                    self._log_event(
+                        "AUTH",
+                        f"Authorization deleted: {entry['auth_start']} – "
+                        f"{entry['auth_end']} "
+                        f"[{format_auth_days(entry.get('auth_days', '') or '')}] · "
+                        f"{entry.get('health_plan', '')}")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 
@@ -1081,10 +1095,18 @@ class MemberTabsWidget(QWidget):
                 == QMessageBox.StandardButton.Yes:
             from db.members import delete_availability
             from monthly_schedule.db import get_availability
+            entry = next((a for a in self._availability if a["id"] == record_id), None)
             try:
                 delete_availability(record_id, self._db_path)
                 self._availability = get_availability(self._center_id, self._db_path)
                 self._refresh_tab(3, self._make_avail_tab())
+                if entry:
+                    day = WEEKDAY_NAMES.get(entry["day_of_week"],
+                                            str(entry["day_of_week"]))
+                    self._log_event(
+                        "AVAIL",
+                        f"Availability deleted: {day} "
+                        f"{entry['avail_start']}–{entry['avail_end']}")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 
@@ -1150,9 +1172,15 @@ class MemberTabsWidget(QWidget):
                 == QMessageBox.StandardButton.Yes:
             from db.members import delete_absence
             from monthly_schedule.db import get_absences
+            entry = next((a for a in self._absences if a["id"] == record_id), None)
             try:
                 delete_absence(record_id, self._db_path)
                 self._absences = get_absences(self._center_id, self._db_path)
                 self._refresh_tab(4, self._make_absences_tab())
+                if entry:
+                    self._log_event(
+                        "ABS",
+                        f"Absence deleted: {entry['leave_type']} "
+                        f"{entry['start_date']} – {entry['end_date']}")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
