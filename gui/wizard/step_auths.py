@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-    QDateEdit, QCheckBox, QTimeEdit, QPushButton,
+    QDateEdit, QCheckBox, QTimeEdit, QPushButton, QAbstractSpinBox,
 )
 from PyQt6.QtCore import QDate, QTime
 
@@ -92,11 +92,17 @@ class StepAuths(QWidget):
 
         t_start = QTimeEdit(QTime(8, 0))
         t_end = QTimeEdit(QTime(16, 0))
+        for te in (t_start, t_end):
+            # Drop the native up/down spin arrows (they clash with the theme);
+            # the time is typed or adjusted with the keyboard.
+            te.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+            te.setFixedWidth(88)
 
         hl.addWidget(day_combo)
         hl.addWidget(t_start)
         hl.addWidget(QLabel("–"))
         hl.addWidget(t_end)
+        hl.addStretch()
 
         self._avail_container.addWidget(row_widget)
         self._avail_rows.append({
