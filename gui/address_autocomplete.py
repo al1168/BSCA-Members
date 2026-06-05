@@ -6,24 +6,25 @@ to a plain text field when no API key is configured.
 
 import json
 import uuid
-from urllib.parse import urlencode
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QLabel, QCompleter
-from PyQt6.QtCore import Qt, QTimer, QUrl, QStringListModel, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QUrl, QByteArray, QStringListModel, pyqtSignal
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
-AUTOCOMPLETE_URL = "https://maps.googleapis.com/maps/api/place/autocomplete/json"
-DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
+# Places API (New). Autocomplete is a POST; Place Details is a GET with a
+# field mask. Both authenticate via the X-Goog-Api-Key header.
+AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete"
+DETAILS_URL = "https://places.googleapis.com/v1/places"  # + /{place_id}
 
 
 def parse_place_location(details_json) -> str:
-    """Extract 'lng,lat' from a Place Details response, or '' if absent.
+    """Extract 'lng,lat' from a Places API (New) Place Details response, or ''.
 
-    Reads result.geometry.location.{lng,lat}. Never raises.
+    Reads location.{longitude,latitude}. Never raises.
     """
     try:
-        loc = details_json["result"]["geometry"]["location"]
-        return f"{loc['lng']},{loc['lat']}"
+        loc = details_json["location"]
+        return f"{loc['longitude']},{loc['latitude']}"
     except (KeyError, TypeError):
         return ""
 
@@ -111,11 +112,15 @@ class AddressAutocomplete(QWidget):
         text = self._edit.text().strip()
         if len(text) < 3:
             return
-        params = urlencode({
-            "input": text, "key": self._api_key, "sessiontoken": self._session,
-            "components": "country:us", "types": "address",
-        })
-        reply = self._nam.get(QNetworkRequest(QUrl(f"{AUTOCOMPLETE_URL}?{params}")))
+        body = QByteArray(json.dumps({
+            "input": text,
+            "includedRegionCodes": ["us"],
+            "sessionToken": self._session,
+        }).encode("utf-8"))
+        req = QNetworkRequest(QUrl(AUTOCOMPLETE_URL))
+        req.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/json")
+        req.setRawHeader(b"X-Goog-Api-Key", self._api_key.encode("utf-8"))
+        reply = self._nam.post(req, body)
         reply.finished.connect(lambda r=reply: self._on_predictions(r))
 
     def _on_predictions(self, reply):
@@ -127,10 +132,14 @@ class AddressAutocomplete(QWidget):
             data = {}
         finally:
             reply.deleteLater()
-        preds = [
-            (p.get("description", ""), p.get("place_id", ""))
-            for p in data.get("predictions", [])
-        ][:5]
+        preds = []
+        for s in data.get("suggestions", []):
+            pp = s.get("placePrediction") or {}
+            desc = (pp.get("text") or {}).get("text", "")
+            pid = pp.get("placeId", "")
+            if desc and pid:
+                preds.append((desc, pid))
+        preds = preds[:5]
         self._pred_by_desc = {desc: pid for desc, pid in preds}
         descriptions = [desc for desc, _pid in preds]
         self._model.setStringList(descriptions)
@@ -139,15 +148,16 @@ class AddressAutocomplete(QWidget):
             self._status.hide()
             return
         self._completer.popup().hide()
-        # Surface why nothing came back (e.g. REQUEST_DENIED) instead of failing
-        # silently — otherwise a misconfigured key looks like a broken feature.
-        status = data.get("status")
-        if not net_ok:
+        # Surface why nothing came back (e.g. PERMISSION_DENIED) instead of
+        # failing silently — otherwise a bad key looks like a broken feature.
+        err = data.get("error") or {}
+        if err:
+            self._show_status(
+                f"Address lookup: {err.get('status', 'error')}"
+                + (f" — {err.get('message')}" if err.get("message") else ""),
+                error=True)
+        elif not net_ok:
             self._show_status(f"Address lookup failed: {net_err}", error=True)
-        elif status not in (None, "OK", "ZERO_RESULTS"):
-            msg = data.get("error_message") or ""
-            self._show_status(f"Address lookup: {status}"
-                              + (f" — {msg}" if msg else ""), error=True)
 
     def _show_status(self, text: str, *, error: bool = False) -> None:
         color = "#d05555" if error else "#3d9e6e"
@@ -165,11 +175,10 @@ class AddressAutocomplete(QWidget):
         self._request_details(place_id)
 
     def _request_details(self, place_id: str):
-        params = urlencode({
-            "place_id": place_id, "key": self._api_key,
-            "sessiontoken": self._session, "fields": "geometry/location",
-        })
-        reply = self._nam.get(QNetworkRequest(QUrl(f"{DETAILS_URL}?{params}")))
+        req = QNetworkRequest(QUrl(f"{DETAILS_URL}/{place_id}?sessionToken={self._session}"))
+        req.setRawHeader(b"X-Goog-Api-Key", self._api_key.encode("utf-8"))
+        req.setRawHeader(b"X-Goog-FieldMask", b"location")
+        reply = self._nam.get(req)
         reply.finished.connect(lambda r=reply: self._on_details(r))
 
     def _on_details(self, reply):
