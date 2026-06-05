@@ -246,7 +246,7 @@ QLabel#section_header {{
     font-size: 10px;
     font-weight: 700;
     border-bottom: 1px solid {t['border_mid']};
-    padding: 10px 0 3px 0;
+    padding: 6px 0 2px 0;
 }}
 QLabel#field_label {{
     color: {t['text3']};

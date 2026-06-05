@@ -160,33 +160,32 @@ class MemberTabsWidget(QWidget):
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 16, 20, 12)
-        layout.setSpacing(12)
+        layout.setContentsMargins(20, 10, 20, 8)
+        layout.setSpacing(8)
 
-        # Header row
+        # Header row — compact single line so it doesn't eat vertical space.
+        # Every item is vertically centered (no alignment => Qt stretches the
+        # widget to the row height, which ballooned the badge before).
         header = QHBoxLayout()
         header.setSpacing(14)
 
-        # Photo
-        header.addWidget(self._make_photo_label())
+        header.addWidget(self._make_photo_label(),
+                         alignment=Qt.AlignmentFlag.AlignVCenter)
 
-        # Name + ID
-        name_col = QVBoxLayout()
         name = f"{self._member.get('last_name', '')}, {self._member.get('first_name', '')}"
         cid = str(self._center_id)
         name_label = QLabel(f"<b style='font-size:15px'>{name}</b>"
                             f"<span style='color:gray;font-size:12px'> &nbsp;ID {cid}</span>")
         name_label.setTextFormat(Qt.TextFormat.RichText)
-        name_col.addWidget(name_label)
-        name_col.addStretch()
-        header.addLayout(name_col)
+        header.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignVCenter)
         header.addStretch()
 
         missing = self._missing()
         if missing:
             badge = QLabel("⚠ Missing: " + ", ".join(missing))
             badge.setObjectName("warning_badge")
-            header.addWidget(badge)
+            badge.setMaximumHeight(26)
+            header.addWidget(badge, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         layout.addLayout(header)
 
@@ -261,7 +260,7 @@ class MemberTabsWidget(QWidget):
         # Load as plain text: the QTextEdit(text) constructor auto-detects rich
         # text and collapses newlines into spaces, which loses line breaks.
         self._info_notes.setPlainText(m.get("notes", "") or "")
-        self._info_notes.setFixedHeight(64)
+        self._info_notes.setFixedHeight(54)
 
         enroll_start = self._enrollment_start(self._enrollments)
         enroll_lbl = QLineEdit(str(enroll_start) if enroll_start else "—")
@@ -282,7 +281,7 @@ class MemberTabsWidget(QWidget):
         grid = QGridLayout()
         grid.setContentsMargins(4, 4, 8, 4)
         grid.setHorizontalSpacing(16)
-        grid.setVerticalSpacing(7)
+        grid.setVerticalSpacing(5)
         for wcol in (1, 3, 5):            # the three widget columns stretch
             grid.setColumnStretch(wcol, 1)
         state = {"row": 0}
