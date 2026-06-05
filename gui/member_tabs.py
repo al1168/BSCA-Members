@@ -62,6 +62,25 @@ def format_auth_days(auth_days: str) -> str:
     return " ".join(WEEKDAY_NAMES.get(d, str(d)) for d in days)
 
 
+def auth_warning(authorizations: list, today) -> str | None:
+    """Warning label for a member's authorization state, or None.
+
+    - "Missing: Authorizations" when there are no authorizations.
+    - "Authorization Expired" when there are authorizations but none is
+      currently valid (the latest end date is before today).
+    - None when a currently-valid authorization exists.
+
+    An end date equal to today is still valid; null end dates are open-ended
+    and never count as expired.
+    """
+    if not authorizations:
+        return "Missing: Authorizations"
+    ends = [a["auth_end"] for a in authorizations if a.get("auth_end")]
+    if ends and max(ends) < today:
+        return "Authorization Expired"
+    return None
+
+
 def _normalize_value(v) -> str:
     """Normalize a field value for change comparison/display.
 
