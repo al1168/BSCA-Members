@@ -11,6 +11,7 @@ a = Analysis(
         'pyodbc',
         'monthly_schedule',
         'monthly_schedule.db',
+        'PyQt6.QtNetwork',
     ],
     hookspath=[],
     hooksconfig={},
