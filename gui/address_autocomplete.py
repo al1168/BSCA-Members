@@ -10,7 +10,7 @@ from urllib.parse import urlencode
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QLabel, QCompleter
 from PyQt6.QtCore import Qt, QTimer, QUrl, QStringListModel, pyqtSignal
-from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
+from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
 AUTOCOMPLETE_URL = "https://maps.googleapis.com/maps/api/place/autocomplete/json"
 DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
@@ -119,6 +119,8 @@ class AddressAutocomplete(QWidget):
         reply.finished.connect(lambda r=reply: self._on_predictions(r))
 
     def _on_predictions(self, reply):
+        net_ok = reply.error() == QNetworkReply.NetworkError.NoError
+        net_err = reply.errorString()
         try:
             data = json.loads(bytes(reply.readAll()).decode("utf-8"))
         except Exception:
@@ -134,8 +136,24 @@ class AddressAutocomplete(QWidget):
         self._model.setStringList(descriptions)
         if descriptions:
             self._completer.complete()        # show the popup under the line edit
-        else:
-            self._completer.popup().hide()
+            self._status.hide()
+            return
+        self._completer.popup().hide()
+        # Surface why nothing came back (e.g. REQUEST_DENIED) instead of failing
+        # silently — otherwise a misconfigured key looks like a broken feature.
+        status = data.get("status")
+        if not net_ok:
+            self._show_status(f"Address lookup failed: {net_err}", error=True)
+        elif status not in (None, "OK", "ZERO_RESULTS"):
+            msg = data.get("error_message") or ""
+            self._show_status(f"Address lookup: {status}"
+                              + (f" — {msg}" if msg else ""), error=True)
+
+    def _show_status(self, text: str, *, error: bool = False) -> None:
+        color = "#d05555" if error else "#3d9e6e"
+        self._status.setStyleSheet(f"color:{color}; font-size:10px;")
+        self._status.setText(text)
+        self._status.show()
 
     def _on_pick(self, description: str):
         # The completer has already filled the line edit with `description`
@@ -165,8 +183,7 @@ class AddressAutocomplete(QWidget):
                 data = {}
             self._long_lat = parse_place_location(data)
             if self._long_lat:
-                self._status.setText("\U0001F4CD coordinates captured")
-                self._status.show()
+                self._show_status("\U0001F4CD coordinates captured")
             self._session = uuid.uuid4().hex  # rotate token after a completed session
         finally:
             reply.deleteLater()
