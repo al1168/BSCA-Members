@@ -187,7 +187,8 @@ class MainWindow(QMainWindow):
             return
         from gui.wizard.wizard import AddMemberWizard
         events_path = self._settings.get("events_db_path", "")
-        dlg = AddMemberWizard(db_path, events_path, self)
+        api_key = self._settings.get("google_api_key", "")
+        dlg = AddMemberWizard(db_path, events_path, api_key, self)
         if dlg.exec():
             self._load_members()
 

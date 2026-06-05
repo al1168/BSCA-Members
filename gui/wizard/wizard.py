@@ -12,10 +12,11 @@ STEP_LABELS = ["Contact Info", "Enrollment", "Auths & Availability", "Review & S
 
 
 class AddMemberWizard(QDialog):
-    def __init__(self, db_path: str, events_path: str, parent=None):
+    def __init__(self, db_path: str, events_path: str, api_key: str = "", parent=None):
         super().__init__(parent)
         self._db_path = db_path
         self._events_path = events_path
+        self._api_key = api_key or ""
         self.setWindowTitle("Add New Member")
         self.setMinimumSize(700, 640)
         self._current = 0
@@ -30,7 +31,7 @@ class AddMemberWizard(QDialog):
         layout.addWidget(self._progress_widget)
 
         self._stack = QStackedWidget()
-        self._step_contact = StepContact()
+        self._step_contact = StepContact(self._api_key)
         self._step_enrollment = StepEnrollment()
         self._step_auths = StepAuths()
         self._step_review = StepReview()
@@ -149,6 +150,7 @@ class AddMemberWizard(QDialog):
                 enrollment_end=data["enrollment_end"],
                 authorization=data.get("authorization"),
                 availability_rows=data.get("availability_rows", []),
+                long_lat=c.get("long_lat", ""),
                 db_path=self._db_path,
             )
             if self._events_path:
