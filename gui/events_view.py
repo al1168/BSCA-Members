@@ -59,6 +59,15 @@ class EventsTableWidget(QWidget):
 
     def _load(self):
         if not self._events_path:
+            self._table.clearSpans()
+            self._table.setRowCount(1)
+            self._table.setSpan(0, 0, 1, 4)
+            msg = QTableWidgetItem(
+                "No events log configured. Set an Events log path in "
+                "Settings to start recording changes."
+            )
+            msg.setForeground(QColor("#888"))
+            self._table.setItem(0, 0, msg)
             return
         from db.events import open_db, query_events, purge_old_events
         try:
@@ -74,6 +83,7 @@ class EventsTableWidget(QWidget):
             return
 
         self._table.setRowCount(len(rows))
+        self._table.clearSpans()
         mono_font = QFont("Cascadia Mono, Consolas", 10)
         for r, row in enumerate(rows):
             ts_item = QTableWidgetItem(row["ts"].replace("T", "  "))
