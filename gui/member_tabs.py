@@ -219,14 +219,6 @@ class MemberTabsWidget(QWidget):
         dates = [e["start_date"] for e in enrollments if e.get("start_date")]
         return min(dates) if dates else None
 
-    def _missing(self) -> list[str]:
-        missing = []
-        if not self._authorizations:
-            missing.append("Authorizations")
-        if not self._availability:
-            missing.append("Availability")
-        return missing
-
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 10, 20, 8)
@@ -252,9 +244,10 @@ class MemberTabsWidget(QWidget):
         name_label.setTextFormat(Qt.TextFormat.RichText)
         top_row.addWidget(name_label)
         top_row.addStretch()
-        missing = self._missing()
-        if missing:
-            badge = QLabel("⚠ Missing: " + ", ".join(missing))
+        from datetime import date
+        warn = auth_warning(self._authorizations, date.today())
+        if warn:
+            badge = QLabel("⚠ " + warn)
             badge.setObjectName("warning_badge")
             badge.setMaximumHeight(26)
             top_row.addWidget(badge, alignment=Qt.AlignmentFlag.AlignVCenter)
@@ -285,9 +278,8 @@ class MemberTabsWidget(QWidget):
         self._tabs.addTab(self._tab_info, "Info")
         self._tabs.addTab(self._tab_enrollments, "Enrollments")
         self._tabs.addTab(self._tab_auths,
-            "Auths ⚠" if "Authorizations" in missing else "Authorizations")
-        self._tabs.addTab(self._tab_avail,
-            "Availability ⚠" if "Availability" in missing else "Availability")
+            "Auths ⚠" if warn else "Authorizations")
+        self._tabs.addTab(self._tab_avail, "Availability")
         self._tabs.addTab(self._tab_absences, "Absences")
 
         # Events tab added after (Task 11 wires it in)
