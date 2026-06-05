@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QLabel,
-    QPushButton, QMessageBox, QTextEdit,
+    QPushButton, QMessageBox, QTextEdit, QSizePolicy,
 )
 from PyQt6.QtCore import Qt
 
@@ -19,6 +19,9 @@ class _NotesEdit(QTextEdit):
         super().__init__(parent)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # Fixed vertical policy: without this, QTextEdit's default Expanding
+        # policy makes the whole header greedy for height and spreads its rows.
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.textChanged.connect(self._fit)
 
     def setPlainText(self, text: str) -> None:
