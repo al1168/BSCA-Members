@@ -20,19 +20,14 @@ class StepAuths(QWidget):
             "until this information is filled in."
         )
         warning.setWordWrap(True)
-        warning.setStyleSheet(
-            "background: #281f0a; color: #c08a2a; border: 1px solid #4a3810;"
-            "border-radius: 7px; padding: 10px; font-size: 11px;"
-        )
+        warning.setObjectName("wizard_warning")
         layout.addWidget(warning)
 
         panels = QHBoxLayout()
 
         # ── Authorization sub-panel ──────────────────────────────
         auth_box = QWidget()
-        auth_box.setStyleSheet(
-            "background: #181b20; border: 1px solid #232730; border-radius: 10px;"
-        )
+        auth_box.setObjectName("wizard_panel")
         auth_layout = QFormLayout(auth_box)
         auth_layout.setContentsMargins(14, 14, 14, 14)
         auth_layout.setSpacing(10)
@@ -62,9 +57,7 @@ class StepAuths(QWidget):
 
         # ── Availability sub-panel ───────────────────────────────
         avail_box = QWidget()
-        avail_box.setStyleSheet(
-            "background: #181b20; border: 1px solid #232730; border-radius: 10px;"
-        )
+        avail_box.setObjectName("wizard_panel")
         avail_layout = QVBoxLayout(avail_box)
         avail_layout.setContentsMargins(14, 14, 14, 14)
 

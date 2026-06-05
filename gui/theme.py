@@ -267,6 +267,19 @@ QLabel#warning_badge {{
     font-size: 10px;
     font-weight: 500;
 }}
+QLabel#wizard_warning {{
+    background-color: {t['warning_bg']};
+    color: {t['warning']};
+    border: 1px solid {t['warning']};
+    border-radius: 7px;
+    padding: 10px;
+    font-size: 11px;
+}}
+QWidget#wizard_panel {{
+    background-color: {t['surface']};
+    border: 1px solid {t['border_mid']};
+    border-radius: 10px;
+}}
 QScrollBar:vertical {{
     background: {t['surface']};
     width: 6px;
