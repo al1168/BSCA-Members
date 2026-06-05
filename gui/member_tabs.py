@@ -178,14 +178,30 @@ class MemberTabsWidget(QWidget):
                             f"<span style='color:gray;font-size:12px'> &nbsp;ID {cid}</span>")
         name_label.setTextFormat(Qt.TextFormat.RichText)
         header.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignVCenter)
-        header.addStretch()
+        header.addSpacing(16)
+
+        # Notes live in the otherwise-empty header band: always visible (across
+        # all tabs) and roomier than a single grid row. Created here so the
+        # Info tab's save/discard/dirty tracking can reference self._info_notes.
+        from PyQt6.QtWidgets import QTextEdit
+        notes_col = QVBoxLayout()
+        notes_col.setSpacing(2)
+        notes_lbl = QLabel("NOTES")
+        notes_lbl.setObjectName("field_label")
+        notes_col.addWidget(notes_lbl)
+        self._info_notes = QTextEdit()
+        self._info_notes.setPlainText(self._member.get("notes", "") or "")
+        self._info_notes.setFixedHeight(76)
+        notes_col.addWidget(self._info_notes)
+        header.addLayout(notes_col, 1)
 
         missing = self._missing()
         if missing:
+            header.addSpacing(12)
             badge = QLabel("⚠ Missing: " + ", ".join(missing))
             badge.setObjectName("warning_badge")
             badge.setMaximumHeight(26)
-            header.addWidget(badge, alignment=Qt.AlignmentFlag.AlignVCenter)
+            header.addWidget(badge, alignment=Qt.AlignmentFlag.AlignTop)
 
         layout.addLayout(header)
 
@@ -218,7 +234,7 @@ class MemberTabsWidget(QWidget):
 
     def _make_info_tab(self) -> QWidget:
         from PyQt6.QtWidgets import (
-            QLineEdit, QTextEdit, QScrollArea, QGridLayout,
+            QLineEdit, QScrollArea, QGridLayout,
         )
         from PyQt6.QtGui import QFont
 
@@ -256,11 +272,7 @@ class MemberTabsWidget(QWidget):
 
         self._info_case_manager   = field("case_manager")
         self._info_admission_date = field("admission_date")
-        self._info_notes = QTextEdit()
-        # Load as plain text: the QTextEdit(text) constructor auto-detects rich
-        # text and collapses newlines into spaces, which loses line breaks.
-        self._info_notes.setPlainText(m.get("notes", "") or "")
-        self._info_notes.setFixedHeight(54)
+        # Notes is built in the header (always-visible band), not here.
 
         enroll_start = self._enrollment_start(self._enrollments)
         enroll_lbl = QLineEdit(str(enroll_start) if enroll_start else "—")
@@ -338,8 +350,6 @@ class MemberTabsWidget(QWidget):
         section("Care")
         cell(0, "Case Manager", self._info_case_manager)
         cell(1, "Admission Date", self._info_admission_date)
-        state["row"] += 1
-        cell(0, "Notes", self._info_notes, wspan=3)
         state["row"] += 1
 
         section("Schedule")
