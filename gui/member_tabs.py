@@ -518,6 +518,7 @@ class MemberTabsWidget(QWidget):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.horizontalHeader().setStretchLastSection(True)
         table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
 
         for r, row_data in enumerate(rows):
             for c, val in enumerate(row_data):
@@ -562,6 +563,7 @@ class MemberTabsWidget(QWidget):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.horizontalHeader().setStretchLastSection(True)
         table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
 
         today = date.today()
         for r, e in enumerate(self._enrollments):
@@ -705,6 +707,7 @@ class MemberTabsWidget(QWidget):
         hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
 
         latest = latest_authorization(self._authorizations)
         latest_id = latest["id"] if latest else None
@@ -898,6 +901,7 @@ class MemberTabsWidget(QWidget):
         hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
 
         for r, a in enumerate(self._availability):
             table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
