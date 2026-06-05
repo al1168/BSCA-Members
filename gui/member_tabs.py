@@ -1,10 +1,39 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QLabel,
-    QPushButton, QMessageBox,
+    QPushButton, QMessageBox, QTextEdit,
 )
 from PyQt6.QtCore import Qt
 
 from db.members import get_member_context
+
+
+class _NotesEdit(QTextEdit):
+    """A QTextEdit that grows and shrinks its height to fit its content.
+
+    Short notes stay compact; longer notes expand up to a cap (then scroll).
+    """
+    _MIN_H = 36
+    _MAX_H = 150
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.textChanged.connect(self._fit)
+
+    def setPlainText(self, text: str) -> None:
+        super().setPlainText(text)
+        self._fit()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit()
+
+    def _fit(self) -> None:
+        doc = self.document()
+        doc.setTextWidth(self.viewport().width())
+        h = int(doc.size().height()) + 2 * self.frameWidth() + 4
+        self.setFixedHeight(max(self._MIN_H, min(h, self._MAX_H)))
 
 
 FIELD_LABELS = {
@@ -163,46 +192,44 @@ class MemberTabsWidget(QWidget):
         layout.setContentsMargins(20, 10, 20, 8)
         layout.setSpacing(8)
 
-        # Header row — compact single line so it doesn't eat vertical space.
-        # Every item is vertically centered (no alignment => Qt stretches the
-        # widget to the row height, which ballooned the badge before).
+        # Header: photo on the left; a right column with the name + missing
+        # badge on top, and the Notes editor (auto-sizing) filling the rest of
+        # the otherwise-empty band. Notes is created here (before the tabs) so
+        # the Info tab's save/discard/dirty tracking can reference it.
         header = QHBoxLayout()
         header.setSpacing(14)
-
         header.addWidget(self._make_photo_label(),
-                         alignment=Qt.AlignmentFlag.AlignVCenter)
+                         alignment=Qt.AlignmentFlag.AlignTop)
 
+        right = QVBoxLayout()
+        right.setSpacing(6)
+
+        top_row = QHBoxLayout()
         name = f"{self._member.get('last_name', '')}, {self._member.get('first_name', '')}"
         cid = str(self._center_id)
         name_label = QLabel(f"<b style='font-size:15px'>{name}</b>"
                             f"<span style='color:gray;font-size:12px'> &nbsp;ID {cid}</span>")
         name_label.setTextFormat(Qt.TextFormat.RichText)
-        header.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignVCenter)
-        header.addSpacing(16)
-
-        # Notes live in the otherwise-empty header band: always visible (across
-        # all tabs) and roomier than a single grid row. Created here so the
-        # Info tab's save/discard/dirty tracking can reference self._info_notes.
-        from PyQt6.QtWidgets import QTextEdit
-        notes_col = QVBoxLayout()
-        notes_col.setSpacing(2)
-        notes_lbl = QLabel("NOTES")
-        notes_lbl.setObjectName("field_label")
-        notes_col.addWidget(notes_lbl)
-        self._info_notes = QTextEdit()
-        self._info_notes.setPlainText(self._member.get("notes", "") or "")
-        self._info_notes.setFixedHeight(76)
-        notes_col.addWidget(self._info_notes)
-        header.addLayout(notes_col, 1)
-
+        top_row.addWidget(name_label)
+        top_row.addStretch()
         missing = self._missing()
         if missing:
-            header.addSpacing(12)
             badge = QLabel("⚠ Missing: " + ", ".join(missing))
             badge.setObjectName("warning_badge")
             badge.setMaximumHeight(26)
-            header.addWidget(badge, alignment=Qt.AlignmentFlag.AlignTop)
+            top_row.addWidget(badge, alignment=Qt.AlignmentFlag.AlignVCenter)
+        right.addLayout(top_row)
 
+        notes_row = QHBoxLayout()
+        notes_lbl = QLabel("Notes")
+        notes_lbl.setObjectName("field_label")
+        notes_row.addWidget(notes_lbl, alignment=Qt.AlignmentFlag.AlignTop)
+        self._info_notes = _NotesEdit()
+        self._info_notes.setPlainText(self._member.get("notes", "") or "")
+        notes_row.addWidget(self._info_notes, 1)
+        right.addLayout(notes_row)
+
+        header.addLayout(right, 1)
         layout.addLayout(header)
 
         # Tabs
