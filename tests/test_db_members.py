@@ -153,3 +153,16 @@ def test_time_12h_to_24h_invalid(text, period):
     from db.members import time_12h_to_24h
     with pytest.raises(ValueError):
         time_12h_to_24h(text, period)
+
+
+def test_insert_contact_includes_long_lat():
+    from db.members import INSERT_CONTACT
+    assert "[Long Lat]" in INSERT_CONTACT
+    assert INSERT_CONTACT.count("?") == 6
+
+
+def test_set_long_lat_targets_correct_columns():
+    from db.members import SET_LONG_LAT
+    assert "UPDATE [Contacts]" in SET_LONG_LAT
+    assert "[Long Lat]=?" in SET_LONG_LAT
+    assert "WHERE [Center ID]=?" in SET_LONG_LAT
