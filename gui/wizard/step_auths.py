@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-    QDateEdit, QCheckBox, QTimeEdit, QPushButton, QAbstractSpinBox,
+    QDateEdit, QCheckBox, QTimeEdit, QPushButton, QAbstractSpinBox, QGridLayout,
 )
 from PyQt6.QtCore import QDate, QTime
 
@@ -44,13 +44,17 @@ class StepAuths(QWidget):
         auth_layout.addRow("Auth End:", self.auth_end)
 
         days_widget = QWidget()
-        days_hl = QHBoxLayout(days_widget)
-        days_hl.setContentsMargins(0, 0, 0, 0)
+        days_grid = QGridLayout(days_widget)
+        days_grid.setContentsMargins(0, 0, 0, 0)
+        days_grid.setHorizontalSpacing(8)
+        days_grid.setVerticalSpacing(4)
         self._day_checks: dict[int, QCheckBox] = {}
-        for num, lbl in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri")]:
+        day_list = [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"),
+                    (5, "Fri"), (6, "Sat"), (7, "Sun")]
+        for i, (num, lbl) in enumerate(day_list):
             cb = QCheckBox(lbl)
             self._day_checks[num] = cb
-            days_hl.addWidget(cb)
+            days_grid.addWidget(cb, i // 4, i % 4)   # 4 per row -> Mon-Thu / Fri-Sun
         auth_layout.addRow("Days:", days_widget)
 
         panels.addWidget(auth_box)
@@ -86,7 +90,8 @@ class StepAuths(QWidget):
         hl.setContentsMargins(0, 0, 0, 0)
 
         day_combo = QComboBox()
-        for num, name in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri")]:
+        for num, name in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"),
+                          (5, "Fri"), (6, "Sat"), (7, "Sun")]:
             day_combo.addItem(name, num)
         day_combo.setFixedWidth(60)
 

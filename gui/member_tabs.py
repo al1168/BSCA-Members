@@ -843,7 +843,8 @@ class MemberTabsWidget(QWidget):
         days_widget = QWidget()
         days_hl = QHBoxLayout(days_widget)
         days_hl.setContentsMargins(0, 0, 0, 0)
-        for num, label in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri")]:
+        for num, label in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri"),
+                          (6, "Sat"), (7, "Sun")]:
             cb = QCheckBox(label)
             cb.setChecked(num in existing_days)
             day_checks[num] = cb
@@ -1038,7 +1039,8 @@ class MemberTabsWidget(QWidget):
         form = QFormLayout(dlg)
 
         day_combo = QComboBox()
-        for num, name in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri")]:
+        for num, name in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri"),
+                          (6, "Sat"), (7, "Sun")]:
             day_combo.addItem(name, num)
 
         def time_row(default_text: str, default_period: str):
