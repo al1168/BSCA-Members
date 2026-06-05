@@ -2,11 +2,13 @@ from PyQt6.QtWidgets import (
     QWidget, QFormLayout, QLineEdit, QComboBox, QLabel, QVBoxLayout,
 )
 from db.members import HEALTH_PLANS
+from gui.address_autocomplete import AddressAutocomplete
 
 
 class StepContact(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, api_key: str = "", parent=None):
         super().__init__(parent)
+        self._api_key = api_key or ""
         self._error_label = QLabel("")
         self._error_label.setStyleSheet("color: #d05555; font-size: 11px;")
         self._build()
@@ -25,7 +27,7 @@ class StepContact(QWidget):
         self.health_plan = QComboBox()
         self.health_plan.addItem("")
         self.health_plan.addItems(HEALTH_PLANS)
-        self.address = QLineEdit()
+        self.address = AddressAutocomplete(self._api_key)
         self.address.setPlaceholderText("Street, City, State ZIP")
 
         form.addRow("First Name *", self.first_name)
@@ -71,4 +73,5 @@ class StepContact(QWidget):
             "center_id": int(self.center_id.text().strip()),
             "health_plan": self.health_plan.currentText(),
             "address": self.address.text().strip(),
+            "long_lat": self.address.long_lat(),
         }

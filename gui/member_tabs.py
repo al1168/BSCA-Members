@@ -58,11 +58,13 @@ def build_change_summary(old: dict, fields: dict) -> list[str]:
 
 
 class MemberTabsWidget(QWidget):
-    def __init__(self, center_id: int, db_path: str, events_path: str, parent=None):
+    def __init__(self, center_id: int, db_path: str, events_path: str,
+                 api_key: str = "", parent=None):
         super().__init__(parent)
         self._center_id = center_id
         self._db_path = db_path
         self._events_path = events_path
+        self._api_key = api_key or ""
         self._member = None
         self._load_data()
         self._build_ui()
@@ -256,7 +258,9 @@ class MemberTabsWidget(QWidget):
         f_contact = QFormLayout(grp_contact)
         f_contact.setSpacing(8)
 
-        self._info_address   = field("address")
+        from gui.address_autocomplete import AddressAutocomplete
+        self._info_address = AddressAutocomplete(self._api_key)
+        self._info_address.set_address(m.get("address", "") or "")
         self._info_home_tell = field("home_tell")
         self._info_cell      = field("cell")
         self._info_emergency = field("emergency")
@@ -471,6 +475,10 @@ class MemberTabsWidget(QWidget):
             )
             self._member.update(fields)
             self._dirty = False
+            new_long_lat = self._info_address.long_lat()
+            if new_long_lat:
+                from db.members import set_member_long_lat
+                set_member_long_lat(self._center_id, new_long_lat, self._db_path)
             if self._events_path:
                 conn = open_db(self._events_path)
                 try:

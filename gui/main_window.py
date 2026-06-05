@@ -162,7 +162,8 @@ class MainWindow(QMainWindow):
         from gui.member_tabs import MemberTabsWidget
         db_path = self._settings.get("db_path", "")
         events_path = self._settings.get("events_db_path", "")
-        widget = MemberTabsWidget(center_id, db_path, events_path)
+        api_key = self._settings.get("google_api_key", "")
+        widget = MemberTabsWidget(center_id, db_path, events_path, api_key)
         self._set_detail(widget)
 
     def _set_detail(self, widget: QWidget):
@@ -187,7 +188,8 @@ class MainWindow(QMainWindow):
             return
         from gui.wizard.wizard import AddMemberWizard
         events_path = self._settings.get("events_db_path", "")
-        dlg = AddMemberWizard(db_path, events_path, self)
+        api_key = self._settings.get("google_api_key", "")
+        dlg = AddMemberWizard(db_path, events_path, api_key, self)
         if dlg.exec():
             self._load_members()
 

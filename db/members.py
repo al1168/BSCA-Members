@@ -30,8 +30,10 @@ ALL_MEMBERS_QUERY = (
 
 INSERT_CONTACT = (
     "INSERT INTO [Contacts] ([Center ID], [Last Name], [First Name], "
-    "[Health Plan], [Address]) VALUES (?, ?, ?, ?, ?)"
+    "[Health Plan], [Address], [Long Lat]) VALUES (?, ?, ?, ?, ?, ?)"
 )
+
+SET_LONG_LAT = "UPDATE [Contacts] SET [Long Lat]=? WHERE [Center ID]=?"
 
 UPDATE_CONTACT = (
     "UPDATE [Contacts] SET "
@@ -460,13 +462,15 @@ def insert_member(
     enrollment_end: date | None,
     authorization: dict | None,
     availability_rows: list[dict],
-    db_path: str,
+    long_lat: str = "",
+    db_path: str = "",
 ) -> None:
     """Insert a new member and all related records in one transaction."""
     conn = _connect(db_path)
     try:
         c = conn.cursor()
-        c.execute(INSERT_CONTACT, (center_id, last_name, first_name, health_plan, address))
+        c.execute(INSERT_CONTACT,
+                  (center_id, last_name, first_name, health_plan, address, long_lat))
         c.execute(INSERT_ENROLLMENT, (center_id, enrollment_start, enrollment_end))
         if authorization:
             c.execute(
@@ -493,6 +497,19 @@ def insert_member(
                     _hhmm_to_datetime(row["avail_end"]),
                 ),
             )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def set_member_long_lat(center_id: int, long_lat: str, db_path: str) -> None:
+    """Persist 'lng,lat' to a member's [Long Lat] (only when a place was picked)."""
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(SET_LONG_LAT, (long_lat, center_id))
         conn.commit()
     except Exception:
         conn.rollback()

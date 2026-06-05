@@ -344,3 +344,44 @@ def test_update_availability_round_trips_changes():
         assert row["avail_end"] == "14:45"
     finally:
         delete_availability(new_id, TEST_DB)
+
+
+def test_long_lat_insert_and_set_round_trip():
+    from datetime import date
+    from db.members import (
+        insert_member, set_member_long_lat, center_id_exists, _connect,
+    )
+
+    cid = 880088  # implausible test id
+    if center_id_exists(cid, TEST_DB):
+        return  # don't clobber real data; skip
+    insert_member(
+        center_id=cid, last_name="LLTEST", first_name="Geo",
+        health_plan="HF", address="12 Monroe St, New York, NY",
+        enrollment_start=date(2026, 1, 1), enrollment_end=None,
+        authorization=None, availability_rows=[],
+        long_lat="-73.99,40.69", db_path=TEST_DB,
+    )
+    conn = _connect(TEST_DB)
+    try:
+        c = conn.cursor()
+        c.execute("SELECT [Long Lat] FROM [Contacts] WHERE [Center ID]=?", cid)
+        assert c.fetchone()[0] == "-73.99,40.69"
+        set_member_long_lat(cid, "-74.00,40.70", TEST_DB)
+        conn2 = _connect(TEST_DB)
+        try:
+            c2 = conn2.cursor()
+            c2.execute("SELECT [Long Lat] FROM [Contacts] WHERE [Center ID]=?", cid)
+            assert c2.fetchone()[0] == "-74.00,40.70"
+        finally:
+            conn2.close()
+    finally:
+        conn.close()
+        conn3 = _connect(TEST_DB)
+        try:
+            cc = conn3.cursor()
+            cc.execute("DELETE FROM [Enrollment] WHERE [Center ID]=?", cid)
+            cc.execute("DELETE FROM [Contacts] WHERE [Center ID]=?", cid)
+            conn3.commit()
+        finally:
+            conn3.close()
