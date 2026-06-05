@@ -62,3 +62,16 @@ def test_purge_deletes_old_rows():
 def test_event_types_constants():
     for t in ("NEW", "EDIT", "AUTH", "ABS", "AVAIL", "ENROLL"):
         assert t in EVENT_TYPES
+
+
+def test_delete_style_description_round_trips(tmp_path):
+    from db.events import open_db, insert_event, query_events
+    conn = open_db(str(tmp_path / "ev.db"))
+    insert_event(conn, "AUTH", 25049, "Lee, Mary",
+                 "Authorization deleted: 2025-01-01 – 2025-12-31 [Mon Wed Fri] · HF")
+    rows = query_events(conn, center_id=25049)
+    conn.close()
+    assert len(rows) == 1
+    assert rows[0]["event_type"] == "AUTH"
+    assert "Authorization deleted" in rows[0]["description"]
+    assert "[Mon Wed Fri]" in rows[0]["description"]
