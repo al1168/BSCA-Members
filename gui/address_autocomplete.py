@@ -42,6 +42,7 @@ class AddressAutocomplete(QWidget):
         super().__init__(parent)
         self._api_key = api_key or ""
         self._long_lat = ""
+        self._expecting_details = False
         self._session = uuid.uuid4().hex
         self._predictions = []  # list of (description, place_id)
 
@@ -93,6 +94,7 @@ class AddressAutocomplete(QWidget):
     # ── typing → debounced autocomplete ───────────────────────────────────
     def _on_typed(self, _text: str):
         self._long_lat = ""        # editing invalidates a prior pick
+        self._expecting_details = False
         self._status.hide()
         self._timer.start()
 
@@ -136,7 +138,8 @@ class AddressAutocomplete(QWidget):
             return
         desc, place_id = self._predictions[idx]
         self._popup.hide()
-        self._edit.setText(desc)   # programmatic -> no _on_typed, so it won't clear long_lat
+        self._edit.setText(desc)   # programmatic -> no _on_typed, no lookup
+        self._expecting_details = True
         self._request_details(place_id)
 
     def _request_details(self, place_id: str):
@@ -149,13 +152,17 @@ class AddressAutocomplete(QWidget):
 
     def _on_details(self, reply):
         try:
-            data = json.loads(bytes(reply.readAll()).decode("utf-8"))
-        except Exception:
-            data = {}
+            if not self._expecting_details:
+                return  # user edited after picking; ignore the stale reply
+            self._expecting_details = False
+            try:
+                data = json.loads(bytes(reply.readAll()).decode("utf-8"))
+            except Exception:
+                data = {}
+            self._long_lat = parse_place_location(data)
+            if self._long_lat:
+                self._status.setText("\U0001F4CD coordinates captured")
+                self._status.show()
+            self._session = uuid.uuid4().hex  # rotate token after a completed session
         finally:
             reply.deleteLater()
-        self._long_lat = parse_place_location(data)
-        if self._long_lat:
-            self._status.setText("\U0001F4CD coordinates captured")
-            self._status.show()
-        self._session = uuid.uuid4().hex  # rotate token after a completed session
