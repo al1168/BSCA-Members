@@ -255,21 +255,21 @@ QLabel#field_label {{
 }}
 QLabel#day_chip_on {{
     background-color: {t['accent']};
-    color: #ffffff;
-    border: none;
+    color: #f4f6fd;
+    border: 1px solid {t['accent']};
     border-radius: 9px;
-    padding: 2px 9px;
+    padding: 3px 0;
     font-size: 10px;
     font-weight: 700;
 }}
 QLabel#day_chip_off {{
-    background-color: transparent;
-    color: {t['text3']};
+    background-color: {t['surface']};
+    color: {t['text2']};
     border: 1px solid {t['border']};
     border-radius: 9px;
-    padding: 2px 9px;
+    padding: 3px 0;
     font-size: 10px;
-    font-weight: 500;
+    font-weight: 600;
 }}
 QLabel#label_field {{
     color: {t['text3']};

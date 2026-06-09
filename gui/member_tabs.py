@@ -137,6 +137,7 @@ class WeekdayChips(QWidget):
             chip = QLabel(name[0] if compact else name.upper())
             chip.setObjectName("day_chip_on" if num in self._days else "day_chip_off")
             chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            chip.setMinimumWidth(22 if compact else 34)  # uniform, grid-like track
             self._chips.append(chip)
             row.addWidget(chip)
         row.addStretch()
