@@ -163,6 +163,7 @@ class MemberTabsWidget(QWidget):
         self._authorizations = []
         self._availability = []
         self._absences = []
+        self._one_off = []
         try:
             ctx = get_member_context(self._center_id, self._db_path)
             self._member = ctx["member"]
@@ -170,6 +171,7 @@ class MemberTabsWidget(QWidget):
             self._authorizations = ctx["authorizations"]
             self._availability = ctx["availability"]
             self._absences = ctx["absences"]
+            self._one_off = ctx.get("one_off_availability", [])
         except Exception as exc:
             QMessageBox.critical(self, "Load Error", str(exc))
 
@@ -308,6 +310,7 @@ class MemberTabsWidget(QWidget):
         self._tab_enrollments = self._make_enrollments_tab()
         self._tab_auths = self._make_auths_tab()
         self._tab_avail = self._make_avail_tab()
+        self._tab_unavail = self._make_unavailable_tab()
         self._tab_absences = self._make_absences_tab()
 
         self._tabs.addTab(self._tab_info, "Info")
@@ -315,6 +318,7 @@ class MemberTabsWidget(QWidget):
         self._tabs.addTab(self._tab_auths,
             "Auths ⚠" if warn else "Authorizations")
         self._tabs.addTab(self._tab_avail, "Availability")
+        self._tabs.addTab(self._tab_unavail, "Unavailable Times")
         self._tabs.addTab(self._tab_absences, "Absences")
 
         # Events tab added after (Task 11 wires it in)
@@ -1161,6 +1165,173 @@ class MemberTabsWidget(QWidget):
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 
+    # ── Unavailable Times tab (one-off) ──────────────────────────────────────
+
+    def _make_unavailable_tab(self) -> QWidget:
+        from PyQt6.QtWidgets import (
+            QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView,
+        )
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(0, 12, 0, 0)
+
+        caption = QLabel("Times the member is unavailable on a specific date.")
+        caption.setObjectName("field_label")
+        layout.addWidget(caption)
+
+        columns = ["ID", "Date", "Start", "End", "Notes", "Action"]
+        table = QTableWidget(len(self._one_off), len(columns))
+        table.setHorizontalHeaderLabels(columns)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        hdr = table.horizontalHeader()
+        hdr.setStretchLastSection(False)
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(34)
+
+        for r, a in enumerate(self._one_off):
+            table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
+            table.setItem(r, 1, QTableWidgetItem(str(a["date"]) if a["date"] else ""))
+            table.setItem(r, 2, QTableWidgetItem(a["avail_start"] or ""))
+            table.setItem(r, 3, QTableWidgetItem(a["avail_end"] or ""))
+            table.setItem(r, 4, QTableWidgetItem(a.get("notes", "") or ""))
+            btn = QPushButton("Edit")
+            btn.setObjectName("btn_edit")
+            btn.clicked.connect(lambda _=False, uv=a: self._edit_unavailable(uv))
+            table.setCellWidget(r, 5, btn)
+
+        self._unavail_table = table
+        layout.addWidget(table)
+
+        btn_row = QHBoxLayout()
+        btn_add = QPushButton("+ Add")
+        btn_add.clicked.connect(self._add_unavailable)
+        btn_del = QPushButton("Delete Selected")
+        btn_del.clicked.connect(lambda: self._delete_unavailable(table))
+        btn_row.addWidget(btn_add)
+        btn_row.addStretch()
+        btn_row.addWidget(btn_del)
+        layout.addLayout(btn_row)
+        return w
+
+    def _open_one_off_dialog(self, existing: dict | None = None):
+        """Add/Edit dialog: date + time window + notes. Returns a dict with
+        date, avail_start, avail_end, notes — or None if cancelled."""
+        from PyQt6.QtWidgets import (
+            QDialog, QFormLayout, QDateEdit, QPlainTextEdit, QDialogButtonBox,
+        )
+        from PyQt6.QtCore import QDate
+        from gui.time_range_editor import TimeRangeEditor
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Edit Unavailable Time" if existing
+                           else "Add Unavailable Time")
+        form = QFormLayout(dlg)
+
+        date_edit = QDateEdit()
+        date_edit.setCalendarPopup(True)
+        editor = TimeRangeEditor()
+        notes_edit = QPlainTextEdit()
+        notes_edit.setFixedHeight(60)
+
+        if existing:
+            d = existing.get("date")
+            date_edit.setDate(QDate(d.year, d.month, d.day) if d
+                              else QDate.currentDate())
+            editor.set_window(existing.get("avail_start") or "09:00",
+                              existing.get("avail_end") or "12:00")
+            notes_edit.setPlainText(existing.get("notes", "") or "")
+        else:
+            date_edit.setDate(QDate.currentDate())
+            editor.set_window("09:00", "12:00")
+
+        form.addRow("Date:", date_edit)
+        form.addRow("Time:", editor)
+        form.addRow("Notes:", notes_edit)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
+                                QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        form.addRow(btns)
+
+        if not dlg.exec():
+            return None
+        return {
+            "date": date_edit.date().toPyDate(),
+            "avail_start": editor.start_hhmm(),
+            "avail_end": editor.end_hhmm(),
+            "notes": notes_edit.toPlainText().strip(),
+        }
+
+    def _add_unavailable(self):
+        from db.members import (
+            insert_one_off_availability, get_one_off_availability,
+        )
+        result = self._open_one_off_dialog()
+        if not result:
+            return
+        try:
+            insert_one_off_availability(
+                self._center_id, result["date"], result["avail_start"],
+                result["avail_end"], result["notes"], self._db_path,
+            )
+            self._one_off = get_one_off_availability(self._center_id, self._db_path)
+            self._refresh_tab(4, self._make_unavailable_tab())
+            self._log_event(
+                "AVAIL",
+                f"One-off unavailable added: {result['date']} "
+                f"{result['avail_start']}–{result['avail_end']}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
+
+    def _edit_unavailable(self, entry: dict):
+        from db.members import (
+            update_one_off_availability, get_one_off_availability,
+        )
+        result = self._open_one_off_dialog(existing=entry)
+        if not result:
+            return
+        try:
+            update_one_off_availability(
+                entry["id"], result["date"], result["avail_start"],
+                result["avail_end"], result["notes"], self._db_path,
+            )
+            self._one_off = get_one_off_availability(self._center_id, self._db_path)
+            self._refresh_tab(4, self._make_unavailable_tab())
+            self._log_event(
+                "AVAIL",
+                f"One-off unavailable edited: {result['date']} "
+                f"{result['avail_start']}–{result['avail_end']}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
+
+    def _delete_unavailable(self, table):
+        row = table.currentRow()
+        if row < 0:
+            return
+        record_id = int(table.item(row, 0).text())
+        if QMessageBox.question(self, "Confirm", "Delete this unavailable time?") \
+                == QMessageBox.StandardButton.Yes:
+            from db.members import (
+                delete_one_off_availability, get_one_off_availability,
+            )
+            entry = next((a for a in self._one_off if a["id"] == record_id), None)
+            try:
+                delete_one_off_availability(record_id, self._db_path)
+                self._one_off = get_one_off_availability(
+                    self._center_id, self._db_path)
+                self._refresh_tab(4, self._make_unavailable_tab())
+                if entry:
+                    self._log_event(
+                        "AVAIL",
+                        f"One-off unavailable deleted: {entry['date']} "
+                        f"{entry['avail_start']}–{entry['avail_end']}")
+            except Exception as exc:
+                QMessageBox.critical(self, "Error", str(exc))
+
     # ── Absences tab ───────────────────────────────────────────────────────
 
     def _make_absences_tab(self) -> QWidget:
@@ -1209,7 +1380,7 @@ class MemberTabsWidget(QWidget):
             try:
                 insert_absence(self._center_id, lt, s, e, self._db_path)
                 self._absences = get_absences(self._center_id, self._db_path)
-                self._refresh_tab(4, self._make_absences_tab())
+                self._refresh_tab(5, self._make_absences_tab())
                 self._log_event("ABS", f"Absence added: {lt} · {s} – {e}")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
@@ -1227,7 +1398,7 @@ class MemberTabsWidget(QWidget):
             try:
                 delete_absence(record_id, self._db_path)
                 self._absences = get_absences(self._center_id, self._db_path)
-                self._refresh_tab(4, self._make_absences_tab())
+                self._refresh_tab(5, self._make_absences_tab())
                 if entry:
                     self._log_event(
                         "ABS",
