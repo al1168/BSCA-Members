@@ -811,7 +811,8 @@ class MemberTabsWidget(QWidget):
             table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
             table.setItem(r, 1, QTableWidgetItem(str(a["auth_start"])))
             table.setItem(r, 2, QTableWidgetItem(str(a["auth_end"])))
-            table.setItem(r, 3, QTableWidgetItem(a["auth_days"] or ""))
+            table.setCellWidget(r, 3, WeekdayChips(
+                decode_auth_days(a["auth_days"] or ""), compact=True))
             table.setItem(r, 4, QTableWidgetItem(a.get("health_plan", "") or ""))
             if a["id"] == latest_id:
                 btn = QPushButton("Edit")
