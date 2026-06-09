@@ -372,15 +372,16 @@ class MemberTabsWidget(QWidget):
         enroll_lbl.setReadOnly(True)
         active_auth = self._active_authorization(self._authorizations)
         if active_auth:
-            days_str = format_auth_days(active_auth.get("auth_days", ""))
+            active_days = decode_auth_days(active_auth.get("auth_days", ""))
             plan = active_auth.get("health_plan", "")
-            auth_text = (f"{active_auth['effective_start']} – "
-                         f"{active_auth['effective_end']}  [{days_str}]"
-                         + (f"  ·  {plan}" if plan else ""))
+            period_text = (f"{active_auth['effective_start']} – "
+                           f"{active_auth['effective_end']}"
+                           + (f"  ·  {plan}" if plan else ""))
         else:
-            auth_text = "None"
-        auth_lbl = QLineEdit(auth_text)
-        auth_lbl.setReadOnly(True)
+            active_days = set()
+            period_text = "None"
+        auth_period_lbl = QLineEdit(period_text)
+        auth_period_lbl.setReadOnly(True)
 
         # ── Dense sectioned grid: 3 field columns, no card chrome ──────────
         grid = QGridLayout()
@@ -406,6 +407,14 @@ class MemberTabsWidget(QWidget):
             grid.addWidget(lab, state["row"], slot * 2,
                            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             grid.addWidget(widget, state["row"], slot * 2 + 1, 1, wspan * 2 - 1)
+
+        section("Schedule")
+        cell(0, "Enrollment Start", enroll_lbl)
+        state["row"] += 1
+        cell(0, "Authorized Days", WeekdayChips(active_days), wspan=3)
+        state["row"] += 1
+        cell(0, "Auth Period", auth_period_lbl, wspan=2)
+        state["row"] += 1
 
         section("Identity")
         cell(0, "First Name", self._info_first)
@@ -443,11 +452,6 @@ class MemberTabsWidget(QWidget):
         section("Care")
         cell(0, "Case Manager", self._info_case_manager)
         cell(1, "Admission Date", self._info_admission_date)
-        state["row"] += 1
-
-        section("Schedule")
-        cell(0, "Enrollment Start", enroll_lbl)
-        cell(1, "Active Auth", auth_lbl, wspan=2)
         state["row"] += 1
 
         # ── Assemble (scroll area is a safety net; content fits unscrolled) ─
