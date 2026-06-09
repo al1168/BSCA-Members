@@ -40,3 +40,22 @@ def test_theme_has_terminated_badge():
     from gui.theme import build_qss, DARK, LIGHT
     for tokens in (DARK, LIGHT):
         assert "QLabel#terminated_badge" in build_qss(tokens)
+
+
+def test_active_first_orders_terminated_last():
+    from gui.main_window import active_first
+    members = [
+        {"center_id": 1, "last_name": "Adams"},
+        {"center_id": 2, "last_name": "Brown"},
+        {"center_id": 3, "last_name": "Clark"},
+    ]
+    out = active_first(members, {2})
+    # Active 1 and 3 keep alphabetical order; terminated 2 sinks to the bottom.
+    assert [m["center_id"] for m in out] == [1, 3, 2]
+
+
+def test_active_first_no_terminated_preserves_order():
+    from gui.main_window import active_first
+    members = [{"center_id": 1}, {"center_id": 2}, {"center_id": 3}]
+    out = active_first(members, set())
+    assert [m["center_id"] for m in out] == [1, 2, 3]

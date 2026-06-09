@@ -16,6 +16,12 @@ from gui.settings_dialog import SettingsDialog
 TERMINATED_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
+def active_first(members: list[dict], terminated_ids: set) -> list[dict]:
+    """Stable-sort members so active ones precede terminated ones, preserving the
+    input order (alphabetical) within each group."""
+    return sorted(members, key=lambda m: m["center_id"] in terminated_ids)
+
+
 class _MemberItemDelegate(QStyledItemDelegate):
     """Paints terminated member rows with a dimmed name and a red TERMINATED tag.
     Active rows fall through to the default rendering."""
@@ -177,7 +183,7 @@ class MainWindow(QMainWindow):
 
     def _populate_list(self, members: list[dict]):
         self._member_list.clear()
-        for m in members:
+        for m in active_first(members, self._terminated_ids):
             label = f"{m['last_name']}, {m['first_name']}\n{m['center_id']} · {m['health_plan']}"
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, m["center_id"])
