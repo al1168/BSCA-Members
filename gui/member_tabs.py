@@ -288,6 +288,12 @@ class MemberTabsWidget(QWidget):
             plan_badge.setToolTip("Health Plan")
             plan_badge.setMaximumHeight(26)
             top_row.addWidget(plan_badge, alignment=Qt.AlignmentFlag.AlignVCenter)
+        from db.members import is_terminated
+        if is_terminated(self._enrollments):
+            term_badge = QLabel("⊘ Terminated")
+            term_badge.setObjectName("terminated_badge")
+            term_badge.setMaximumHeight(26)
+            top_row.addWidget(term_badge, alignment=Qt.AlignmentFlag.AlignVCenter)
         top_row.addStretch()
         from datetime import date
         warn = auth_warning(self._authorizations, date.today())

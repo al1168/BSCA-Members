@@ -34,3 +34,9 @@ def test_terminated_ids_from_rows():
         (None, date(2025, 1, 1), date(2025, 2, 1)),  # null center id -> skipped
     ]
     assert terminated_ids_from_rows(rows) == {100}
+
+
+def test_theme_has_terminated_badge():
+    from gui.theme import build_qss, DARK, LIGHT
+    for tokens in (DARK, LIGHT):
+        assert "QLabel#terminated_badge" in build_qss(tokens)

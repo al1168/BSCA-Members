@@ -305,6 +305,15 @@ QLabel#warning_badge {{
     font-size: 10px;
     font-weight: 500;
 }}
+QLabel#terminated_badge {{
+    background-color: {t['error']};
+    color: #f4f6fd;
+    border: none;
+    border-radius: 10px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 700;
+}}
 QLabel#plan_badge {{
     background-color: {t['accent_bg']};
     color: {t['accent_text']};
