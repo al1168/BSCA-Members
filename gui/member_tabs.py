@@ -280,6 +280,13 @@ class MemberTabsWidget(QWidget):
                             f"<span style='color:gray;font-size:12px'> &nbsp;ID {cid}</span>")
         name_label.setTextFormat(Qt.TextFormat.RichText)
         top_row.addWidget(name_label)
+        plan = self._member.get("health_plan", "")
+        if plan:
+            plan_badge = QLabel(plan)
+            plan_badge.setObjectName("plan_badge")
+            plan_badge.setToolTip("Health Plan")
+            plan_badge.setMaximumHeight(26)
+            top_row.addWidget(plan_badge, alignment=Qt.AlignmentFlag.AlignVCenter)
         top_row.addStretch()
         from datetime import date
         warn = auth_warning(self._authorizations, date.today())
