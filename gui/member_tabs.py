@@ -54,11 +54,20 @@ WEEKDAY_NAMES = {
 }
 
 
+def decode_auth_days(auth_days: str) -> set[int]:
+    """'1,3,5' -> {1, 3, 5}. Blank, whitespace-only, and non-numeric tokens are
+    ignored so malformed data never raises."""
+    days = set()
+    for tok in (auth_days or "").split(","):
+        tok = tok.strip()
+        if tok.isdigit():
+            days.add(int(tok))
+    return days
+
+
 def format_auth_days(auth_days: str) -> str:
     """'1,3,6' -> 'Mon Wed Sat'. Unknown day numbers fall back to their digit."""
-    if not auth_days:
-        return ""
-    days = sorted(int(x) for x in auth_days.split(",") if x.strip())
+    days = sorted(decode_auth_days(auth_days))
     return " ".join(WEEKDAY_NAMES.get(d, str(d)) for d in days)
 
 
