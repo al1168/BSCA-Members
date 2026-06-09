@@ -285,6 +285,15 @@ QLabel#warning_badge {{
     font-size: 10px;
     font-weight: 500;
 }}
+QLabel#plan_badge {{
+    background-color: {t['accent_bg']};
+    color: {t['accent_text']};
+    border: 1px solid {t['accent']};
+    border-radius: 10px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 700;
+}}
 QLabel#wizard_warning {{
     background-color: {t['warning_bg']};
     color: {t['warning']};
