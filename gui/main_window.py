@@ -4,11 +4,60 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QListWidget, QListWidgetItem, QPushButton, QLineEdit, QLabel,
     QStackedWidget, QApplication, QMessageBox, QSizePolicy,
+    QStyledItemDelegate, QStyle, QStyleOptionViewItem,
 )
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QTextDocument, QAbstractTextDocumentLayout
 
 from settings import save_settings
 from gui.settings_dialog import SettingsDialog
+
+
+TERMINATED_ROLE = Qt.ItemDataRole.UserRole + 1
+
+
+def active_first(members: list[dict], terminated_ids: set) -> list[dict]:
+    """Stable-sort members so active ones precede terminated ones, preserving the
+    input order (alphabetical) within each group."""
+    return sorted(members, key=lambda m: m["center_id"] in terminated_ids)
+
+
+class _MemberItemDelegate(QStyledItemDelegate):
+    """Paints terminated member rows with a dimmed name and a red TERMINATED tag.
+    Active rows fall through to the default rendering."""
+
+    def __init__(self, parent=None, muted="#888888", tag="#d05555"):
+        super().__init__(parent)
+        self._muted = muted
+        self._tag = tag
+
+    def set_colors(self, muted: str, tag: str) -> None:
+        self._muted = muted
+        self._tag = tag
+
+    def paint(self, painter, option, index):
+        if not index.data(TERMINATED_ROLE):
+            super().paint(painter, option, index)
+            return
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        name, _, sub = opt.text.partition("\n")
+        opt.text = ""
+        style = opt.widget.style() if opt.widget else QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, opt.widget)
+        html = (
+            f"<span style='color:{self._muted}'>{name}<br>{sub}</span>"
+            f"&nbsp;&nbsp;<span style='color:{self._tag}; font-weight:700'>"
+            f"⊘ TERMINATED</span>"
+        )
+        doc = QTextDocument()
+        doc.setDefaultFont(opt.font)
+        doc.setHtml(html)
+        doc.setTextWidth(opt.rect.width() - 12)
+        painter.save()
+        painter.translate(opt.rect.left() + 6, opt.rect.top() + 3)
+        doc.documentLayout().draw(painter, QAbstractTextDocumentLayout.PaintContext())
+        painter.restore()
 
 
 class MainWindow(QMainWindow):
@@ -17,6 +66,7 @@ class MainWindow(QMainWindow):
         self._settings = settings
         self._settings_path = settings_path
         self._last_center_id = None
+        self._terminated_ids = set()
         self.setWindowTitle("BSCA Member Manager")
         self.resize(1240, 800)
         self._build_ui()
@@ -47,6 +97,9 @@ class MainWindow(QMainWindow):
 
         self._member_list = QListWidget()
         self._member_list.currentRowChanged.connect(self._on_member_selected)
+        self._member_delegate = _MemberItemDelegate(self._member_list)
+        self._member_list.setItemDelegate(self._member_delegate)
+        self._refresh_list_theme()
 
         self._btn_events = QPushButton("All Events")
         self._btn_events.clicked.connect(self._show_global_events)
@@ -102,6 +155,12 @@ class MainWindow(QMainWindow):
         self._db_indicator.style().unpolish(self._db_indicator)
         self._db_indicator.style().polish(self._db_indicator)
 
+    def _refresh_list_theme(self):
+        from gui.theme import DARK, LIGHT
+        tokens = DARK if self._settings.get("theme") == "dark" else LIGHT
+        self._member_delegate.set_colors(tokens["text2"], tokens["error"])
+        self._member_list.viewport().update()
+
     def _load_members(self):
         self._all_members = []
         db_path = self._settings.get("db_path", "")
@@ -111,8 +170,12 @@ class MainWindow(QMainWindow):
             )
             return
         try:
-            from db.members import get_all_members
+            from db.members import get_all_members, get_terminated_center_ids
             self._all_members = get_all_members(db_path)
+            try:
+                self._terminated_ids = get_terminated_center_ids(db_path)
+            except Exception:
+                self._terminated_ids = set()
         except Exception as exc:
             QMessageBox.critical(self, "Database Error",
                 f"Could not load members:\n{exc}\n\nCheck Settings.")
@@ -120,10 +183,11 @@ class MainWindow(QMainWindow):
 
     def _populate_list(self, members: list[dict]):
         self._member_list.clear()
-        for m in members:
+        for m in active_first(members, self._terminated_ids):
             label = f"{m['last_name']}, {m['first_name']}\n{m['center_id']} · {m['health_plan']}"
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, m["center_id"])
+            item.setData(TERMINATED_ROLE, m["center_id"] in self._terminated_ids)
             self._member_list.addItem(item)
 
     def _filter_members(self, text: str):
@@ -215,5 +279,6 @@ class MainWindow(QMainWindow):
             close_connections()
             from gui.theme import apply_theme
             apply_theme(QApplication.instance(), self._settings["theme"])
+            self._refresh_list_theme()
             self._update_db_indicator()
             self._load_members()
