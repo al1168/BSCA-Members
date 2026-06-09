@@ -51,7 +51,27 @@ LIGHT = {
 }
 
 
+# Brand-approximate pill colors, one per health plan (see HEALTH_PLANS).
+# Solid background with near-white text; theme-independent by design.
+PLAN_COLORS = {
+    "Aetna": "#7d3f98",
+    "Anthem": "#1a9dd9",
+    "BCBS": "#0033a0",
+    "HF": "#e07b1a",
+    "VCM": "#5c9e31",
+    "AE": "#2bb3a3",
+    "ES": "#c0392b",
+    "HC": "#b8860b",
+    "HOF": "#c0507e",
+}
+
+
 def build_qss(t: dict) -> str:
+    plan_rules = "\n".join(
+        f'QLabel#plan_badge[plan="{code}"] {{ background-color: {color}; '
+        f'color: #f4f6fd; border: 1px solid {color}; }}'
+        for code, color in PLAN_COLORS.items()
+    )
     return f"""
 QMainWindow, QDialog, QWidget {{
     background-color: {t['bg']};
@@ -294,6 +314,7 @@ QLabel#plan_badge {{
     font-size: 11px;
     font-weight: 700;
 }}
+{plan_rules}
 QLabel#wizard_warning {{
     background-color: {t['warning_bg']};
     color: {t['warning']};

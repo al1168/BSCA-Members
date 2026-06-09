@@ -284,6 +284,7 @@ class MemberTabsWidget(QWidget):
         if plan:
             plan_badge = QLabel(plan)
             plan_badge.setObjectName("plan_badge")
+            plan_badge.setProperty("plan", plan)
             plan_badge.setToolTip("Health Plan")
             plan_badge.setMaximumHeight(26)
             top_row.addWidget(plan_badge, alignment=Qt.AlignmentFlag.AlignVCenter)
@@ -727,6 +728,7 @@ class MemberTabsWidget(QWidget):
         start.setCalendarPopup(True)
         end = QDateEdit()
         end.setCalendarPopup(True)
+        end.setMinimumDate(QDate(2000, 1, 1))
         end.setSpecialValueText("Ongoing")
         end.setDate(QDate(2000, 1, 1))
         form.addRow("Start Date:", start)
