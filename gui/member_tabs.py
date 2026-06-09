@@ -727,6 +727,7 @@ class MemberTabsWidget(QWidget):
         start.setCalendarPopup(True)
         end = QDateEdit()
         end.setCalendarPopup(True)
+        end.setMinimumDate(QDate(2000, 1, 1))
         end.setSpecialValueText("Ongoing")
         end.setDate(QDate(2000, 1, 1))
         form.addRow("Start Date:", start)

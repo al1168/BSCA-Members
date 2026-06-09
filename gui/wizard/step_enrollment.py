@@ -17,6 +17,7 @@ class StepEnrollment(QWidget):
 
         self.end_date = QDateEdit()
         self.end_date.setCalendarPopup(True)
+        self.end_date.setMinimumDate(QDate(2000, 1, 1))
         self.end_date.setSpecialValueText("Ongoing (leave blank)")
         self.end_date.setDate(QDate(2000, 1, 1))
 
