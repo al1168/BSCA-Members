@@ -90,6 +90,23 @@ INSERT_ABSENCE = (
 
 DELETE_ABSENCE = "DELETE FROM [Absences] WHERE [ID]=?"
 
+INSERT_ONE_OFF_AVAILABILITY = (
+    "INSERT INTO [OneOffAvailability] ([Center ID], [date], "
+    "[avail_start], [avail_end], [Notes]) VALUES (?, ?, ?, ?, ?)"
+)
+
+UPDATE_ONE_OFF_AVAILABILITY = (
+    "UPDATE [OneOffAvailability] SET [date]=?, [avail_start]=?, "
+    "[avail_end]=?, [Notes]=? WHERE [ID]=?"
+)
+
+DELETE_ONE_OFF_AVAILABILITY = "DELETE FROM [OneOffAvailability] WHERE [ID]=?"
+
+ONE_OFF_AVAILABILITY_SELECT = (
+    "SELECT [ID],[Center ID],[date],[avail_start],[avail_end],[Notes] "
+    "FROM [OneOffAvailability] WHERE [Center ID]=?"
+)
+
 
 def encode_auth_days(days: set[int]) -> str:
     """Convert {1, 3, 5} → '1,3,5'. Empty set → ''."""
@@ -107,6 +124,33 @@ def _hhmm_to_datetime(hhmm: str) -> datetime:
     """'08:30' → datetime(1899, 12, 30, 8, 30) for Access DATETIME storage."""
     h, m = map(int, hhmm.split(":"))
     return datetime(1899, 12, 30, h, m)
+
+
+def _access_date(value):
+    """Access Date/Time -> datetime.date (a date passes through; None -> None)."""
+    if value is None:
+        return None
+    return value.date() if isinstance(value, datetime) else value
+
+
+def _access_hhmm(value):
+    """Access time-only DATETIME -> 'HH:mm' (None -> None)."""
+    if value is None:
+        return None
+    return value.strftime("%H:%M") if hasattr(value, "strftime") else value
+
+
+def map_one_off_availability_row(row) -> dict:
+    """Map a OneOffAvailability row: [date] -> date; [avail_start]/[avail_end]
+    are time-only DATETIMEs -> 'HH:mm'; [Notes] -> str."""
+    return {
+        "id": int(row[0]),
+        "center_id": int(row[1]),
+        "date": _access_date(row[2]),
+        "avail_start": _access_hhmm(row[3]),
+        "avail_end": _access_hhmm(row[4]),
+        "notes": row[5] or "",
+    }
 
 
 def time_12h_to_24h(text: str, period: str) -> str:
@@ -362,12 +406,18 @@ def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dic
         )
         absences = [map_absence_row(r) for r in c.fetchall()]
 
+        c.execute(ONE_OFF_AVAILABILITY_SELECT, center_id)
+        one_off_availability = [
+            map_one_off_availability_row(r) for r in c.fetchall()
+        ]
+
         return {
             "member": member,
             "enrollments": enrollments,
             "authorizations": authorizations,
             "availability": availability,
             "absences": absences,
+            "one_off_availability": one_off_availability,
         }
     except pyodbc.Error:
         # Cached connection may be stale (file moved, lock dropped); reopen once.
@@ -400,6 +450,23 @@ def get_authorizations(center_id: int, db_path: str, _retry: bool = True) -> lis
         _drop_read_connection(db_path)
         if _retry:
             return get_authorizations(center_id, db_path, _retry=False)
+        raise
+
+
+def get_one_off_availability(center_id: int, db_path: str,
+                             _retry: bool = True) -> list[dict]:
+    """One-off unavailable windows for a member (cached read connection).
+    Mirrors get_member_context's stale-connection retry."""
+    import pyodbc
+    conn = _read_connection(db_path)
+    try:
+        c = conn.cursor()
+        c.execute(ONE_OFF_AVAILABILITY_SELECT, center_id)
+        return [map_one_off_availability_row(r) for r in c.fetchall()]
+    except pyodbc.Error:
+        _drop_read_connection(db_path)
+        if _retry:
+            return get_one_off_availability(center_id, db_path, _retry=False)
         raise
 
 
@@ -705,6 +772,64 @@ def delete_availability(record_id: int, db_path: str) -> None:
     conn = _connect(db_path)
     try:
         conn.cursor().execute(DELETE_AVAILABILITY, (record_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def insert_one_off_availability(
+    center_id: int,
+    on_date: date,
+    avail_start: str,
+    avail_end: str,
+    notes: str,
+    db_path: str,
+) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(
+            INSERT_ONE_OFF_AVAILABILITY,
+            (center_id, on_date, _hhmm_to_datetime(avail_start),
+             _hhmm_to_datetime(avail_end), notes),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def update_one_off_availability(
+    record_id: int,
+    on_date: date,
+    avail_start: str,
+    avail_end: str,
+    notes: str,
+    db_path: str,
+) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(
+            UPDATE_ONE_OFF_AVAILABILITY,
+            (on_date, _hhmm_to_datetime(avail_start),
+             _hhmm_to_datetime(avail_end), notes, record_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def delete_one_off_availability(record_id: int, db_path: str) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(DELETE_ONE_OFF_AVAILABILITY, (record_id,))
         conn.commit()
     except Exception:
         conn.rollback()
