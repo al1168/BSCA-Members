@@ -32,3 +32,44 @@ def qapp():
     from PyQt6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication([])
     yield app
+
+
+def test_weekday_chips_on_off(qapp):
+    from gui.member_tabs import WeekdayChips
+    w = WeekdayChips({1, 3, 5})
+    names = [c.objectName() for c in w._chips]
+    assert len(names) == 7
+    assert names == [
+        "day_chip_on", "day_chip_off", "day_chip_on",
+        "day_chip_off", "day_chip_on", "day_chip_off", "day_chip_off",
+    ]
+
+
+def test_weekday_chips_all_off(qapp):
+    from gui.member_tabs import WeekdayChips
+    w = WeekdayChips(set())
+    assert len(w._chips) == 7
+    assert all(c.objectName() == "day_chip_off" for c in w._chips)
+
+
+def test_weekday_chips_full_labels(qapp):
+    from gui.member_tabs import WeekdayChips
+    w = WeekdayChips({1})
+    assert [c.text() for c in w._chips] == [
+        "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN",
+    ]
+
+
+def test_weekday_chips_compact_single_letter(qapp):
+    from gui.member_tabs import WeekdayChips
+    w = WeekdayChips({1, 2}, compact=True)
+    assert [c.text() for c in w._chips] == ["M", "T", "W", "T", "F", "S", "S"]
+    assert w._chips[0].objectName() == "day_chip_on"
+
+
+def test_theme_has_chip_styles():
+    from gui.theme import build_qss, DARK, LIGHT
+    for tokens in (DARK, LIGHT):
+        qss = build_qss(tokens)
+        assert "QLabel#day_chip_on" in qss
+        assert "QLabel#day_chip_off" in qss

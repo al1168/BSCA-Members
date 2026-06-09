@@ -253,6 +253,24 @@ QLabel#field_label {{
     font-size: 11px;
     padding-right: 2px;
 }}
+QLabel#day_chip_on {{
+    background-color: {t['accent']};
+    color: #ffffff;
+    border: none;
+    border-radius: 9px;
+    padding: 2px 9px;
+    font-size: 10px;
+    font-weight: 700;
+}}
+QLabel#day_chip_off {{
+    background-color: transparent;
+    color: {t['text3']};
+    border: 1px solid {t['border']};
+    border-radius: 9px;
+    padding: 2px 9px;
+    font-size: 10px;
+    font-weight: 500;
+}}
 QLabel#label_field {{
     color: {t['text3']};
     font-size: 10px;

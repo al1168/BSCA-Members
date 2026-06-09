@@ -117,6 +117,31 @@ def build_change_summary(old: dict, fields: dict) -> list[str]:
     return lines
 
 
+class WeekdayChips(QWidget):
+    """A row of seven weekday chips, Mon→Sun. Authorized days are filled with the
+    accent color (object name 'day_chip_on'); the rest are dimmed
+    ('day_chip_off'). `compact=True` uses single-letter labels for table cells.
+    Purely presentational — callers decode the encoded auth_days string with
+    `decode_auth_days` and pass the resulting set in."""
+
+    def __init__(self, days, compact: bool = False, parent=None):
+        super().__init__(parent)
+        self._days = set(days)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(3 if compact else 4)
+        row.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self._chips = []
+        for num in range(1, 8):
+            name = WEEKDAY_NAMES[num]
+            chip = QLabel(name[0] if compact else name.upper())
+            chip.setObjectName("day_chip_on" if num in self._days else "day_chip_off")
+            chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._chips.append(chip)
+            row.addWidget(chip)
+        row.addStretch()
+
+
 class MemberTabsWidget(QWidget):
     def __init__(self, center_id: int, db_path: str, events_path: str,
                  api_key: str = "", parent=None):
