@@ -531,6 +531,7 @@ class MemberTabsWidget(QWidget):
         state["row"] += 1
         cell(0, "Center ID", self._info_cid)
         cell(1, "Enrollment Start", enroll_lbl)
+        cell(2, "Language Spoken", self._info_language)
         state["row"] += 1
 
         section("Contact")
@@ -551,7 +552,6 @@ class MemberTabsWidget(QWidget):
         cell(2, "Hospital", self._info_hospital)
         state["row"] += 1
         cell(0, "HHA", self._info_hha)
-        cell(1, "Language Spoken", self._info_language)
         state["row"] += 1
 
         section("Care")
