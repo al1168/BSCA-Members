@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QLabel,
     QPushButton, QMessageBox, QTextEdit, QSizePolicy,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
 from db.members import get_member_context
 
@@ -159,6 +159,22 @@ class WeekdayChips(QWidget):
         row.addStretch()
 
 
+class _PhotoLabel(QLabel):
+    """An 80x80 photo label that emits `clicked` when pressed (left button)."""
+
+    clicked = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Click to change photo")
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(e)
+
+
 class MemberTabsWidget(QWidget):
     def __init__(self, center_id: int, db_path: str, events_path: str,
                  api_key: str = "", parent=None):
@@ -210,16 +226,22 @@ class MemberTabsWidget(QWidget):
             self._tab_events.refresh()
 
     def _make_photo_label(self) -> QLabel:
-        """Return an 80×80 QLabel showing the member photo or a gray placeholder."""
+        """Return an 80×80 clickable label showing the member photo. Clicking it
+        opens a file picker to set/replace the photo."""
+        from db.members import get_member_photo
+        self._photo_label = _PhotoLabel()
+        self._photo_label.setFixedSize(80, 80)
+        self._photo_label.setStyleSheet("border-radius: 40px; overflow: hidden;")
+        self._photo_label.clicked.connect(self._change_photo)
+        self._set_photo_pixmap(get_member_photo(self._center_id, self._db_path))
+        return self._photo_label
+
+    def _set_photo_pixmap(self, photo_bytes):
+        """Paint the member photo (or the placeholder) onto self._photo_label and
+        record whether a photo exists."""
         from PyQt6.QtGui import QPixmap, QPainter, QColor, QBrush
         from PyQt6.QtCore import Qt as QtCore
-        from db.members import get_member_photo
-
-        lbl = QLabel()
-        lbl.setFixedSize(80, 80)
-        lbl.setStyleSheet("border-radius: 40px; overflow: hidden;")
-
-        photo_bytes = get_member_photo(self._center_id, self._db_path)
+        self._has_photo = bool(photo_bytes)
         if photo_bytes:
             pix = QPixmap()
             pix.loadFromData(photo_bytes)
@@ -229,7 +251,7 @@ class MemberTabsWidget(QWidget):
                 x = (pix.width() - 80) // 2
                 y = (pix.height() - 80) // 2
                 pix = pix.copy(x, y, 80, 80)
-            lbl.setPixmap(pix)
+            self._photo_label.setPixmap(pix)
         else:
             pix = QPixmap(80, 80)
             pix.fill(QtCore.GlobalColor.transparent)
@@ -242,9 +264,50 @@ class MemberTabsWidget(QWidget):
             painter.drawEllipse(28, 12, 24, 24)
             painter.drawEllipse(12, 46, 56, 40)
             painter.end()
-            lbl.setPixmap(pix)
+            self._photo_label.setPixmap(pix)
 
-        return lbl
+    def _change_photo(self):
+        from PyQt6.QtWidgets import QFileDialog
+        from db.members import set_member_photo, get_member_photo
+        import os
+        import tempfile
+
+        if self._has_photo:
+            if QMessageBox.question(
+                self, "Replace photo",
+                "Replace this member's existing photo?",
+            ) != QMessageBox.StandardButton.Yes:
+                return
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose photo", "",
+            "Images (*.jpg *.jpeg *.png *.bmp *.webp)",
+        )
+        if not path:
+            return
+
+        try:
+            data = to_jpeg_bytes(path)
+        except ValueError as exc:
+            QMessageBox.critical(self, "Invalid Image", str(exc))
+            return
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+        try:
+            tmp.write(data)
+            tmp.close()
+            set_member_photo(self._center_id, tmp.name, self._db_path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"Could not save photo:\n{exc}")
+            return
+        finally:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
+
+        self._set_photo_pixmap(get_member_photo(self._center_id, self._db_path))
+        self._log_event("EDIT", "Photo updated")
 
     @staticmethod
     def decode_auth_days_static(value: str) -> set[int]:
