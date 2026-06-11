@@ -273,6 +273,19 @@ QLabel#field_label {{
     font-size: 11px;
     padding-right: 2px;
 }}
+QLabel#notes_label {{
+    color: {t['accent_text']};
+    font-size: 11px;
+    font-weight: 700;
+}}
+QTextEdit#notes_edit {{
+    background-color: {t['accent_bg']};
+    border: 1px solid {t['border']};
+    border-radius: 6px;
+}}
+QTextEdit#notes_edit:focus {{
+    border-color: {t['accent']};
+}}
 QLabel#day_chip_on {{
     background-color: {t['accent']};
     color: #f4f6fd;
