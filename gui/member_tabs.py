@@ -117,6 +117,22 @@ def build_change_summary(old: dict, fields: dict) -> list[str]:
     return lines
 
 
+def to_jpeg_bytes(src_path: str) -> bytes:
+    """Load an image file and return JPEG-encoded bytes. Raises ValueError if the
+    file can't be read as an image."""
+    from PyQt6.QtGui import QImage
+    from PyQt6.QtCore import QBuffer, QByteArray
+    img = QImage(src_path)
+    if img.isNull():
+        raise ValueError("Could not read the selected image.")
+    ba = QByteArray()
+    buf = QBuffer(ba)
+    buf.open(QBuffer.OpenModeFlag.WriteOnly)
+    img.save(buf, "JPEG", 90)
+    buf.close()
+    return bytes(ba)
+
+
 class WeekdayChips(QWidget):
     """A row of seven weekday chips, Mon→Sun. Authorized days are filled with the
     accent color (object name 'day_chip_on'); the rest are dimmed
