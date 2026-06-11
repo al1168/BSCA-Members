@@ -43,7 +43,7 @@ FIELD_LABELS = {
     "first_name": "First Name", "last_name": "Last Name",
     "chinese_name": "Chinese Name", "gender": "Gender", "dob": "DOB",
     "member_id": "Member ID", "medicaid": "Medicaid", "medicare": "Medicare",
-    "ssn": "SSN", "language": "Language", "case_manager": "Case Manager",
+    "ssn": "SSN", "language": "Language Spoken", "case_manager": "Case Manager",
     "home_tell": "Home Phone", "cell": "Cell", "address": "Address",
     "emergency": "Emergency", "pcp": "PCP", "hospital": "Hospital",
     "hha": "HHA", "admission_date": "Admission Date", "notes": "Notes",
@@ -417,7 +417,7 @@ class MemberTabsWidget(QWidget):
         self._tabs.addTab(self._tab_enrollments, "Enrollments")
         self._tabs.addTab(self._tab_auths,
             "Auths ⚠" if warn else "Authorizations")
-        self._tabs.addTab(self._tab_avail, "Availability")
+        self._tabs.addTab(self._tab_avail, "Time Slot Availability")
         self._tabs.addTab(self._tab_unavail, "Unavailable Times")
         self._tabs.addTab(self._tab_absences, "Absences")
 
@@ -514,8 +514,6 @@ class MemberTabsWidget(QWidget):
             grid.addWidget(widget, state["row"], slot * 2 + 1, 1, wspan * 2 - 1)
 
         section("Schedule")
-        cell(0, "Enrollment Start", enroll_lbl)
-        state["row"] += 1
         cell(0, "Authorized Days", WeekdayChips(active_days), wspan=3)
         state["row"] += 1
         cell(0, "Auth Period", auth_period_lbl, wspan=2)
@@ -528,9 +526,10 @@ class MemberTabsWidget(QWidget):
         state["row"] += 1
         cell(0, "Gender", self._info_gender)
         cell(1, "DOB", self._info_dob)
-        cell(2, "Member ID", self._info_member_id)
+        cell(2, "SSN", self._info_ssn)
         state["row"] += 1
         cell(0, "Center ID", self._info_cid)
+        cell(1, "Enrollment Start", enroll_lbl)
         state["row"] += 1
 
         section("Contact")
@@ -543,15 +542,15 @@ class MemberTabsWidget(QWidget):
 
         section("Medical")
         cell(0, "Health Plan", self._info_plan)
-        cell(1, "Medicaid", self._info_medicaid)
-        cell(2, "Medicare", self._info_medicare)
+        cell(1, "Member ID", self._info_member_id)
+        cell(2, "Medicaid", self._info_medicaid)
         state["row"] += 1
-        cell(0, "SSN", self._info_ssn)
+        cell(0, "Medicare", self._info_medicare)
         cell(1, "PCP", self._info_pcp)
         cell(2, "Hospital", self._info_hospital)
         state["row"] += 1
         cell(0, "HHA", self._info_hha)
-        cell(1, "Language", self._info_language)
+        cell(1, "Language Spoken", self._info_language)
         state["row"] += 1
 
         section("Care")
