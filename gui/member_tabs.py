@@ -392,9 +392,10 @@ class MemberTabsWidget(QWidget):
 
         notes_row = QHBoxLayout()
         notes_lbl = QLabel("Notes")
-        notes_lbl.setObjectName("field_label")
+        notes_lbl.setObjectName("notes_label")
         notes_row.addWidget(notes_lbl, alignment=Qt.AlignmentFlag.AlignTop)
         self._info_notes = _NotesEdit()
+        self._info_notes.setObjectName("notes_edit")
         self._info_notes.setPlainText(self._member.get("notes", "") or "")
         notes_row.addWidget(self._info_notes, 1)
         right.addLayout(notes_row)

@@ -23,3 +23,11 @@ def test_sort_does_not_mutate_input():
     snapshot = list(auths)
     sort_auths_latest_first(auths)
     assert auths == snapshot
+
+
+def test_theme_has_notes_styles():
+    from gui.theme import build_qss, DARK, LIGHT
+    for tokens in (DARK, LIGHT):
+        qss = build_qss(tokens)
+        assert "notes_label" in qss
+        assert "notes_edit" in qss
