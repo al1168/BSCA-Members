@@ -13,26 +13,34 @@ _TEST_DB = os.path.abspath(
     )
 )
 
-_CREATE_ONE_OFF = """
-CREATE TABLE [OneOffAvailability] (
-    [ID] AUTOINCREMENT PRIMARY KEY,
-    [Center ID] LONG,
-    [date] DATETIME,
-    [avail_start] DATETIME,
-    [avail_end] DATETIME,
-    [Notes] MEMO
-)
-"""
+_CREATE_SQL = {
+    "OneOffAvailability": """
+        CREATE TABLE [OneOffAvailability] (
+            [ID] AUTOINCREMENT PRIMARY KEY,
+            [Center ID] LONG,
+            [date] DATETIME,
+            [avail_start] DATETIME,
+            [avail_end] DATETIME,
+            [Notes] MEMO
+        )
+    """,
+    "EmergencyContact": """
+        CREATE TABLE [EmergencyContact] (
+            [ID] AUTOINCREMENT PRIMARY KEY,
+            [Center ID] LONG,
+            [Full Name] TEXT(255),
+            [Phone Number] TEXT(255),
+            [Relationship] TEXT(255)
+        )
+    """,
+}
 
 
 @pytest.fixture(scope="session", autouse=True)
-def ensure_one_off_availability_table():
-    """Create [OneOffAvailability] in the test DB if it doesn't exist yet.
-
-    Dropped at session end so the test DB stays at its original schema.
-    This fixture is a no-op when the test DB is not present (integration
-    tests are skipped by their own pytestmark in that case).
-    """
+def ensure_optional_tables():
+    """Create tables that newer code queries but older test DBs may lack; drop the
+    ones we created at session end. No-op when the test DB is absent (integration
+    tests skip themselves in that case)."""
     if not os.path.exists(_TEST_DB):
         yield
         return
@@ -42,11 +50,12 @@ def ensure_one_off_availability_table():
 
     conn = pyodbc.connect(build_connection_string(_TEST_DB), autocommit=True)
     c = conn.cursor()
-    tables = {row.table_name for row in c.tables(tableType="TABLE")}
-    created = False
-    if "OneOffAvailability" not in tables:
-        c.execute(_CREATE_ONE_OFF)
-        created = True
+    existing = {row.table_name for row in c.tables(tableType="TABLE")}
+    created = []
+    for name, sql in _CREATE_SQL.items():
+        if name not in existing:
+            c.execute(sql)
+            created.append(name)
     conn.close()
 
     yield
@@ -54,8 +63,10 @@ def ensure_one_off_availability_table():
     if created:
         conn2 = pyodbc.connect(build_connection_string(_TEST_DB), autocommit=True)
         try:
-            conn2.cursor().execute("DROP TABLE [OneOffAvailability]")
-        except Exception:
-            pass
+            for name in created:
+                try:
+                    conn2.cursor().execute(f"DROP TABLE [{name}]")
+                except Exception:
+                    pass
         finally:
             conn2.close()
