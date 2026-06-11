@@ -331,6 +331,35 @@ def get_member_photo(center_id: int, db_path: str) -> bytes | None:
                 return None
 
 
+def set_member_photo(center_id: int, image_path: str, db_path: str) -> None:
+    """Store image_path (a JPEG file) in the member's Contacts.Photo attachment,
+    replacing any existing attachment. Uses a fresh writable DAO handle."""
+    import win32com.client
+    engine = win32com.client.Dispatch("DAO.DBEngine.120")
+    db = engine.OpenDatabase(db_path, False, False)  # shared, read-write
+    try:
+        rs = db.OpenRecordset(
+            f"SELECT * FROM [Contacts] WHERE [Center ID]={int(center_id)}"
+        )
+        if rs.EOF:
+            rs.Close()
+            raise ValueError(f"No contact with Center ID {center_id}")
+        rs.Edit()
+        child = rs.Fields("Photo").Value          # attachment child recordset
+        while not child.EOF:                      # clear existing attachment(s)
+            child.Delete()
+            child.MoveNext()
+        child.AddNew()
+        child.Fields("FileData").LoadFromFile(image_path)
+        child.Update()
+        rs.Update()
+        rs.Close()
+    finally:
+        db.Close()
+    # Drop the cached read-only handle so the next get_member_photo reads fresh.
+    _drop_dao_database(db_path)
+
+
 def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dict:
     """Fetch member + all 4 supporting tables over a cached connection.
 
