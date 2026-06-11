@@ -133,6 +133,13 @@ def to_jpeg_bytes(src_path: str) -> bytes:
     return bytes(ba)
 
 
+def sort_auths_latest_first(auths: list[dict]) -> list[dict]:
+    """Authorizations ordered by end date, latest first. Missing end dates sort
+    last. Returns a new list (does not mutate the input)."""
+    from datetime import date
+    return sorted(auths, key=lambda a: a.get("auth_end") or date.min, reverse=True)
+
+
 class WeekdayChips(QWidget):
     """A row of seven weekday chips, Mon→Sun. Authorized days are filled with the
     accent color (object name 'day_chip_on'); the rest are dimmed
@@ -906,7 +913,7 @@ class MemberTabsWidget(QWidget):
 
         latest = latest_authorization(self._authorizations)
         latest_id = latest["id"] if latest else None
-        for r, a in enumerate(self._authorizations):
+        for r, a in enumerate(sort_auths_latest_first(self._authorizations)):
             table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
             table.setItem(r, 1, QTableWidgetItem(str(a["auth_start"])))
             table.setItem(r, 2, QTableWidgetItem(str(a["auth_end"])))
