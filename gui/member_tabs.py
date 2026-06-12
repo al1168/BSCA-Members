@@ -90,6 +90,14 @@ def auth_warning(authorizations: list, today) -> str | None:
     return None
 
 
+def emergency_contact_warning(emergency_contacts: list) -> str | None:
+    """'Missing: Emergency Contact' when the member has no emergency contacts
+    on file, else None."""
+    if not emergency_contacts:
+        return "Missing: Emergency Contact"
+    return None
+
+
 def _normalize_value(v) -> str:
     """Normalize a field value for change comparison/display.
 
@@ -395,6 +403,15 @@ class MemberTabsWidget(QWidget):
             badge.setObjectName("warning_badge")
             badge.setMaximumHeight(26)
             top_row.addWidget(badge, alignment=Qt.AlignmentFlag.AlignVCenter)
+        # Emergency-contact badge: created here (hidden) so it can toggle live
+        # when contacts are added/removed in the Info tab. _fill_emergency_box
+        # sets its initial state.
+        self._emergency_badge = QLabel()
+        self._emergency_badge.setObjectName("warning_badge")
+        self._emergency_badge.setMaximumHeight(26)
+        self._emergency_badge.setVisible(False)
+        top_row.addWidget(self._emergency_badge,
+                          alignment=Qt.AlignmentFlag.AlignVCenter)
         right.addLayout(top_row)
 
         notes_row = QHBoxLayout()
@@ -656,6 +673,22 @@ class MemberTabsWidget(QWidget):
         btn_row.addStretch()
         btn_row.addWidget(btn_del)
         box.addLayout(btn_row)
+
+        self._update_emergency_badge()
+
+    def _update_emergency_badge(self):
+        """Show/hide the header 'Missing: Emergency Contact' badge to match the
+        current contact list. Called on initial render and after every
+        add/edit/delete (all of which funnel through _fill_emergency_box)."""
+        badge = getattr(self, "_emergency_badge", None)
+        if badge is None:
+            return
+        warn = emergency_contact_warning(self._emergency_contacts)
+        if warn:
+            badge.setText("⚠ " + warn)
+            badge.setVisible(True)
+        else:
+            badge.setVisible(False)
 
     def _open_emergency_dialog(self, existing: dict | None = None):
         from PyQt6.QtWidgets import (
