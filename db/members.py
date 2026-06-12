@@ -30,7 +30,8 @@ ALL_MEMBERS_QUERY = (
 
 INSERT_CONTACT = (
     "INSERT INTO [Contacts] ([Center ID], [Last Name], [First Name], "
-    "[Health Plan], [Address], [Long Lat]) VALUES (?, ?, ?, ?, ?, ?)"
+    "[Health Plan], [Address], [Long Lat], [Member ID], [Home Tell], [Cell]) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 
 SET_LONG_LAT = "UPDATE [Contacts] SET [Long Lat]=? WHERE [Center ID]=?"
@@ -697,6 +698,9 @@ def insert_member(
     authorization: dict | None,
     availability_rows: list[dict],
     long_lat: str = "",
+    member_id: str = "",
+    home_tell: str = "",
+    cell: str = "",
     db_path: str = "",
 ) -> None:
     """Insert a new member and all related records in one transaction."""
@@ -704,7 +708,8 @@ def insert_member(
     try:
         c = conn.cursor()
         c.execute(INSERT_CONTACT,
-                  (center_id, last_name, first_name, health_plan, address, long_lat))
+                  (center_id, last_name, first_name, health_plan, address,
+                   long_lat, member_id, home_tell, cell))
         c.execute(INSERT_ENROLLMENT, (center_id, enrollment_start, enrollment_end))
         if authorization:
             c.execute(

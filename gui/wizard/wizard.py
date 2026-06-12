@@ -151,6 +151,9 @@ class AddMemberWizard(QDialog):
                 authorization=data.get("authorization"),
                 availability_rows=data.get("availability_rows", []),
                 long_lat=c.get("long_lat", ""),
+                member_id=c.get("member_id", ""),
+                home_tell=c.get("home_tell", ""),
+                cell=c.get("cell", ""),
                 db_path=self._db_path,
             )
             if self._events_path:

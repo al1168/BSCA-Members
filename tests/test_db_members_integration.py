@@ -346,6 +346,40 @@ def test_update_availability_round_trips_changes():
         delete_availability(new_id, TEST_DB)
 
 
+def test_insert_member_persists_member_id_and_phones():
+    """insert_member writes Member ID, Home Tell and Cell into Contacts."""
+    from datetime import date
+    from db.members import (
+        insert_member, center_id_exists, get_member_context, _connect,
+    )
+
+    cid = 880099  # implausible test id
+    if center_id_exists(cid, TEST_DB):
+        return  # don't clobber real data; skip
+    insert_member(
+        center_id=cid, last_name="PHONETEST", first_name="Pat",
+        health_plan="HF", address="9 Pine St, New York, NY",
+        enrollment_start=date(2026, 1, 1), enrollment_end=None,
+        authorization=None, availability_rows=[],
+        member_id="M-880099", home_tell="212-555-0100", cell="646-555-0199",
+        db_path=TEST_DB,
+    )
+    try:
+        member = get_member_context(cid, TEST_DB)["member"]
+        assert member["member_id"] == "M-880099"
+        assert member["home_tell"] == "212-555-0100"
+        assert member["cell"] == "646-555-0199"
+    finally:
+        conn = _connect(TEST_DB)
+        try:
+            cc = conn.cursor()
+            cc.execute("DELETE FROM [Enrollment] WHERE [Center ID]=?", cid)
+            cc.execute("DELETE FROM [Contacts] WHERE [Center ID]=?", cid)
+            conn.commit()
+        finally:
+            conn.close()
+
+
 def test_long_lat_insert_and_set_round_trip():
     from datetime import date
     from db.members import (
