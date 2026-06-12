@@ -107,6 +107,23 @@ ONE_OFF_AVAILABILITY_SELECT = (
     "FROM [OneOffAvailability] WHERE [Center ID]=?"
 )
 
+INSERT_EMERGENCY_CONTACT = (
+    "INSERT INTO [EmergencyContact] ([Center ID], [Full Name], "
+    "[Phone Number], [Relationship]) VALUES (?, ?, ?, ?)"
+)
+
+UPDATE_EMERGENCY_CONTACT = (
+    "UPDATE [EmergencyContact] SET [Full Name]=?, [Phone Number]=?, "
+    "[Relationship]=? WHERE [ID]=?"
+)
+
+DELETE_EMERGENCY_CONTACT = "DELETE FROM [EmergencyContact] WHERE [ID]=?"
+
+EMERGENCY_CONTACT_SELECT = (
+    "SELECT [ID],[Center ID],[Full Name],[Phone Number],[Relationship] "
+    "FROM [EmergencyContact] WHERE [Center ID]=?"
+)
+
 
 def encode_auth_days(days: set[int]) -> str:
     """Convert {1, 3, 5} → '1,3,5'. Empty set → ''."""
@@ -150,6 +167,17 @@ def map_one_off_availability_row(row) -> dict:
         "avail_start": _access_hhmm(row[3]),
         "avail_end": _access_hhmm(row[4]),
         "notes": row[5] or "",
+    }
+
+
+def map_emergency_contact_row(row) -> dict:
+    """Map an EmergencyContact row. Null text fields become ''."""
+    return {
+        "id": int(row[0]),
+        "center_id": int(row[1]),
+        "full_name": row[2] or "",
+        "phone": row[3] or "",
+        "relationship": row[4] or "",
     }
 
 
@@ -440,6 +468,11 @@ def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dic
             map_one_off_availability_row(r) for r in c.fetchall()
         ]
 
+        c.execute(EMERGENCY_CONTACT_SELECT, center_id)
+        emergency_contacts = [
+            map_emergency_contact_row(r) for r in c.fetchall()
+        ]
+
         return {
             "member": member,
             "enrollments": enrollments,
@@ -447,6 +480,7 @@ def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dic
             "availability": availability,
             "absences": absences,
             "one_off_availability": one_off_availability,
+            "emergency_contacts": emergency_contacts,
         }
     except pyodbc.Error:
         # Cached connection may be stale (file moved, lock dropped); reopen once.
@@ -496,6 +530,23 @@ def get_one_off_availability(center_id: int, db_path: str,
         _drop_read_connection(db_path)
         if _retry:
             return get_one_off_availability(center_id, db_path, _retry=False)
+        raise
+
+
+def get_emergency_contacts(center_id: int, db_path: str,
+                           _retry: bool = True) -> list[dict]:
+    """Emergency contacts for a member (cached read connection). Mirrors
+    get_member_context's stale-connection retry."""
+    import pyodbc
+    conn = _read_connection(db_path)
+    try:
+        c = conn.cursor()
+        c.execute(EMERGENCY_CONTACT_SELECT, center_id)
+        return [map_emergency_contact_row(r) for r in c.fetchall()]
+    except pyodbc.Error:
+        _drop_read_connection(db_path)
+        if _retry:
+            return get_emergency_contacts(center_id, db_path, _retry=False)
         raise
 
 
@@ -896,6 +947,50 @@ def delete_one_off_availability(record_id: int, db_path: str) -> None:
     conn = _connect(db_path)
     try:
         conn.cursor().execute(DELETE_ONE_OFF_AVAILABILITY, (record_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def insert_emergency_contact(center_id: int, full_name: str, phone: str,
+                             relationship: str, db_path: str) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(
+            INSERT_EMERGENCY_CONTACT,
+            (center_id, full_name, phone, relationship),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def update_emergency_contact(record_id: int, full_name: str, phone: str,
+                             relationship: str, db_path: str) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(
+            UPDATE_EMERGENCY_CONTACT,
+            (full_name, phone, relationship, record_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def delete_emergency_contact(record_id: int, db_path: str) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(DELETE_EMERGENCY_CONTACT, (record_id,))
         conn.commit()
     except Exception:
         conn.rollback()
