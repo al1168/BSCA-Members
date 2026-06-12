@@ -182,6 +182,11 @@ class _PhotoLabel(QLabel):
         super().mousePressEvent(e)
 
 
+# Warn before attaching a document larger than this (native Access attachments
+# live inside the .accdb, which has a 2 GB ceiling).
+MAX_DOC_WARN_MB = 10
+
+
 class MemberTabsWidget(QWidget):
     def __init__(self, center_id: int, db_path: str, events_path: str,
                  api_key: str = "", parent=None):
@@ -1055,7 +1060,8 @@ class MemberTabsWidget(QWidget):
         layout = QVBoxLayout(w)
         layout.setContentsMargins(0, 12, 0, 0)
 
-        columns = ["ID", "Auth Start", "Auth End", "Days", "Health Plan", "Action"]
+        columns = ["ID", "Auth Start", "Auth End", "Days", "Health Plan",
+                   "Document", "Action"]
         table = QTableWidget(len(self._authorizations), len(columns))
         table.setHorizontalHeaderLabels(columns)
         table.horizontalHeaderItem(3).setToolTip("1=Mon  2=Tue  3=Wed  4=Thu  5=Fri")
@@ -1065,9 +1071,11 @@ class MemberTabsWidget(QWidget):
         hdr.setStretchLastSection(False)
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
+
+        from db.members import get_auth_ids_with_documents
+        doc_ids = get_auth_ids_with_documents(self._center_id, self._db_path)
 
         latest = latest_authorization(self._authorizations)
         latest_id = latest["id"] if latest else None
@@ -1078,11 +1086,23 @@ class MemberTabsWidget(QWidget):
             table.setCellWidget(r, 3, WeekdayChips(
                 decode_auth_days(a["auth_days"] or ""), compact=True))
             table.setItem(r, 4, QTableWidgetItem(a.get("health_plan", "") or ""))
+
+            has_doc = a["id"] in doc_ids
+            doc_btn = QPushButton("Open" if has_doc else "Attach")
+            doc_btn.setObjectName("btn_edit")
+            if has_doc:
+                doc_btn.clicked.connect(
+                    lambda _=False, auth=a: self._open_auth_document_menu(auth))
+            else:
+                doc_btn.clicked.connect(
+                    lambda _=False, auth=a: self._attach_auth_document(auth))
+            table.setCellWidget(r, 5, doc_btn)
+
             if a["id"] == latest_id:
                 btn = QPushButton("Edit")
                 btn.setObjectName("btn_edit")
                 btn.clicked.connect(lambda _=False, auth=a: self._edit_auth(auth))
-                table.setCellWidget(r, 5, btn)
+                table.setCellWidget(r, 6, btn)
 
         self._auth_table = table
         layout.addWidget(table)
@@ -1097,6 +1117,70 @@ class MemberTabsWidget(QWidget):
         btn_row.addWidget(btn_del)
         layout.addLayout(btn_row)
         return w
+
+    def _attach_auth_document(self, auth: dict, replace: bool = False):
+        from PyQt6.QtWidgets import QFileDialog
+        from db.members import set_auth_document
+        import os
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose document", "",
+            "Documents (*.pdf *.jpg *.jpeg *.png *.tif *.tiff *.doc *.docx)",
+        )
+        if not path:
+            return
+        try:
+            size_mb = os.path.getsize(path) / (1024 * 1024)
+        except OSError:
+            size_mb = 0
+        if size_mb > MAX_DOC_WARN_MB:
+            if QMessageBox.question(
+                self, "Large file",
+                f"This file is {size_mb:.1f} MB. Large attachments grow the database "
+                f"quickly (Access has a 2 GB limit). Attach it anyway?",
+            ) != QMessageBox.StandardButton.Yes:
+                return
+        try:
+            set_auth_document(auth["id"], path, self._db_path)
+            verb = "replaced" if replace else "attached"
+            self._after_auth_change(
+                f"Auth document {verb}: {auth['auth_start']} – {auth['auth_end']}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"Could not attach document:\n{exc}")
+
+    def _open_auth_document_menu(self, auth: dict):
+        box = QMessageBox(self)
+        box.setWindowTitle("Authorization Document")
+        box.setText(
+            f"Document for authorization {auth['auth_start']} – {auth['auth_end']}.")
+        open_btn = box.addButton("Open", QMessageBox.ButtonRole.AcceptRole)
+        replace_btn = box.addButton("Replace", QMessageBox.ButtonRole.ActionRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is open_btn:
+            self._do_open_auth_document(auth)
+        elif clicked is replace_btn:
+            self._attach_auth_document(auth, replace=True)
+
+    def _do_open_auth_document(self, auth: dict):
+        from db.members import save_auth_document
+        import os
+        import tempfile
+
+        tmp_dir = tempfile.mkdtemp(prefix="authdoc_")
+        try:
+            path = save_auth_document(auth["id"], tmp_dir, self._db_path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"Could not open document:\n{exc}")
+            return
+        if not path:
+            QMessageBox.information(self, "No document", "No document is attached.")
+            return
+        try:
+            os.startfile(path)  # Windows: open in the default application
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"Could not open the file:\n{exc}")
 
     def _after_auth_change(self, description: str | None):
         """Re-sync the plan, reload auths, refresh the tab, and (optionally)

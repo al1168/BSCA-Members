@@ -388,6 +388,93 @@ def set_member_photo(center_id: int, image_path: str, db_path: str) -> None:
     _drop_dao_database(db_path)
 
 
+def set_auth_document(auth_id: int, file_path: str, db_path: str) -> None:
+    """Store file_path in the authorization's [Document] attachment, replacing any
+    existing one. Uses a fresh writable DAO handle (the cached one is read-only).
+    The file is stored as-is (PDFs/images preserved byte-for-byte)."""
+    import win32com.client
+    engine = win32com.client.Dispatch("DAO.DBEngine.120")
+    db = engine.OpenDatabase(db_path, False, False)  # shared, read-write
+    try:
+        rs = db.OpenRecordset(
+            f"SELECT * FROM [Authorization] WHERE [ID]={int(auth_id)}"
+        )
+        if rs.EOF:
+            rs.Close()
+            raise ValueError(f"No authorization with ID {auth_id}")
+        rs.Edit()
+        child = rs.Fields("Document").Value       # attachment child recordset
+        while not child.EOF:                      # clear existing attachment(s)
+            child.Delete()
+            child.MoveNext()
+        child.AddNew()
+        child.Fields("FileData").LoadFromFile(file_path)
+        child.Update()
+        rs.Update()
+        rs.Close()
+    finally:
+        db.Close()
+    _drop_dao_database(db_path)
+
+
+def save_auth_document(auth_id: int, dest_dir: str, db_path: str) -> str | None:
+    """Write the authorization's attached document into dest_dir (using its original
+    file name) and return the written path, or None if there is no document. Uses
+    the cached read DAO handle (like get_member_photo)."""
+    if not os.path.exists(db_path):
+        return None
+    for attempt in (1, 2):
+        try:
+            db = _dao_database(db_path)
+            rs = db.OpenRecordset(
+                f"SELECT * FROM [Authorization] WHERE [ID]={int(auth_id)}"
+            )
+            if rs.EOF:
+                rs.Close()
+                return None
+            child = rs.Fields("Document").Value
+            if child.EOF:
+                child.Close()
+                rs.Close()
+                return None
+            dest = os.path.join(dest_dir, str(child.Fields("FileName").Value))
+            child.Fields("FileData").SaveToFile(dest)
+            child.Close()
+            rs.Close()
+            return dest
+        except Exception:
+            _drop_dao_database(db_path)
+            if attempt == 2:
+                return None
+
+
+def get_auth_ids_with_documents(center_id: int, db_path: str) -> set[int]:
+    """Authorization ids (for a member) that have a [Document] attachment. Cached
+    read DAO handle. Returns an empty set on any error (e.g. the [Document] column
+    not yet added in Access), so the UI still renders."""
+    if not os.path.exists(db_path):
+        return set()
+    for attempt in (1, 2):
+        try:
+            db = _dao_database(db_path)
+            rs = db.OpenRecordset(
+                f"SELECT * FROM [Authorization] WHERE [Center ID]={int(center_id)}"
+            )
+            ids: set[int] = set()
+            while not rs.EOF:
+                child = rs.Fields("Document").Value
+                if not child.EOF:
+                    ids.add(int(rs.Fields("ID").Value))
+                child.Close()
+                rs.MoveNext()
+            rs.Close()
+            return ids
+        except Exception:
+            _drop_dao_database(db_path)
+            if attempt == 2:
+                return set()
+
+
 def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dict:
     """Fetch member + all 4 supporting tables over a cached connection.
 
