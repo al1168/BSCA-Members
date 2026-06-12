@@ -154,6 +154,7 @@ class AddMemberWizard(QDialog):
                 member_id=c.get("member_id", ""),
                 home_tell=c.get("home_tell", ""),
                 cell=c.get("cell", ""),
+                dob=c.get("dob"),
                 db_path=self._db_path,
             )
             if self._events_path:

@@ -29,6 +29,7 @@ class StepReview(QWidget):
             f"Name: {m.get('last_name')}, {m.get('first_name')}",
             f"Center ID: {m.get('center_id')}",
             f"Member ID: {m.get('member_id') or '—'}",
+            f"Date of Birth: {m.get('dob') or '—'}",
             f"Health Plan: {m.get('health_plan')}",
             f"Home Phone: {m.get('home_tell') or '—'}",
             f"Cell: {m.get('cell') or '—'}",

@@ -13,12 +13,14 @@ def qapp():
 
 
 def _data():
+    from datetime import date
     return {
         "contact": {
             "first_name": "Jane",
             "last_name": "Doe",
             "center_id": 999001,
             "member_id": "M12345",
+            "dob": date(1950, 6, 15),
             "health_plan": "HF",
             "home_tell": "212-555-0100",
             "cell": "646-555-0199",
@@ -43,3 +45,10 @@ def test_review_shows_both_phones(qapp):
     body = w._body.text()
     assert "212-555-0100" in body
     assert "646-555-0199" in body
+
+
+def test_review_shows_dob(qapp):
+    from gui.wizard.step_review import StepReview
+    w = StepReview()
+    w.populate(_data())
+    assert "1950-06-15" in w._body.text()

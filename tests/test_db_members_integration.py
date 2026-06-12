@@ -346,8 +346,13 @@ def test_update_availability_round_trips_changes():
         delete_availability(new_id, TEST_DB)
 
 
-def test_insert_member_persists_member_id_and_phones():
-    """insert_member writes Member ID, Home Tell and Cell into Contacts."""
+def test_insert_member_persists_member_id_phones_and_dob():
+    """insert_member writes Member ID, Home Tell, Cell and DOB into Contacts.
+
+    DOB is passed as a datetime.date (the production [DOB] is Access Date/Time).
+    The shared fixture's [DOB] is still legacy Short Text, so we only assert the
+    year survives the round-trip here — the Date/Time storage itself is proven in
+    test_dob_round_trips_as_access_datetime below."""
     from datetime import date
     from db.members import (
         insert_member, center_id_exists, get_member_context, _connect,
@@ -362,6 +367,7 @@ def test_insert_member_persists_member_id_and_phones():
         enrollment_start=date(2026, 1, 1), enrollment_end=None,
         authorization=None, availability_rows=[],
         member_id="M-880099", home_tell="212-555-0100", cell="646-555-0199",
+        dob=date(1948, 5, 14),
         db_path=TEST_DB,
     )
     try:
@@ -369,6 +375,7 @@ def test_insert_member_persists_member_id_and_phones():
         assert member["member_id"] == "M-880099"
         assert member["home_tell"] == "212-555-0100"
         assert member["cell"] == "646-555-0199"
+        assert "1948" in member["dob"]  # date forwarded through to [DOB]
     finally:
         conn = _connect(TEST_DB)
         try:
@@ -378,6 +385,35 @@ def test_insert_member_persists_member_id_and_phones():
             conn.commit()
         finally:
             conn.close()
+
+
+def test_dob_round_trips_as_access_datetime():
+    """A datetime.date binds correctly to an Access Date/Time column — the type
+    Contacts.[DOB] will have in production — and reads back as a real date, not
+    text. Uses a dedicated Date/Time table because the shared fixture's [DOB] is
+    still legacy Short Text."""
+    from datetime import date, datetime
+    import pyodbc
+    from monthly_schedule.db import build_connection_string
+
+    conn = pyodbc.connect(build_connection_string(TEST_DB), autocommit=True)
+    c = conn.cursor()
+    existing = {row.table_name for row in c.tables(tableType="TABLE")}
+    if "DOBTypeTest" in existing:
+        c.execute("DROP TABLE [DOBTypeTest]")
+    c.execute("CREATE TABLE [DOBTypeTest] ([ID] LONG, [DOB] DATETIME)")
+    try:
+        c.execute("INSERT INTO [DOBTypeTest] ([ID],[DOB]) VALUES (?,?)",
+                  (1, date(1948, 5, 14)))
+        stored = c.execute(
+            "SELECT [DOB] FROM [DOBTypeTest] WHERE [ID]=1"
+        ).fetchone()[0]
+        # Stored as a real temporal value, not a string, preserving the date.
+        assert isinstance(stored, (date, datetime))
+        assert (stored.year, stored.month, stored.day) == (1948, 5, 14)
+    finally:
+        c.execute("DROP TABLE [DOBTypeTest]")
+        conn.close()
 
 
 def test_long_lat_insert_and_set_round_trip():

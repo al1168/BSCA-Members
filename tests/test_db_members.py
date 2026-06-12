@@ -21,7 +21,7 @@ def test_all_members_query_selects_required_columns():
 def test_insert_contact_targets_correct_table():
     assert "INSERT INTO [Contacts]" in INSERT_CONTACT
     for col in ("[Center ID]", "[Last Name]", "[First Name]", "[Health Plan]",
-                "[Address]", "[Member ID]", "[Home Tell]", "[Cell]"):
+                "[Address]", "[Member ID]", "[Home Tell]", "[Cell]", "[DOB]"):
         assert col in INSERT_CONTACT
 
 
@@ -160,8 +160,8 @@ def test_insert_contact_includes_long_lat():
     from db.members import INSERT_CONTACT
     assert "[Long Lat]" in INSERT_CONTACT
     # Center ID, Last Name, First Name, Health Plan, Address, Long Lat,
-    # Member ID, Home Tell, Cell
-    assert INSERT_CONTACT.count("?") == 9
+    # Member ID, Home Tell, Cell, DOB
+    assert INSERT_CONTACT.count("?") == 10
 
 
 def test_set_long_lat_targets_correct_columns():

@@ -1,8 +1,15 @@
 from PyQt6.QtWidgets import (
-    QWidget, QFormLayout, QLineEdit, QComboBox, QLabel, QVBoxLayout,
+    QWidget, QFormLayout, QLineEdit, QComboBox, QLabel, QVBoxLayout, QDateEdit,
 )
+from PyQt6.QtCore import QDate
 from db.members import HEALTH_PLANS
 from gui.address_autocomplete import AddressAutocomplete
+
+# DOB is required, but a QDateEdit always holds a value. We start it on this
+# sentinel (= its minimumDate, shown as "Select date of birth") and treat the
+# field as unset until the user moves off it. Same trick as the Enrollment End
+# date in step_enrollment.
+DOB_SENTINEL = QDate(1900, 1, 1)
 
 
 class StepContact(QWidget):
@@ -26,6 +33,13 @@ class StepContact(QWidget):
         self.center_id.setPlaceholderText("e.g. 10042")
         self.member_id = QLineEdit()
         self.member_id.setPlaceholderText("Health plan member / insurance ID")
+        self.dob = QDateEdit()
+        self.dob.setCalendarPopup(True)
+        self.dob.setDisplayFormat("M/d/yyyy")
+        self.dob.setMinimumDate(DOB_SENTINEL)
+        self.dob.setMaximumDate(QDate.currentDate())  # no future birth dates
+        self.dob.setSpecialValueText("Select date of birth")
+        self.dob.setDate(DOB_SENTINEL)
         self.health_plan = QComboBox()
         self.health_plan.addItem("")
         self.health_plan.addItems(HEALTH_PLANS)
@@ -43,6 +57,7 @@ class StepContact(QWidget):
         form.addRow("Last Name *", self.last_name)
         form.addRow("Center ID *", self.center_id)
         form.addRow("Member ID *", self.member_id)
+        form.addRow("Date of Birth *", self.dob)
         form.addRow("Health Plan *", self.health_plan)
         form.addRow("Home Phone", self.home_tell)
         form.addRow("Cell", self.cell)
@@ -77,6 +92,9 @@ class StepContact(QWidget):
         if not member_id:
             self._error_label.setText("Member ID is required.")
             return False
+        if self.dob.date() == DOB_SENTINEL:
+            self._error_label.setText("Date of Birth is required.")
+            return False
         if not plan:
             self._error_label.setText("Health Plan is required.")
             return False
@@ -100,6 +118,8 @@ class StepContact(QWidget):
             "last_name": self.last_name.text().strip(),
             "center_id": int(self.center_id.text().strip()),
             "member_id": self.member_id.text().strip(),
+            "dob": (self.dob.date().toPyDate()
+                    if self.dob.date() != DOB_SENTINEL else None),
             "health_plan": self.health_plan.currentText(),
             "home_tell": self.home_tell.text().strip(),
             "cell": self.cell.text().strip(),

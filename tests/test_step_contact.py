@@ -14,12 +14,14 @@ def qapp():
 
 def _make_filled():
     """A StepContact with every required field set to a valid value."""
+    from PyQt6.QtCore import QDate
     from gui.wizard.step_contact import StepContact
     w = StepContact()
     w.first_name.setText("Jane")
     w.last_name.setText("Doe")
     w.center_id.setText("999001")
     w.member_id.setText("M12345")
+    w.dob.setDate(QDate(1950, 6, 15))
     w.health_plan.setCurrentText("HF")
     w.home_tell.setText("212-555-0100")
     w.cell.setText("")
@@ -75,3 +77,18 @@ def test_collect_includes_new_fields(qapp):
     assert d["member_id"] == "M12345"
     assert d["home_tell"] == "212-555-0100"
     assert d["cell"] == ""
+
+
+def test_validate_rejects_unset_dob(qapp):
+    w = _make_filled()
+    w.dob.setDate(w.dob.minimumDate())  # the "Select date of birth" sentinel
+    assert w.validate("dummy.accdb") is False
+    assert "Date of Birth" in w._error_label.text()
+
+
+def test_collect_returns_dob_as_date(qapp):
+    # Production Contacts.[DOB] is an Access Date/Time column, so collect()
+    # yields a datetime.date that pyodbc binds straight to it.
+    from datetime import date
+    w = _make_filled()
+    assert w.collect()["dob"] == date(1950, 6, 15)
