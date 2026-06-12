@@ -203,6 +203,7 @@ class MemberTabsWidget(QWidget):
         self._availability = []
         self._absences = []
         self._one_off = []
+        self._emergency_contacts = []
         try:
             ctx = get_member_context(self._center_id, self._db_path)
             self._member = ctx["member"]
@@ -211,6 +212,7 @@ class MemberTabsWidget(QWidget):
             self._availability = ctx["availability"]
             self._absences = ctx["absences"]
             self._one_off = ctx.get("one_off_availability", [])
+            self._emergency_contacts = ctx.get("emergency_contacts", [])
         except Exception as exc:
             QMessageBox.critical(self, "Load Error", str(exc))
 
@@ -539,7 +541,6 @@ class MemberTabsWidget(QWidget):
         state["row"] += 1
         cell(0, "Home Phone", self._info_home_tell)
         cell(1, "Cell", self._info_cell)
-        cell(2, "Emergency", self._info_emergency)
         state["row"] += 1
 
         section("Medical")
@@ -558,6 +559,14 @@ class MemberTabsWidget(QWidget):
         cell(0, "Case Manager", self._info_case_manager)
         cell(1, "Admission Date", self._info_admission_date)
         state["row"] += 1
+
+        section("Emergency")
+        self._emergency_box = QWidget()
+        ebox = QVBoxLayout(self._emergency_box)
+        ebox.setContentsMargins(0, 0, 0, 0)
+        grid.addWidget(self._emergency_box, state["row"], 0, 1, 6)
+        state["row"] += 1
+        self._fill_emergency_box()
 
         # ── Assemble (scroll area is a safety net; content fits unscrolled) ─
         content = QWidget()
@@ -589,6 +598,155 @@ class MemberTabsWidget(QWidget):
         outer_layout.addLayout(btn_row)
 
         return outer
+
+    def _fill_emergency_box(self):
+        """(Re)build the embedded emergency-contacts table + buttons in place."""
+        from PyQt6.QtWidgets import (
+            QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView,
+        )
+        box = self._emergency_box.layout()
+        while box.count():
+            item = box.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+            elif item.layout() is not None:
+                sub = item.layout()
+                while sub.count():
+                    sw = sub.takeAt(0).widget()
+                    if sw is not None:
+                        sw.deleteLater()
+
+        columns = ["Full Name", "Phone", "Relationship", "Action"]
+        table = QTableWidget(len(self._emergency_contacts), len(columns))
+        table.setHorizontalHeaderLabels(columns)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        hdr = table.horizontalHeader()
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(34)
+
+        for r, ec in enumerate(self._emergency_contacts):
+            name_item = QTableWidgetItem(ec["full_name"])
+            name_item.setData(Qt.ItemDataRole.UserRole, ec["id"])
+            table.setItem(r, 0, name_item)
+            table.setItem(r, 1, QTableWidgetItem(ec["phone"]))
+            table.setItem(r, 2, QTableWidgetItem(ec["relationship"]))
+            btn = QPushButton("Edit")
+            btn.setObjectName("btn_edit")
+            btn.clicked.connect(lambda _=False, e=ec: self._edit_emergency(e))
+            table.setCellWidget(r, 3, btn)
+
+        self._emergency_table = table
+        box.addWidget(table)
+
+        btn_row = QHBoxLayout()
+        btn_add = QPushButton("+ Add")
+        btn_add.clicked.connect(self._add_emergency)
+        btn_del = QPushButton("Delete Selected")
+        btn_del.clicked.connect(lambda: self._delete_emergency(table))
+        btn_row.addWidget(btn_add)
+        btn_row.addStretch()
+        btn_row.addWidget(btn_del)
+        box.addLayout(btn_row)
+
+    def _open_emergency_dialog(self, existing: dict | None = None):
+        from PyQt6.QtWidgets import (
+            QDialog, QFormLayout, QLineEdit, QDialogButtonBox,
+        )
+        e = existing or {}
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Edit Emergency Contact" if existing
+                           else "Add Emergency Contact")
+        form = QFormLayout(dlg)
+        name_edit = QLineEdit(e.get("full_name", ""))
+        phone_edit = QLineEdit(e.get("phone", ""))
+        rel_edit = QLineEdit(e.get("relationship", ""))
+        form.addRow("Full Name:", name_edit)
+        form.addRow("Phone Number:", phone_edit)
+        form.addRow("Relationship:", rel_edit)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
+                                QDialogButtonBox.StandardButton.Cancel)
+        btns.rejected.connect(dlg.reject)
+        form.addRow(btns)
+
+        def on_accept():
+            if not name_edit.text().strip():
+                QMessageBox.warning(dlg, "Validation", "Full Name is required.")
+                return
+            dlg.accept()
+
+        btns.accepted.connect(on_accept)
+        if not dlg.exec():
+            return None
+        return {
+            "full_name": name_edit.text().strip(),
+            "phone": phone_edit.text().strip(),
+            "relationship": rel_edit.text().strip(),
+        }
+
+    def _add_emergency(self):
+        from db.members import insert_emergency_contact, get_emergency_contacts
+        result = self._open_emergency_dialog()
+        if not result:
+            return
+        try:
+            insert_emergency_contact(
+                self._center_id, result["full_name"], result["phone"],
+                result["relationship"], self._db_path,
+            )
+            self._emergency_contacts = get_emergency_contacts(
+                self._center_id, self._db_path)
+            self._fill_emergency_box()
+            self._log_event("EDIT",
+                            f"Emergency contact added: {result['full_name']}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
+
+    def _edit_emergency(self, entry: dict):
+        from db.members import update_emergency_contact, get_emergency_contacts
+        result = self._open_emergency_dialog(existing=entry)
+        if not result:
+            return
+        try:
+            update_emergency_contact(
+                entry["id"], result["full_name"], result["phone"],
+                result["relationship"], self._db_path,
+            )
+            self._emergency_contacts = get_emergency_contacts(
+                self._center_id, self._db_path)
+            self._fill_emergency_box()
+            self._log_event("EDIT",
+                            f"Emergency contact edited: {result['full_name']}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
+
+    def _delete_emergency(self, table):
+        row = table.currentRow()
+        if row < 0:
+            return
+        item = table.item(row, 0)
+        record_id = item.data(Qt.ItemDataRole.UserRole) if item else None
+        if record_id is None:
+            return
+        if QMessageBox.question(self, "Confirm", "Delete this emergency contact?") \
+                == QMessageBox.StandardButton.Yes:
+            from db.members import delete_emergency_contact, get_emergency_contacts
+            entry = next((e for e in self._emergency_contacts
+                          if e["id"] == record_id), None)
+            try:
+                delete_emergency_contact(record_id, self._db_path)
+                self._emergency_contacts = get_emergency_contacts(
+                    self._center_id, self._db_path)
+                self._fill_emergency_box()
+                if entry:
+                    self._log_event(
+                        "EDIT",
+                        f"Emergency contact deleted: {entry['full_name']}")
+            except Exception as exc:
+                QMessageBox.critical(self, "Error", str(exc))
 
     def _discard_info(self):
         m = self._member
