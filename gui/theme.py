@@ -156,6 +156,26 @@ QLineEdit:read-only {{
     color: {t['text3']};
     border-style: dashed;
 }}
+/* Inline view/edit fields on the member Info tab: flat selectable text by
+   default, a box only while being edited, a left accent when changed-unsaved. */
+QLineEdit#info_field, QLineEdit#info_field:read-only {{
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    color: {t['text']};
+    padding: 3px 2px;
+}}
+QLineEdit#info_field[changed="true"],
+QLineEdit#info_field[changed="true"]:read-only {{
+    border-left: 2px solid {t['accent']};
+    padding-left: 7px;
+}}
+QLineEdit#info_field[editing="true"] {{
+    background-color: {t['raised']};
+    border: 1px solid {t['accent']};
+    border-radius: 4px;
+    padding: 3px 6px;
+}}
 QComboBox::drop-down {{
     border: none;
     padding-right: 8px;

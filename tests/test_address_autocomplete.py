@@ -23,6 +23,22 @@ def test_no_key_is_plain_field(qtbot):
     assert w._completer is None  # no autocomplete machinery without a key
 
 
+def test_view_edit_mode_starts_read_only_and_can_edit(qtbot):
+    """In view_edit mode (member Info tab) the address shows as read-only,
+    selectable text and only becomes editable on _begin_edit; the default mode
+    (Add Member wizard) stays editable."""
+    from gui.address_autocomplete import AddressAutocomplete
+    view = AddressAutocomplete("", view_edit=True)
+    qtbot.addWidget(view)
+    assert view._edit.isReadOnly() is True
+    view._begin_edit()
+    assert view._edit.isReadOnly() is False
+
+    editable = AddressAutocomplete("")          # wizard default
+    qtbot.addWidget(editable)
+    assert editable._edit.isReadOnly() is False
+
+
 def test_inner_field_not_squeezed_when_widget_constrained(qtbot):
     """Regression: at high-DPI / short windows the wrapper can be allocated too
     little vertical space; its inner QLineEdit must NOT be compressed below its

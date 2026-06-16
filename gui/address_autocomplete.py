@@ -17,6 +17,18 @@ AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete"
 DETAILS_URL = "https://places.googleapis.com/v1/places"  # + /{place_id}
 
 
+def _pencil_icon():
+    """A small pencil glyph as a QIcon for the inline 'edit' affordance."""
+    from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
+    pm = QPixmap(16, 16)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setPen(QColor("#9aa0ad"))
+    p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "✎")
+    p.end()
+    return QIcon(pm)
+
+
 def parse_place_location(details_json) -> str:
     """Extract 'lng,lat' from a Places API (New) Place Details response, or ''.
 
@@ -39,13 +51,14 @@ class AddressAutocomplete(QWidget):
     """
     textChanged = pyqtSignal(str)
 
-    def __init__(self, api_key: str = "", parent=None):
+    def __init__(self, api_key: str = "", view_edit: bool = False, parent=None):
         super().__init__(parent)
         self._api_key = api_key or ""
         self._long_lat = ""
         self._expecting_details = False
         self._session = uuid.uuid4().hex
         self._pred_by_desc = {}  # description -> place_id for the current suggestions
+        self._view_edit = view_edit
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -59,6 +72,20 @@ class AddressAutocomplete(QWidget):
         self._edit.setMinimumHeight(self._edit.sizeHint().height())
         self._edit.textChanged.connect(self.textChanged)  # proxy for dirty tracking
         layout.addWidget(self._edit)
+
+        # view_edit (member Info tab): flat, selectable text by default; a pencil
+        # on hover turns it editable. Default (Add Member wizard) stays editable.
+        self._pencil = None
+        if view_edit:
+            self._edit.setObjectName("info_field")
+            self._edit.setReadOnly(True)
+            self._edit.setCursorPosition(0)
+            self._pencil = self._edit.addAction(
+                _pencil_icon(), QLineEdit.ActionPosition.TrailingPosition)
+            self._pencil.setToolTip("Edit")
+            self._pencil.triggered.connect(self._begin_edit)
+            self._pencil.setVisible(False)
+            self._edit.editingFinished.connect(self._finish_edit)
 
         self._status = QLabel("")
         self._status.setStyleSheet("color:#3d9e6e; font-size:10px;")
@@ -85,6 +112,37 @@ class AddressAutocomplete(QWidget):
             self._edit.textEdited.connect(self._on_typed)
         else:
             self._completer = None
+
+    # ── view_edit (inline view→edit) ──────────────────────────────────────
+    def _begin_edit(self):
+        if not self._view_edit or not self._edit.isReadOnly():
+            return
+        self._edit.setReadOnly(False)
+        self._edit.setProperty("editing", True)
+        self._edit.style().unpolish(self._edit)
+        self._edit.style().polish(self._edit)
+        if self._pencil is not None:
+            self._pencil.setVisible(False)
+        self._edit.setFocus(Qt.FocusReason.MouseFocusReason)
+        self._edit.selectAll()
+
+    def _finish_edit(self):
+        if not self._view_edit or self._edit.isReadOnly():
+            return
+        self._edit.setReadOnly(True)
+        self._edit.setProperty("editing", False)
+        self._edit.style().unpolish(self._edit)
+        self._edit.style().polish(self._edit)
+
+    def enterEvent(self, e):
+        if self._pencil is not None and self._edit.isReadOnly():
+            self._pencil.setVisible(True)
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        if self._pencil is not None and self._edit.isReadOnly():
+            self._pencil.setVisible(False)
+        super().leaveEvent(e)
 
     # ── QLineEdit-ish API ─────────────────────────────────────────────────
     def text(self) -> str:

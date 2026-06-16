@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QLabel,
-    QPushButton, QMessageBox, QTextEdit, QSizePolicy,
+    QPushButton, QMessageBox, QTextEdit, QSizePolicy, QLineEdit,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -188,6 +188,96 @@ class _PhotoLabel(QLabel):
         if e.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(e)
+
+
+def _pencil_icon():
+    """A small pencil glyph as a QIcon for the inline 'edit' affordance."""
+    from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
+    pm = QPixmap(16, 16)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setPen(QColor("#9aa0ad"))
+    p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "✎")  # ✎
+    p.end()
+    return QIcon(pm)
+
+
+class _ViewEditLineEdit(QLineEdit):
+    """A field that reads as flat, selectable text (highlight + copy) and only
+    becomes editable when the user clicks its pencil (shown on hover).
+
+    It stays a QLineEdit, so .text()/.setText()/textChanged work unchanged with
+    the existing Save/Discard and dirty-tracking logic. ``editable=False`` makes
+    a plain flat read-only field (no pencil) for values like Center ID.
+    """
+
+    def __init__(self, value: str = "", editable: bool = True, parent=None):
+        super().__init__(value or "", parent)
+        self._editable = editable
+        self._baseline = value or ""
+        self._edit_start = value or ""
+        self.setObjectName("info_field")
+        self.setReadOnly(True)
+        self.setCursorPosition(0)
+        self._pencil = None
+        if editable:
+            self._pencil = self.addAction(
+                _pencil_icon(), QLineEdit.ActionPosition.TrailingPosition)
+            self._pencil.setToolTip("Edit")
+            self._pencil.triggered.connect(self._begin_edit)
+            self._pencil.setVisible(False)          # shown on hover
+            self.editingFinished.connect(self._finish_edit)
+            self.textChanged.connect(self._refresh_changed)
+        self._refresh_changed()
+
+    def _repolish(self):
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def enterEvent(self, e):
+        if self._pencil is not None and self.isReadOnly():
+            self._pencil.setVisible(True)
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        if self._pencil is not None and self.isReadOnly():
+            self._pencil.setVisible(False)
+        super().leaveEvent(e)
+
+    def _begin_edit(self):
+        if not self._editable or not self.isReadOnly():
+            return
+        self._edit_start = self.text()
+        self.setReadOnly(False)
+        if self._pencil is not None:
+            self._pencil.setVisible(False)
+        self.setProperty("editing", True)
+        self._repolish()
+        self.setFocus(Qt.FocusReason.MouseFocusReason)
+        self.selectAll()
+
+    def _finish_edit(self):
+        if self.isReadOnly():
+            return
+        self.setReadOnly(True)
+        self.setProperty("editing", False)
+        self._repolish()
+
+    def keyPressEvent(self, e):
+        if not self.isReadOnly() and e.key() == Qt.Key.Key_Escape:
+            self.setText(self._edit_start)     # revert the in-progress edit
+            self._finish_edit()
+            return
+        super().keyPressEvent(e)
+
+    def _refresh_changed(self):
+        self.setProperty("changed", self.text() != self._baseline)
+        self._repolish()
+
+    def set_baseline(self):
+        """Treat the current text as the saved value (clears the changed mark)."""
+        self._baseline = self.text()
+        self._refresh_changed()
 
 
 # Warn before attaching a document larger than this (native Access attachments
@@ -496,8 +586,9 @@ class MemberTabsWidget(QWidget):
 
         m = self._member
 
-        def field(key: str) -> QLineEdit:
-            return QLineEdit(m.get(key, "") or "")
+        def field(key: str) -> "_ViewEditLineEdit":
+            # Flat, selectable text that becomes editable on the hover pencil.
+            return _ViewEditLineEdit(m.get(key, "") or "")
 
         # ── Widgets (attribute names unchanged so save/discard/dirty work) ──
         self._info_first     = field("first_name")
@@ -505,19 +596,19 @@ class MemberTabsWidget(QWidget):
         self._info_chinese   = field("chinese_name")
         self._info_gender    = field("gender")
         self._info_dob       = field("dob")
-        self._info_cid       = QLineEdit(str(self._center_id))
-        self._info_cid.setReadOnly(True)
+        self._info_cid       = _ViewEditLineEdit(str(self._center_id),
+                                                 editable=False)
         self._info_member_id = field("member_id")
 
         from gui.address_autocomplete import AddressAutocomplete
-        self._info_address = AddressAutocomplete(self._api_key)
+        self._info_address = AddressAutocomplete(self._api_key, view_edit=True)
         self._info_address.set_address(m.get("address", "") or "")
         self._info_home_tell = field("home_tell")
         self._info_cell      = field("cell")
         self._info_emergency = field("emergency")
 
-        self._info_plan = QLineEdit(m.get("health_plan", "") or "")
-        self._info_plan.setReadOnly(True)
+        self._info_plan = _ViewEditLineEdit(m.get("health_plan", "") or "",
+                                            editable=False)
         self._info_medicaid = field("medicaid")
         self._info_medicare = field("medicare")
         self._info_ssn      = field("ssn")
@@ -531,8 +622,8 @@ class MemberTabsWidget(QWidget):
         # Notes is built in the header (always-visible band), not here.
 
         enroll_start = self._enrollment_start(self._enrollments)
-        enroll_lbl = QLineEdit(str(enroll_start) if enroll_start else "—")
-        enroll_lbl.setReadOnly(True)
+        enroll_lbl = _ViewEditLineEdit(str(enroll_start) if enroll_start else "—",
+                                       editable=False)
         active_auth = self._active_authorization(self._authorizations)
         if active_auth:
             active_days = decode_auth_days(active_auth.get("auth_days", ""))
@@ -543,8 +634,7 @@ class MemberTabsWidget(QWidget):
         else:
             active_days = set()
             period_text = "None"
-        auth_period_lbl = QLineEdit(period_text)
-        auth_period_lbl.setReadOnly(True)
+        auth_period_lbl = _ViewEditLineEdit(period_text, editable=False)
 
         # ── Dense sectioned grid: 3 field columns, no card chrome ──────────
         grid = QGridLayout()
@@ -926,6 +1016,8 @@ class MemberTabsWidget(QWidget):
             )
             self._member.update(fields)
             self._dirty = False
+            for w in self.findChildren(_ViewEditLineEdit):
+                w.set_baseline()                 # saved values -> clear highlight
             new_long_lat = self._info_address.long_lat()
             if new_long_lat:
                 from db.members import set_member_long_lat
