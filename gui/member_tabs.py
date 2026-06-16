@@ -682,6 +682,15 @@ class MemberTabsWidget(QWidget):
             btn.clicked.connect(lambda _=False, e=ec: self._edit_emergency(e))
             table.setCellWidget(r, 3, btn)
 
+        # Fix the table's height to fit its rows so it can't be vertically
+        # squeezed/collapsed inside the Info scroll area (an Expanding table let
+        # the scroll area hide contacts until the window was enlarged). The outer
+        # scroll bar handles overflow instead.
+        table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        header_h = table.horizontalHeader().sizeHint().height()
+        rows_h = table.verticalHeader().defaultSectionSize() * table.rowCount()
+        table.setFixedHeight(header_h + rows_h + 2 * table.frameWidth() + 2)
+
         self._emergency_table = table
         box.addWidget(table)
 
