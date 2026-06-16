@@ -9,7 +9,6 @@ attaches the photo as a document resource, and shows a QPrintPreviewDialog
 (print or Save-as-PDF).
 """
 import html as _html
-from datetime import date
 
 # Subtle, print-friendly palette (white paper, dark text, calm accent).
 _ACCENT = "#5b7cf4"
@@ -26,27 +25,28 @@ def _esc(value) -> str:
 
 
 def _fields_grid(pairs, cols: int = 2) -> str:
-    """Lay label/value pairs out in `cols` columns to keep the sheet compact."""
-    label_w = "16%" if cols >= 2 else "30%"
+    """Lay label/value pairs out in `cols` columns. Label columns are wide
+    enough that two-word labels ("Enrollment Start") stay on one line."""
+    label_w = "23%" if cols >= 2 else "30%"
     rows = []
     for i in range(0, len(pairs), cols):
         cells = []
         for label, value in pairs[i:i + cols]:
             cells.append(
-                f'<td width="{label_w}" style="color:{_LABEL};">'
+                f'<td width="{label_w}" style="color:{_LABEL}; font-size:12pt;">'
                 f'{_html.escape(label)}</td>'
-                f'<td style="color:{_VALUE};">{_esc(value)}</td>'
+                f'<td style="color:{_VALUE}; font-size:12pt;">{_esc(value)}</td>'
             )
         while len(cells) < cols:          # pad the last row for even columns
             cells.append("<td></td><td></td>")
         rows.append("<tr>" + "".join(cells) + "</tr>")
-    return f'<table width="100%" cellspacing="0" cellpadding="2">{"".join(rows)}</table>'
+    return f'<table width="100%" cellspacing="0" cellpadding="5">{"".join(rows)}</table>'
 
 
 def _section(title: str, body_html: str) -> str:
     return (
-        f'<p style="margin-top:10px; margin-bottom:1px; color:{_ACCENT}; '
-        f'font-size:9pt;"><b>{_html.escape(title.upper())}</b></p>'
+        f'<p style="margin-top:18px; margin-bottom:2px; color:{_ACCENT}; '
+        f'font-size:13pt;"><b>{_html.escape(title.upper())}</b></p>'
         f'<hr color="{_RULE}">'
         f'{body_html}'
     )
@@ -55,12 +55,11 @@ def _section(title: str, body_html: str) -> str:
 def build_profile_html(
     member: dict,
     emergency_contacts: list,
-    auth_summary: dict | None,
     enroll_start,
     include_photo: bool = False,
-    printed_on: str = "",
 ) -> str:
-    """Render a member profile as a compact, left-aligned one-page HTML document.
+    """Render a member profile as a left-aligned one-page HTML document with
+    Identity, Contact, Insurance/Medical and Emergency Contacts sections.
 
     Pure: no Qt, no DB. When ``include_photo`` is set the header references the
     photo via ``profile://photo`` — the caller attaches the actual image as a
@@ -68,20 +67,19 @@ def build_profile_html(
     """
     m = member
     name = _esc(f"{m.get('last_name', '')}, {m.get('first_name', '')}".strip(", "))
-    printed = printed_on or date.today().isoformat()
 
     photo_cell = (
-        f'<td width="80" valign="top">'
-        f'<img src="{_PHOTO_URL}" width="72" height="72"></td>'
+        f'<td width="150" valign="top">'
+        f'<img src="{_PHOTO_URL}" width="132" height="132"></td>'
         if include_photo else ""
     )
     # Header: photo (left) + name and a single meta line, left-aligned.
     header = (
-        f'<table width="100%" cellspacing="0" cellpadding="4">'
+        f'<table width="100%" cellspacing="0" cellpadding="6">'
         f'<tr>{photo_cell}'
         f'<td valign="middle">'
-        f'<span style="font-size:16pt; color:{_VALUE};"><b>{name}</b></span><br>'
-        f'<span style="color:{_LABEL};">'
+        f'<span style="font-size:22pt; color:{_VALUE};"><b>{name}</b></span><br>'
+        f'<span style="color:{_LABEL}; font-size:12pt;">'
         f'Center ID {_esc(m.get("center_id"))}'
         f' &nbsp;·&nbsp; Health Plan {_esc(m.get("health_plan"))}'
         f' &nbsp;·&nbsp; DOB {_esc(m.get("dob"))}'
@@ -117,22 +115,25 @@ def build_profile_html(
     if emergency_contacts:
         ec_rows = "".join(
             f'<tr>'
-            f'<td width="36%" style="color:{_VALUE};">{_esc(ec.get("full_name"))}</td>'
-            f'<td style="color:{_VALUE};">{_esc(ec.get("phone"))}</td>'
-            f'<td style="color:{_VALUE};">{_esc(ec.get("relationship"))}</td>'
+            f'<td width="36%" style="color:{_VALUE}; font-size:12pt;">'
+            f'{_esc(ec.get("full_name"))}</td>'
+            f'<td style="color:{_VALUE}; font-size:12pt;">{_esc(ec.get("phone"))}</td>'
+            f'<td style="color:{_VALUE}; font-size:12pt;">'
+            f'{_esc(ec.get("relationship"))}</td>'
             f'</tr>'
             for ec in emergency_contacts
         )
         emergency = (
-            f'<table width="100%" cellspacing="0" cellpadding="2">'
+            f'<table width="100%" cellspacing="0" cellpadding="5">'
             f'<tr>'
-            f'<td width="36%" style="color:{_LABEL};"><b>Name</b></td>'
-            f'<td style="color:{_LABEL};"><b>Phone</b></td>'
-            f'<td style="color:{_LABEL};"><b>Relationship</b></td>'
+            f'<td width="36%" style="color:{_LABEL}; font-size:12pt;"><b>Name</b></td>'
+            f'<td style="color:{_LABEL}; font-size:12pt;"><b>Phone</b></td>'
+            f'<td style="color:{_LABEL}; font-size:12pt;"><b>Relationship</b></td>'
             f'</tr>{ec_rows}</table>'
         )
     else:
-        emergency = f'<p style="color:{_LABEL};">— No emergency contacts on file —</p>'
+        emergency = (f'<p style="color:{_LABEL}; font-size:12pt;">'
+                     f'— No emergency contacts on file —</p>')
 
     sections = [
         header,
@@ -141,28 +142,13 @@ def build_profile_html(
         _section("Insurance / Medical", insurance),
         _section("Emergency Contacts", emergency),
     ]
-    if auth_summary:
-        auth = _fields_grid([
-            ("Period", auth_summary.get("period")),
-            ("Authorized Days", auth_summary.get("days")),
-            ("Plan", auth_summary.get("plan")),
-        ], cols=3)
-        sections.append(_section("Current Authorization", auth))
-    sections.append(_section("Notes", (
-        f'<p style="color:{_VALUE};">{_esc(m.get("notes"))}</p>'
-    )))
-
-    footer = (
-        f'<p style="margin-top:14px; color:{_LABEL}; font-size:8pt;">'
-        f'Printed {_html.escape(printed)}</p>'
-    )
 
     # Left-aligned, full-width (the page margins supply the slight frame).
     return (
         f'<html><body>'
-        f'<p style="margin:0 0 4px 0; color:{_ACCENT}; font-size:11pt;">'
+        f'<p style="margin:0 0 6px 0; color:{_ACCENT}; font-size:13pt;">'
         f'<b>BSCA &nbsp;·&nbsp; MEMBER PROFILE</b></p>'
-        f'{"".join(sections)}{footer}'
+        f'{"".join(sections)}'
         f'</body></html>'
     )
 
@@ -171,7 +157,6 @@ def open_profile_print_preview(
     parent,
     member: dict,
     emergency_contacts: list,
-    auth_summary: dict | None,
     enroll_start,
     photo_bytes: bytes | None = None,
 ) -> None:
@@ -187,7 +172,7 @@ def open_profile_print_preview(
             doc.addResource(QTextDocument.ResourceType.ImageResource,
                             QUrl(_PHOTO_URL), img)
     doc.setHtml(build_profile_html(
-        member, emergency_contacts, auth_summary, enroll_start,
+        member, emergency_contacts, enroll_start,
         include_photo=bool(photo_bytes),
     ))
 

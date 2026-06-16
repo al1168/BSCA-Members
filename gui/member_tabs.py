@@ -362,18 +362,9 @@ class MemberTabsWidget(QWidget):
         from gui.profile_print import open_profile_print_preview
         from db.members import get_member_photo
 
-        active = self._active_authorization(self._authorizations)
-        auth_summary = None
-        if active:
-            auth_summary = {
-                "period": f"{active.get('effective_start')} – "
-                          f"{active.get('effective_end')}",
-                "days": format_auth_days(active.get("auth_days", "") or ""),
-                "plan": active.get("health_plan", "") or "",
-            }
         photo = get_member_photo(self._center_id, self._db_path)
         open_profile_print_preview(
-            self, self._member, self._emergency_contacts, auth_summary,
+            self, self._member, self._emergency_contacts,
             self._enrollment_start(self._enrollments), photo_bytes=photo,
         )
 
