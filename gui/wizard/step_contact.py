@@ -1,15 +1,28 @@
+from datetime import date, datetime
+
 from PyQt6.QtWidgets import (
-    QWidget, QFormLayout, QLineEdit, QComboBox, QLabel, QVBoxLayout, QDateEdit,
+    QWidget, QFormLayout, QLineEdit, QComboBox, QLabel, QVBoxLayout,
 )
-from PyQt6.QtCore import QDate
 from db.members import HEALTH_PLANS
 from gui.address_autocomplete import AddressAutocomplete
 
-# DOB is required, but a QDateEdit always holds a value. We start it on this
-# sentinel (= its minimumDate, shown as "Select date of birth") and treat the
-# field as unset until the user moves off it. Same trick as the Enrollment End
-# date in step_enrollment.
-DOB_SENTINEL = QDate(1900, 1, 1)
+# DOB is a free-text field (so staff can type it) with a gray placeholder, not a
+# date-picker dropdown. These are the formats we accept when parsing what they
+# type; output is a datetime.date for the Access Date/Time [DOB] column.
+_DOB_FORMATS = ("%m/%d/%Y", "%m-%d-%Y")
+
+
+def parse_dob(text: str):
+    """Parse a typed date of birth to a datetime.date, or None if blank/invalid.
+
+    Accepts M/D/YYYY or M-D-YYYY (non-zero-padded months/days are fine)."""
+    text = (text or "").strip()
+    for fmt in _DOB_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
 
 
 class StepContact(QWidget):
@@ -40,13 +53,8 @@ class StepContact(QWidget):
             self.center_id.setReadOnly(True)
         self.member_id = QLineEdit()
         self.member_id.setPlaceholderText("Health plan member / insurance ID")
-        self.dob = QDateEdit()
-        self.dob.setCalendarPopup(True)
-        self.dob.setDisplayFormat("M/d/yyyy")
-        self.dob.setMinimumDate(DOB_SENTINEL)
-        self.dob.setMaximumDate(QDate.currentDate())  # no future birth dates
-        self.dob.setSpecialValueText("Select date of birth")
-        self.dob.setDate(DOB_SENTINEL)
+        self.dob = QLineEdit()
+        self.dob.setPlaceholderText("Select date of birth (MM/DD/YYYY)")
         self.health_plan = QComboBox()
         self.health_plan.addItem("")
         self.health_plan.addItems(HEALTH_PLANS)
@@ -99,8 +107,18 @@ class StepContact(QWidget):
         if not member_id:
             self._error_label.setText("Member ID is required.")
             return False
-        if self.dob.date() == DOB_SENTINEL:
+        dob_text = self.dob.text().strip()
+        if not dob_text:
             self._error_label.setText("Date of Birth is required.")
+            return False
+        dob = parse_dob(dob_text)
+        if dob is None:
+            self._error_label.setText(
+                "Date of Birth must be a valid date (MM/DD/YYYY)."
+            )
+            return False
+        if dob > date.today():
+            self._error_label.setText("Date of Birth can't be in the future.")
             return False
         if not plan:
             self._error_label.setText("Health Plan is required.")
@@ -125,8 +143,7 @@ class StepContact(QWidget):
             "last_name": self.last_name.text().strip(),
             "center_id": int(self.center_id.text().strip()),
             "member_id": self.member_id.text().strip(),
-            "dob": (self.dob.date().toPyDate()
-                    if self.dob.date() != DOB_SENTINEL else None),
+            "dob": parse_dob(self.dob.text().strip()),
             "health_plan": self.health_plan.currentText(),
             "home_tell": self.home_tell.text().strip(),
             "cell": self.cell.text().strip(),

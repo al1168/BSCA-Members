@@ -12,16 +12,38 @@ def qapp():
     yield app
 
 
+# ── parse_dob (pure) ──────────────────────────────────────────────────────
+
+def test_parse_dob_accepts_m_d_yyyy():
+    from datetime import date
+    from gui.wizard.step_contact import parse_dob
+    assert parse_dob("5/14/1948") == date(1948, 5, 14)
+    assert parse_dob("05/14/1948") == date(1948, 5, 14)
+
+
+def test_parse_dob_accepts_dashes():
+    from datetime import date
+    from gui.wizard.step_contact import parse_dob
+    assert parse_dob("5-14-1948") == date(1948, 5, 14)
+
+
+def test_parse_dob_rejects_garbage_and_empty():
+    from gui.wizard.step_contact import parse_dob
+    assert parse_dob("not a date") is None
+    assert parse_dob("13/40/2020") is None
+    assert parse_dob("") is None
+    assert parse_dob("   ") is None
+
+
 def _make_filled():
     """A StepContact with every required field set to a valid value."""
-    from PyQt6.QtCore import QDate
     from gui.wizard.step_contact import StepContact
     w = StepContact()
     w.first_name.setText("Jane")
     w.last_name.setText("Doe")
     w.center_id.setText("999001")
     w.member_id.setText("M12345")
-    w.dob.setDate(QDate(1950, 6, 15))
+    w.dob.setText("6/15/1950")
     w.health_plan.setCurrentText("HF")
     w.home_tell.setText("212-555-0100")
     w.cell.setText("")
@@ -79,11 +101,36 @@ def test_collect_includes_new_fields(qapp):
     assert d["cell"] == ""
 
 
-def test_validate_rejects_unset_dob(qapp):
+def test_validate_rejects_empty_dob(qapp):
     w = _make_filled()
-    w.dob.setDate(w.dob.minimumDate())  # the "Select date of birth" sentinel
+    w.dob.setText("")  # empty -> the gray placeholder shows; not a value
     assert w.validate("dummy.accdb") is False
-    assert "Date of Birth" in w._error_label.text()
+    assert "Date of Birth is required" in w._error_label.text()
+
+
+def test_validate_rejects_unparseable_dob(qapp):
+    w = _make_filled()
+    w.dob.setText("not a date")
+    assert w.validate("dummy.accdb") is False
+    assert "valid date" in w._error_label.text()
+
+
+def test_validate_rejects_future_dob(qapp):
+    from datetime import date, timedelta
+    w = _make_filled()
+    future = date.today() + timedelta(days=1)
+    w.dob.setText(f"{future.month}/{future.day}/{future.year}")
+    assert w.validate("dummy.accdb") is False
+    assert "future" in w._error_label.text().lower()
+
+
+def test_dob_is_a_typeable_field_with_placeholder(qapp):
+    from PyQt6.QtWidgets import QLineEdit
+    from gui.wizard.step_contact import StepContact
+    w = StepContact()
+    assert isinstance(w.dob, QLineEdit)          # typeable, not a dropdown
+    assert not w.dob.text()                       # empty by default
+    assert "birth" in w.dob.placeholderText().lower()  # gray placeholder hint
 
 
 def test_collect_returns_dob_as_date(qapp):

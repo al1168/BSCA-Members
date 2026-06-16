@@ -23,6 +23,28 @@ def test_no_key_is_plain_field(qtbot):
     assert w._completer is None  # no autocomplete machinery without a key
 
 
+def test_inner_field_not_squeezed_when_widget_constrained(qtbot):
+    """Regression: at high-DPI / short windows the wrapper can be allocated too
+    little vertical space; its inner QLineEdit must NOT be compressed below its
+    natural height (that clipped the address text). The status label yields."""
+    from PyQt6.QtWidgets import QWidget, QVBoxLayout
+    from gui.address_autocomplete import AddressAutocomplete
+    host = QWidget()
+    lay = QVBoxLayout(host)
+    w = AddressAutocomplete("")
+    lay.addWidget(w)
+    lay.addStretch()
+    qtbot.addWidget(host)
+    w.setText("123 Main St, Brooklyn, NY, USA")
+    w._show_status("coordinates captured")
+    host.show()
+    natural = w._edit.sizeHint().height()
+    # Wrapper given less height than line edit + status label need (DPI pressure).
+    w.setMaximumHeight(natural + 4)
+    qtbot.wait(10)
+    assert w._edit.height() >= natural
+
+
 def test_setplaceholder_and_textchanged_proxy(qtbot):
     from gui.address_autocomplete import AddressAutocomplete
     w = AddressAutocomplete("")

@@ -52,6 +52,11 @@ class AddressAutocomplete(QWidget):
         layout.setSpacing(2)
 
         self._edit = QLineEdit()
+        # Keep the line edit at its natural height even when this wrapper is
+        # starved of vertical space (high-DPI / short windows): without this the
+        # status label below would compress the line edit and clip the address
+        # text. With a hard minimum, the status label yields instead.
+        self._edit.setMinimumHeight(self._edit.sizeHint().height())
         self._edit.textChanged.connect(self.textChanged)  # proxy for dirty tracking
         layout.addWidget(self._edit)
 
