@@ -357,6 +357,26 @@ class MemberTabsWidget(QWidget):
         dates = [e["start_date"] for e in enrollments if e.get("start_date")]
         return min(dates) if dates else None
 
+    def _print_profile(self):
+        """Open a print preview (print or Save-as-PDF) of this member's profile."""
+        from gui.profile_print import open_profile_print_preview
+        from db.members import get_member_photo
+
+        active = self._active_authorization(self._authorizations)
+        auth_summary = None
+        if active:
+            auth_summary = {
+                "period": f"{active.get('effective_start')} – "
+                          f"{active.get('effective_end')}",
+                "days": format_auth_days(active.get("auth_days", "") or ""),
+                "plan": active.get("health_plan", "") or "",
+            }
+        photo = get_member_photo(self._center_id, self._db_path)
+        open_profile_print_preview(
+            self, self._member, self._emergency_contacts, auth_summary,
+            self._enrollment_start(self._enrollments), photo_bytes=photo,
+        )
+
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 10, 20, 8)
@@ -412,6 +432,12 @@ class MemberTabsWidget(QWidget):
         self._emergency_badge.setVisible(False)
         top_row.addWidget(self._emergency_badge,
                           alignment=Qt.AlignmentFlag.AlignVCenter)
+        btn_print = QPushButton("🖨 Print")
+        btn_print.setObjectName("btn_print")
+        btn_print.setToolTip("Print this member's profile")
+        btn_print.setMaximumHeight(26)
+        btn_print.clicked.connect(self._print_profile)
+        top_row.addWidget(btn_print, alignment=Qt.AlignmentFlag.AlignVCenter)
         right.addLayout(top_row)
 
         notes_row = QHBoxLayout()
