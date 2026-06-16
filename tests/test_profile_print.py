@@ -42,6 +42,14 @@ def test_includes_identity_contact_and_insurance_fields():
         assert value in html
 
 
+def test_dob_strips_midnight_time():
+    # Access stores some DOBs as a midnight datetime; the printout should show
+    # just the date, not "... 00:00:00".
+    html = build_profile_html(_member(dob="1941-06-04 00:00:00"), [], "2026-01-01")
+    assert "1941-06-04" in html
+    assert "00:00:00" not in html
+
+
 def test_lists_emergency_contacts():
     ecs = [{"full_name": "John Doe", "phone": "917-555-0000",
             "relationship": "Son"}]

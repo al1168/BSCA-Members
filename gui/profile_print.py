@@ -24,6 +24,15 @@ def _esc(value) -> str:
     return _html.escape(text) if text else "—"
 
 
+def _date_only(value) -> str:
+    """Drop a trailing midnight time so a DOB stored as a datetime
+    (e.g. '1941-06-04 00:00:00') prints as just the date."""
+    text = "" if value is None else str(value).strip()
+    if text.endswith(" 00:00:00"):
+        text = text[: -len(" 00:00:00")]
+    return text
+
+
 def _fields_grid(pairs, cols: int = 2) -> str:
     """Lay label/value pairs out in `cols` even columns. Each cell holds its
     label and value together (gray label, then value) so the value sits right
@@ -70,6 +79,7 @@ def build_profile_html(
     """
     m = member
     name = _esc(f"{m.get('last_name', '')}, {m.get('first_name', '')}".strip(", "))
+    dob = _date_only(m.get("dob"))
 
     photo_cell = (
         f'<td width="150" valign="top">'
@@ -85,7 +95,7 @@ def build_profile_html(
         f'<span style="color:{_LABEL}; font-size:12pt;">'
         f'Center ID {_esc(m.get("center_id"))}'
         f' &nbsp;·&nbsp; Health Plan {_esc(m.get("health_plan"))}'
-        f' &nbsp;·&nbsp; DOB {_esc(m.get("dob"))}'
+        f' &nbsp;·&nbsp; DOB {_esc(dob)}'
         f' &nbsp;·&nbsp; Member ID {_esc(m.get("member_id"))}</span>'
         f'</td></tr></table>'
     )
@@ -93,7 +103,7 @@ def build_profile_html(
     identity = _fields_grid([
         ("Chinese Name", m.get("chinese_name")),
         ("Gender", m.get("gender")),
-        ("Date of Birth", m.get("dob")),
+        ("Date of Birth", dob),
         ("Language", m.get("language")),
         ("Enrollment Start", enroll_start),
         ("Admission Date", m.get("admission_date")),
