@@ -97,6 +97,38 @@ def test_suggest_next_center_id_is_free_non4_5digit_above_active_max():
         assert nid > max(active_5digit)
 
 
+# ── read-connection caching (mtime-based) ──────────────────────────────
+
+def test_read_connection_reconnects_only_when_db_changes():
+    """The cached read connection is reused while the DB file is unchanged
+    (fast member browsing) and reopened when the file's mtime changes — e.g.
+    after an edit from another connection/Access — so reads stay live."""
+    import pyodbc
+    from monthly_schedule.db import build_connection_string
+    from db.members import _read_connection, close_connections
+
+    close_connections()
+    c1 = _read_connection(TEST_DB)
+    assert _read_connection(TEST_DB) is c1          # reused while unchanged
+
+    ext = pyodbc.connect(build_connection_string(TEST_DB), autocommit=True)
+    try:
+        ext.cursor().execute(
+            "INSERT INTO [EmergencyContact] ([Center ID],[Full Name],"
+            "[Phone Number],[Relationship]) VALUES (?,?,?,?)",
+            (987001, "RC", "1", "T"))
+    finally:
+        ext.close()
+    try:
+        assert _read_connection(TEST_DB) is not c1  # reconnected on change
+    finally:
+        clean = pyodbc.connect(build_connection_string(TEST_DB), autocommit=True)
+        clean.cursor().execute(
+            "DELETE FROM [EmergencyContact] WHERE [Center ID]=987001")
+        clean.close()
+        close_connections()
+
+
 # ── bsca-core read functions ───────────────────────────────────────────
 
 def test_get_member_returns_dict_for_valid_id():

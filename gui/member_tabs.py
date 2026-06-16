@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from db.members import get_member_context, _drop_read_connection
+from db.members import get_member_context
 
 
 class _NotesEdit(QTextEdit):
@@ -194,6 +194,11 @@ class _PhotoLabel(QLabel):
 # live inside the .accdb, which has a 2 GB ceiling).
 MAX_DOC_WARN_MB = 10
 
+# Decoded 80x80 member photos, keyed by center_id: (QPixmap, has_photo). Reading
+# and decoding the JPEG is the slowest part of opening a member after the DB
+# read, so cache it across opens. Invalidated when a photo is changed in-app.
+_PHOTO_CACHE: dict = {}
+
 
 class MemberTabsWidget(QWidget):
     def __init__(self, center_id: int, db_path: str, events_path: str,
@@ -218,13 +223,10 @@ class MemberTabsWidget(QWidget):
         self._one_off = []
         self._emergency_contacts = []
         try:
-            # Read the live DB on every member open: the cached read connection
-            # doesn't see changes another connection committed (e.g. edits made
-            # in Microsoft Access), so drop it first for fresh data. Only the
-            # pyodbc read connection is dropped — the DAO photo handle stays
-            # cached, since closing/reopening it is slow and photos are
-            # refreshed in-app when changed there.
-            _drop_read_connection(self._db_path)
+            # get_member_context reads the live DB: the cached read connection
+            # reopens automatically when the file changed (mtime), so external
+            # edits (e.g. in Microsoft Access) are picked up without paying a
+            # reconnect on every member click.
             ctx = get_member_context(self._center_id, self._db_path)
             self._member = ctx["member"]
             self._enrollments = ctx["enrollments"]
@@ -262,7 +264,12 @@ class MemberTabsWidget(QWidget):
         self._photo_label.setFixedSize(80, 80)
         self._photo_label.setStyleSheet("border-radius: 40px; overflow: hidden;")
         self._photo_label.clicked.connect(self._change_photo)
-        self._set_photo_pixmap(get_member_photo(self._center_id, self._db_path))
+        cached = _PHOTO_CACHE.get(self._center_id)
+        if cached is not None:
+            pix, self._has_photo = cached
+            self._photo_label.setPixmap(pix)
+        else:
+            self._set_photo_pixmap(get_member_photo(self._center_id, self._db_path))
         return self._photo_label
 
     def _set_photo_pixmap(self, photo_bytes):
@@ -294,6 +301,7 @@ class MemberTabsWidget(QWidget):
             painter.drawEllipse(12, 46, 56, 40)
             painter.end()
             self._photo_label.setPixmap(pix)
+        _PHOTO_CACHE[self._center_id] = (pix, self._has_photo)
 
     def _change_photo(self):
         from PyQt6.QtWidgets import QFileDialog
@@ -335,6 +343,7 @@ class MemberTabsWidget(QWidget):
             except OSError:
                 pass
 
+        _PHOTO_CACHE.pop(self._center_id, None)  # photo changed -> refresh cache
         self._set_photo_pixmap(get_member_photo(self._center_id, self._db_path))
         self._log_event("EDIT", "Photo updated")
 

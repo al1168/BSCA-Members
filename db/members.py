@@ -241,25 +241,40 @@ _dao_db_cache: dict = {}
 
 
 def _read_connection(db_path: str):
-    """Return a cached autocommit read connection for db_path, opening if needed."""
+    """Return a cached autocommit read connection for db_path, opening if needed.
+
+    The connection is reused while the database file is unchanged (fast member
+    browsing) and transparently reopened when the file's mtime changes — e.g.
+    after an edit committed by another connection or by Microsoft Access. The
+    ACE engine doesn't show an open connection another connection's commits, so
+    keying the cache on mtime keeps reads live without reconnecting every click.
+    """
     if not os.path.exists(db_path):
         raise FileNotFoundError(f"Database not found: {db_path}")
-    conn = _read_conn_cache.get(db_path)
-    if conn is None:
-        import pyodbc
-        try:
-            conn = pyodbc.connect(build_connection_string(db_path), autocommit=True)
-        except pyodbc.Error as exc:
-            raise RuntimeError(f"Could not open Access database: {exc}") from exc
-        _read_conn_cache[db_path] = conn
+    mtime = os.stat(db_path).st_mtime_ns
+    cached = _read_conn_cache.get(db_path)
+    if cached is not None:
+        conn, cached_mtime = cached
+        if cached_mtime == mtime:
+            return conn
+        try:                       # file changed -> drop the stale connection
+            conn.close()
+        except Exception:
+            pass
+    import pyodbc
+    try:
+        conn = pyodbc.connect(build_connection_string(db_path), autocommit=True)
+    except pyodbc.Error as exc:
+        raise RuntimeError(f"Could not open Access database: {exc}") from exc
+    _read_conn_cache[db_path] = (conn, mtime)
     return conn
 
 
 def _drop_read_connection(db_path: str) -> None:
-    conn = _read_conn_cache.pop(db_path, None)
-    if conn is not None:
+    cached = _read_conn_cache.pop(db_path, None)
+    if cached is not None:
         try:
-            conn.close()
+            cached[0].close()
         except Exception:
             pass
 
