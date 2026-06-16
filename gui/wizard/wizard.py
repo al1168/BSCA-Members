@@ -31,7 +31,14 @@ class AddMemberWizard(QDialog):
         layout.addWidget(self._progress_widget)
 
         self._stack = QStackedWidget()
-        self._step_contact = StepContact(self._api_key)
+        # Auto-assign the next Center ID (locked field). Degrade to an editable
+        # field if it can't be computed, so member creation is never blocked.
+        try:
+            from db.members import suggest_next_center_id
+            suggested_cid = suggest_next_center_id(self._db_path)
+        except Exception:
+            suggested_cid = None
+        self._step_contact = StepContact(self._api_key, center_id=suggested_cid)
         self._step_enrollment = StepEnrollment()
         self._step_auths = StepAuths()
         self._step_review = StepReview()

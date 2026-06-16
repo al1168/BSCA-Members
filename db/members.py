@@ -687,6 +687,42 @@ def center_id_exists(center_id: int, db_path: str) -> bool:
         conn.close()
 
 
+def next_center_id(all_ids, terminated_ids, start: int = 10000) -> int:
+    """Suggest the next Center ID for a new member.
+
+    Counts up from the highest *active* (non-terminated) member whose ID is a
+    5-digit number (10000–99999). Member IDs follow that 5-digit scheme; the data
+    also holds a separate 7-digit numbering and a few outliers, which are ignored
+    when choosing the base. Never reuses an ID already taken by any member —
+    active or terminated, of any length — and never returns one ending in 4 (…4
+    jumps to …5). Pure, so it is unit-testable.
+
+    Falls back to the highest 5-digit ID overall when every 5-digit member is
+    terminated, and to ``start`` when there are no 5-digit members at all.
+    """
+    all_ids = set(all_ids)
+    five_digit = {i for i in all_ids if 10000 <= i <= 99999}
+    active = five_digit - set(terminated_ids)
+    if active:
+        candidate = max(active) + 1
+    elif five_digit:
+        candidate = max(five_digit) + 1
+    else:
+        candidate = start
+    while candidate in all_ids or candidate % 10 == 4:
+        candidate += 1
+    return candidate
+
+
+def suggest_next_center_id(db_path: str) -> int:
+    """The next Center ID for a new member, computed from the live database.
+
+    Thin DB wrapper over next_center_id (see there for the rules)."""
+    all_ids = {m["center_id"] for m in get_all_members(db_path)}
+    terminated = get_terminated_center_ids(db_path)
+    return next_center_id(all_ids, terminated)
+
+
 def insert_member(
     center_id: int,
     last_name: str,

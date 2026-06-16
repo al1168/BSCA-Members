@@ -80,6 +80,23 @@ def test_center_id_exists_returns_false_for_missing():
     assert center_id_exists(999999999, TEST_DB) is False
 
 
+def test_suggest_next_center_id_is_free_non4_5digit_above_active_max():
+    from db.members import (
+        suggest_next_center_id, get_all_members, get_terminated_center_ids,
+    )
+    all_ids = {m["center_id"] for m in get_all_members(TEST_DB)}
+    active_5digit = {i for i in all_ids if 10000 <= i <= 99999} \
+        - get_terminated_center_ids(TEST_DB)
+
+    nid = suggest_next_center_id(TEST_DB)
+    assert nid not in all_ids        # never reuse an existing Center ID
+    assert nid % 10 != 4             # never ends in 4
+    assert 10000 <= nid <= 99999     # stays a 5-digit Center ID
+    if active_5digit:
+        # counts up from the highest 5-digit active member (ignores 7-digit ids)
+        assert nid > max(active_5digit)
+
+
 # ── bsca-core read functions ───────────────────────────────────────────
 
 def test_get_member_returns_dict_for_valid_id():

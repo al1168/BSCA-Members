@@ -92,3 +92,16 @@ def test_collect_returns_dob_as_date(qapp):
     from datetime import date
     w = _make_filled()
     assert w.collect()["dob"] == date(1950, 6, 15)
+
+
+def test_center_id_prefilled_and_locked_when_suggested(qapp):
+    from gui.wizard.step_contact import StepContact
+    w = StepContact(center_id=10056)
+    assert w.center_id.text() == "10056"
+    assert w.center_id.isReadOnly() is True
+
+
+def test_center_id_editable_when_no_suggestion(qapp):
+    from gui.wizard.step_contact import StepContact
+    w = StepContact()
+    assert w.center_id.isReadOnly() is False

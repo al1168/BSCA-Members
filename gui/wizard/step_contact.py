@@ -13,9 +13,10 @@ DOB_SENTINEL = QDate(1900, 1, 1)
 
 
 class StepContact(QWidget):
-    def __init__(self, api_key: str = "", parent=None):
+    def __init__(self, api_key: str = "", center_id: int | None = None, parent=None):
         super().__init__(parent)
         self._api_key = api_key or ""
+        self._suggested_center_id = center_id
         self._error_label = QLabel("")
         self._error_label.setStyleSheet("color: #d05555; font-size: 11px;")
         self._build()
@@ -31,6 +32,12 @@ class StepContact(QWidget):
         self.last_name.setPlaceholderText("Last name")
         self.center_id = QLineEdit()
         self.center_id.setPlaceholderText("e.g. 10042")
+        if self._suggested_center_id is not None:
+            # Auto-assigned next Center ID — locked so staff can't alter the
+            # numbering scheme. Falls back to an editable field if no suggestion
+            # could be computed (e.g. a DB hiccup).
+            self.center_id.setText(str(self._suggested_center_id))
+            self.center_id.setReadOnly(True)
         self.member_id = QLineEdit()
         self.member_id.setPlaceholderText("Health plan member / insurance ID")
         self.dob = QDateEdit()
