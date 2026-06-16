@@ -12,17 +12,20 @@ def qapp():
     yield app
 
 
-def test_load_data_drops_cache_before_reading(qapp, monkeypatch):
-    """Opening a member must read the live DB (drop the cached connection first)
-    so changes made elsewhere — e.g. in Microsoft Access — are reflected."""
+def test_load_data_drops_read_connection_before_reading(qapp, monkeypatch):
+    """Opening a member must read the live DB so changes made elsewhere — e.g.
+    in Microsoft Access — are reflected. We drop only the pyodbc *read*
+    connection (fresh member data) and keep the DAO photo handle cached for
+    speed, so the drop targets the read connection for this db_path."""
     import gui.member_tabs as mt
 
     calls = []
-    monkeypatch.setattr(mt, "close_connections",
-                        lambda: calls.append("close"), raising=False)
+    monkeypatch.setattr(mt, "_drop_read_connection",
+                        lambda db_path: calls.append(("drop", db_path)),
+                        raising=False)
 
     def fake_ctx(center_id, db_path, _retry=True):
-        calls.append("read")
+        calls.append(("read", db_path))
         return {
             "member": {}, "enrollments": [], "authorizations": [],
             "availability": [], "absences": [], "one_off_availability": [],
@@ -36,5 +39,6 @@ def test_load_data_drops_cache_before_reading(qapp, monkeypatch):
     w._db_path = "dummy.accdb"
     w._load_data()
 
-    # Cache dropped (fresh read) and dropped BEFORE the read happens.
-    assert calls == ["close", "read"]
+    # Read connection dropped for this db_path BEFORE reading (fresh data);
+    # the DAO cache is left intact (not close_connections).
+    assert calls == [("drop", "dummy.accdb"), ("read", "dummy.accdb")]
