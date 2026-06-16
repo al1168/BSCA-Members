@@ -80,10 +80,10 @@ def test_photo_tag_only_when_included():
     assert 'src="profile://photo"' not in without
 
 
-def test_centered_container_present():
-    # Layout requirement: content sits in a centered fixed-width container.
+def test_layout_is_not_centered():
+    # The sheet is left-aligned, not centered in a narrow column.
     html = build_profile_html(_member(), [], None, "2026-01-01")
-    assert 'align="center"' in html
+    assert 'align="center"' not in html
 
 
 def test_html_parses_cleanly_into_qtextdocument(qapp):
@@ -92,3 +92,40 @@ def test_html_parses_cleanly_into_qtextdocument(qapp):
     doc.setHtml(build_profile_html(_member(), [], None, "2026-01-01",
                                    include_photo=True))
     assert "Doe, Jane" in doc.toPlainText()
+
+
+def test_full_profile_fits_on_one_page(qapp, tmp_path):
+    """A fully-populated profile must render to a single Letter page (10mm
+    margins). The offscreen fallback font is wider than real fonts, so passing
+    here is a conservative guarantee it fits in the real app too."""
+    from PyQt6.QtGui import QTextDocument, QPageSize, QPageLayout
+    from PyQt6.QtCore import QMarginsF
+    from PyQt6.QtPrintSupport import QPrinter
+    from PyQt6.QtPdf import QPdfDocument
+
+    member = _member(
+        notes="Prefers morning sessions. Needs wheelchair access. "
+              "Daughter handles scheduling and transportation.",
+    )
+    ecs = [
+        {"full_name": "John Doe", "phone": "917-555-0000", "relationship": "Son"},
+        {"full_name": "Mary Doe", "phone": "917-555-0001",
+         "relationship": "Daughter"},
+    ]
+    auth = {"period": "2026-01-01 – 2026-12-31", "days": "Mon Wed Fri",
+            "plan": "HF"}
+    html = build_profile_html(member, ecs, auth, "2026-01-01", include_photo=False)
+
+    doc = QTextDocument()
+    doc.setHtml(html)
+    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+    printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+    printer.setPageSize(QPageSize(QPageSize.PageSizeId.Letter))
+    printer.setPageMargins(QMarginsF(10, 10, 10, 10), QPageLayout.Unit.Millimeter)
+    out = str(tmp_path / "profile.pdf")
+    printer.setOutputFileName(out)
+    doc.print(printer)
+
+    pdf = QPdfDocument(qapp)
+    pdf.load(out)
+    assert pdf.pageCount() == 1
