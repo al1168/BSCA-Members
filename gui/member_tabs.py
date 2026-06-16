@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from db.members import get_member_context
+from db.members import get_member_context, close_connections
 
 
 class _NotesEdit(QTextEdit):
@@ -218,6 +218,10 @@ class MemberTabsWidget(QWidget):
         self._one_off = []
         self._emergency_contacts = []
         try:
+            # Read the live DB on every member open. The cached read/DAO
+            # connections don't see changes another connection committed (e.g.
+            # edits/imports made in Microsoft Access), so drop them first.
+            close_connections()
             ctx = get_member_context(self._center_id, self._db_path)
             self._member = ctx["member"]
             self._enrollments = ctx["enrollments"]
