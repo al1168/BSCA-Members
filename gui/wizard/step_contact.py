@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime
 
 from PyQt6.QtWidgets import (
@@ -7,22 +8,24 @@ from db.members import HEALTH_PLANS
 from gui.address_autocomplete import AddressAutocomplete
 
 # DOB is a free-text field (so staff can type it) with a gray placeholder, not a
-# date-picker dropdown. These are the formats we accept when parsing what they
-# type; output is a datetime.date for the Access Date/Time [DOB] column.
-_DOB_FORMATS = ("%m/%d/%Y", "%m-%d-%Y")
+# date-picker dropdown. The format is enforced: slash-separated, a 1-or-2-digit
+# month and day, and a 4-digit year (MM/DD/YYYY or M/DD/YYYY, etc.). Output is a
+# datetime.date for the Access Date/Time [DOB] column.
+_DOB_RE = re.compile(r"^\d{1,2}/\d{1,2}/\d{4}$")
 
 
 def parse_dob(text: str):
-    """Parse a typed date of birth to a datetime.date, or None if blank/invalid.
-
-    Accepts M/D/YYYY or M-D-YYYY (non-zero-padded months/days are fine)."""
+    """Parse a typed date of birth to a datetime.date, or None if it doesn't
+    match M/D/YYYY (1-2 digit month & day, slashes, 4-digit year) or isn't a
+    real calendar date. Dashes, 2-digit years and out-of-range values are
+    rejected."""
     text = (text or "").strip()
-    for fmt in _DOB_FORMATS:
-        try:
-            return datetime.strptime(text, fmt).date()
-        except ValueError:
-            continue
-    return None
+    if not _DOB_RE.match(text):
+        return None
+    try:
+        return datetime.strptime(text, "%m/%d/%Y").date()
+    except ValueError:
+        return None
 
 
 class StepContact(QWidget):

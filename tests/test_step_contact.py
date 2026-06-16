@@ -14,23 +14,26 @@ def qapp():
 
 # ── parse_dob (pure) ──────────────────────────────────────────────────────
 
-def test_parse_dob_accepts_m_d_yyyy():
+def test_parse_dob_accepts_1_or_2_digit_month_and_day():
     from datetime import date
     from gui.wizard.step_contact import parse_dob
-    assert parse_dob("5/14/1948") == date(1948, 5, 14)
-    assert parse_dob("05/14/1948") == date(1948, 5, 14)
+    assert parse_dob("5/4/1950") == date(1950, 5, 4)      # m/d/yyyy
+    assert parse_dob("05/04/1950") == date(1950, 5, 4)    # mm/dd/yyyy
+    assert parse_dob("5/14/1948") == date(1948, 5, 14)    # m/dd/yyyy
+    assert parse_dob("12/9/1948") == date(1948, 12, 9)    # mm/d/yyyy
 
 
-def test_parse_dob_accepts_dashes():
-    from datetime import date
+def test_parse_dob_requires_slashes_and_4_digit_year():
     from gui.wizard.step_contact import parse_dob
-    assert parse_dob("5-14-1948") == date(1948, 5, 14)
+    assert parse_dob("5-14-1948") is None    # dashes not allowed
+    assert parse_dob("5/14/48") is None      # 2-digit year not allowed
+    assert parse_dob("1948/5/14") is None    # wrong order
 
 
 def test_parse_dob_rejects_garbage_and_empty():
     from gui.wizard.step_contact import parse_dob
     assert parse_dob("not a date") is None
-    assert parse_dob("13/40/2020") is None
+    assert parse_dob("13/40/2020") is None   # impossible month/day
     assert parse_dob("") is None
     assert parse_dob("   ") is None
 
