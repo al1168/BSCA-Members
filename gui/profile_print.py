@@ -183,5 +183,8 @@ def open_profile_print_preview(
 
     preview = QPrintPreviewDialog(printer, parent)
     preview.setWindowTitle("Print Member Profile")
+    # Wide enough that the full toolbar (incl. the Print button) shows instead
+    # of collapsing into an overflow "…" menu.
+    preview.resize(1040, 800)
     preview.paintRequested.connect(doc.print)  # PyQt6: print (not print_)
     preview.exec()
