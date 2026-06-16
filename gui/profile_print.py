@@ -25,20 +25,23 @@ def _esc(value) -> str:
 
 
 def _fields_grid(pairs, cols: int = 2) -> str:
-    """Lay label/value pairs out in `cols` columns. Label columns are wide
-    enough that two-word labels ("Enrollment Start") stay on one line."""
-    label_w = "23%" if cols >= 2 else "30%"
+    """Lay label/value pairs out in `cols` even columns. Each cell holds its
+    label and value together (gray label, then value) so the value sits right
+    next to its label — no wide fixed label column leaving big gaps — and long
+    values use the full half-width instead of wrapping in a narrow column."""
+    col_w = 100 // cols
     rows = []
     for i in range(0, len(pairs), cols):
         cells = []
         for label, value in pairs[i:i + cols]:
             cells.append(
-                f'<td width="{label_w}" style="color:{_LABEL}; font-size:12pt;">'
-                f'{_html.escape(label)}</td>'
-                f'<td style="color:{_VALUE}; font-size:12pt;">{_esc(value)}</td>'
+                f'<td width="{col_w}%" style="font-size:12pt;">'
+                f'<span style="color:{_LABEL};">{_html.escape(label)}</span>'
+                f'&nbsp;&nbsp;'
+                f'<span style="color:{_VALUE};">{_esc(value)}</span></td>'
             )
         while len(cells) < cols:          # pad the last row for even columns
-            cells.append("<td></td><td></td>")
+            cells.append("<td></td>")
         rows.append("<tr>" + "".join(cells) + "</tr>")
     return f'<table width="100%" cellspacing="0" cellpadding="5">{"".join(rows)}</table>'
 
