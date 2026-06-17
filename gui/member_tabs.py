@@ -1305,9 +1305,6 @@ class MemberTabsWidget(QWidget):
         # no longer inflates the Health Plan column; the slack falls to the right
         # of the row instead of opening a gap mid-row.
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        # The ID is the Access primary key, meaningless to staff. Keep the item
-        # in column 0 (delete reads it) but hide the column.
-        table.setColumnHidden(0, True)
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
 
