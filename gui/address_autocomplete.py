@@ -100,6 +100,7 @@ class AddressAutocomplete(QWidget):
         # on hover turns it editable. Default (Add Member wizard) stays editable.
         self._pencil = None
         self._edit_start = ""
+        self._hover = False
         if view_edit:
             self._edit.setObjectName("info_field")
             self._edit.setReadOnly(True)
@@ -110,7 +111,9 @@ class AddressAutocomplete(QWidget):
             self._pencil.triggered.connect(self._begin_edit)
             self._pencil.setVisible(False)
             self._edit.editingFinished.connect(self._finish_edit)
+            self._edit.textChanged.connect(self._refresh_empty)
             self._edit.installEventFilter(self)   # Esc cancels the edit
+            self._refresh_empty()
 
         self._status = QLabel("")
         self._status.setStyleSheet("color:#3d9e6e; font-size:10px;")
@@ -160,7 +163,21 @@ class AddressAutocomplete(QWidget):
         self._edit.setProperty("editing", False)
         self._edit.style().unpolish(self._edit)
         self._edit.style().polish(self._edit)
+        self._refresh_empty()
         clear_active_inline_editor(self)
+
+    def _refresh_empty(self):
+        # Empty address reads as an obvious dashed box (like the other fields).
+        self._edit.setProperty("empty", self._edit.text() == "")
+        self._edit.style().unpolish(self._edit)
+        self._edit.style().polish(self._edit)
+        self._update_pencil()
+
+    def _update_pencil(self):
+        if self._pencil is not None:
+            self._pencil.setVisible(
+                self._edit.isReadOnly()
+                and (self._edit.text() == "" or self._hover))
 
     def eventFilter(self, obj, event):
         from PyQt6.QtCore import QEvent
@@ -173,13 +190,13 @@ class AddressAutocomplete(QWidget):
         return super().eventFilter(obj, event)
 
     def enterEvent(self, e):
-        if self._pencil is not None and self._edit.isReadOnly():
-            self._pencil.setVisible(True)
+        self._hover = True
+        self._update_pencil()
         super().enterEvent(e)
 
     def leaveEvent(self, e):
-        if self._pencil is not None and self._edit.isReadOnly():
-            self._pencil.setVisible(False)
+        self._hover = False
+        self._update_pencil()
         super().leaveEvent(e)
 
     # ── QLineEdit-ish API ─────────────────────────────────────────────────

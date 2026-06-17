@@ -170,6 +170,14 @@ QLineEdit#info_field[changed="true"]:read-only {{
     border-left: 2px solid {t['accent']};
     padding-left: 7px;
 }}
+/* Empty editable field: an obvious dashed box so staff know it's there to fill. */
+QLineEdit#info_field[empty="true"],
+QLineEdit#info_field[empty="true"]:read-only {{
+    background-color: {t['raised']};
+    border: 1px dashed {t['border']};
+    border-radius: 4px;
+    padding: 3px 6px;
+}}
 QLineEdit#info_field[editing="true"] {{
     background-color: {t['raised']};
     border: 1px solid {t['accent']};

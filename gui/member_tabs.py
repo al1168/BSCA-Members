@@ -219,6 +219,7 @@ class _ViewEditLineEdit(QLineEdit):
         self._editable = editable
         self._baseline = value or ""
         self._edit_start = value or ""
+        self._hover = False
         self.setObjectName("info_field")
         self.setReadOnly(True)
         self.setCursorPosition(0)
@@ -228,23 +229,33 @@ class _ViewEditLineEdit(QLineEdit):
                 _pencil_icon(), QLineEdit.ActionPosition.TrailingPosition)
             self._pencil.setToolTip("Edit")
             self._pencil.triggered.connect(self._begin_edit)
-            self._pencil.setVisible(False)          # shown on hover
+            self._pencil.setVisible(False)
             self.editingFinished.connect(self._finish_edit)
-            self.textChanged.connect(self._refresh_changed)
-        self._refresh_changed()
+            self.textChanged.connect(self._refresh_state)
+        self._refresh_state()
 
     def _repolish(self):
         self.style().unpolish(self)
         self.style().polish(self)
 
+    def _is_empty(self) -> bool:
+        return self._editable and self.text() == ""
+
+    def _update_pencil(self):
+        # Pencil shows on hover for filled fields, and always for empty editable
+        # fields (so an empty field is obviously there and fillable).
+        if self._pencil is not None:
+            self._pencil.setVisible(
+                self.isReadOnly() and (self._is_empty() or self._hover))
+
     def enterEvent(self, e):
-        if self._pencil is not None and self.isReadOnly():
-            self._pencil.setVisible(True)
+        self._hover = True
+        self._update_pencil()
         super().enterEvent(e)
 
     def leaveEvent(self, e):
-        if self._pencil is not None and self.isReadOnly():
-            self._pencil.setVisible(False)
+        self._hover = False
+        self._update_pencil()
         super().leaveEvent(e)
 
     def _begin_edit(self):
@@ -266,6 +277,7 @@ class _ViewEditLineEdit(QLineEdit):
         self.setReadOnly(True)
         self.setProperty("editing", False)
         self._repolish()
+        self._update_pencil()
         clear_active_inline_editor(self)
 
     def keyPressEvent(self, e):
@@ -275,14 +287,18 @@ class _ViewEditLineEdit(QLineEdit):
             return
         super().keyPressEvent(e)
 
-    def _refresh_changed(self):
+    def _refresh_state(self):
+        # Empty editable fields read as a visible (dashed) box; filled fields are
+        # flat text. A value differing from the saved baseline gets a highlight.
+        self.setProperty("empty", self._is_empty())
         self.setProperty("changed", self.text() != self._baseline)
         self._repolish()
+        self._update_pencil()
 
     def set_baseline(self):
         """Treat the current text as the saved value (clears the changed mark)."""
         self._baseline = self.text()
-        self._refresh_changed()
+        self._refresh_state()
 
 
 # Warn before attaching a document larger than this (native Access attachments
@@ -741,8 +757,8 @@ class MemberTabsWidget(QWidget):
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        btn_discard = QPushButton("Discard")
-        btn_discard.clicked.connect(self._discard_info)
+        btn_discard = QPushButton("Discard Changes")
+        btn_discard.clicked.connect(self._confirm_discard)
         btn_save = QPushButton("Save Changes")
         btn_save.setObjectName("btn_save")
         btn_save.clicked.connect(self._save_info)
@@ -925,6 +941,19 @@ class MemberTabsWidget(QWidget):
                         f"Emergency contact deleted: {entry['full_name']}")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
+
+    def _confirm_discard(self):
+        """Confirm before reverting unsaved edits. No-op when nothing changed."""
+        if not self._dirty:
+            return
+        reply = QMessageBox.question(
+            self, "Discard changes?",
+            "Discard all unsaved changes to this member?",
+            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if reply == QMessageBox.StandardButton.Discard:
+            self._discard_info()
 
     def _discard_info(self):
         m = self._member
