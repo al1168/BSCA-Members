@@ -308,6 +308,28 @@ def test_insert_authorization_persists_health_plan():
         delete_authorization(new_id, TEST_DB)
 
 
+def test_insert_authorization_stamps_created_at():
+    from datetime import date, datetime
+    from db.members import (
+        get_all_members, insert_authorization, get_authorizations,
+        delete_authorization,
+    )
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    before = {a["id"] for a in get_authorizations(cid, TEST_DB)}
+    insert_authorization(
+        cid, date(2026, 1, 1), date(2026, 12, 31), {1, 3, 5},
+        None, None, "Aetna", TEST_DB,
+    )
+    new_id = ({a["id"] for a in get_authorizations(cid, TEST_DB)} - before).pop()
+    try:
+        row = next(a for a in get_authorizations(cid, TEST_DB) if a["id"] == new_id)
+        assert isinstance(row["created_at"], datetime)
+        # Stamped at insert time, so it should be very recent.
+        assert abs((datetime.now() - row["created_at"]).total_seconds()) < 300
+    finally:
+        delete_authorization(new_id, TEST_DB)
+
+
 def test_sync_writes_latest_auth_plan_into_contacts():
     from datetime import date
     from db.members import (

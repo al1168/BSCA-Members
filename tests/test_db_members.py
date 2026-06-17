@@ -97,10 +97,11 @@ def test_update_enrollment_end_targets_correct_columns():
     assert "WHERE [ID]=?" in UPDATE_ENROLLMENT_END
 
 
-def test_insert_authorization_includes_health_plan():
+def test_insert_authorization_includes_health_plan_and_created_at():
     from db.members import INSERT_AUTHORIZATION
     assert "[Health Plan]" in INSERT_AUTHORIZATION
-    assert INSERT_AUTHORIZATION.count("?") == 7
+    assert "[created_at]" in INSERT_AUTHORIZATION
+    assert INSERT_AUTHORIZATION.count("?") == 8
 
 
 def test_latest_authorization_picks_latest_start_then_id():

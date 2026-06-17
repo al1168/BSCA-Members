@@ -36,11 +36,18 @@ _CREATE_SQL = {
 }
 
 
+# Columns that newer code queries but older test DB fixtures may lack:
+# {table: (column, type)}. Added if missing and dropped at session end.
+_ADD_COLUMNS = {
+    "Authorization": ("created_at", "DATETIME"),
+}
+
+
 @pytest.fixture(scope="session", autouse=True)
 def ensure_optional_tables():
-    """Create tables that newer code queries but older test DBs may lack; drop the
-    ones we created at session end. No-op when the test DB is absent (integration
-    tests skip themselves in that case)."""
+    """Create tables and columns that newer code queries but older test DBs may
+    lack; drop the ones we created at session end. No-op when the test DB is
+    absent (integration tests skip themselves in that case)."""
     if not os.path.exists(_TEST_DB):
         yield
         return
@@ -56,13 +63,26 @@ def ensure_optional_tables():
         if name not in existing:
             c.execute(sql)
             created.append(name)
+
+    added_columns = []
+    for table, (column, coltype) in _ADD_COLUMNS.items():
+        cols = {row.column_name for row in c.columns(table=table)}
+        if column not in cols:
+            c.execute(f"ALTER TABLE [{table}] ADD COLUMN [{column}] {coltype}")
+            added_columns.append((table, column))
     conn.close()
 
     yield
 
-    if created:
+    if created or added_columns:
         conn2 = pyodbc.connect(build_connection_string(_TEST_DB), autocommit=True)
         try:
+            for table, column in added_columns:
+                try:
+                    conn2.cursor().execute(
+                        f"ALTER TABLE [{table}] DROP COLUMN [{column}]")
+                except Exception:
+                    pass
             for name in created:
                 try:
                     conn2.cursor().execute(f"DROP TABLE [{name}]")

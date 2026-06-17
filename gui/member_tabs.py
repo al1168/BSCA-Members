@@ -74,6 +74,22 @@ def make_plan_badge(plan: str | None, *, max_height: int = 26):
     return badge
 
 
+def format_created_at(value) -> str:
+    """Render an authorization's created_at for the table.
+
+    datetime -> 'mm/dd/yyyy h:mm AM/PM' (minutes padded, hour not); a plain
+    date -> 'mm/dd/yyyy'; missing/legacy rows -> '' (blank, not 'None').
+    """
+    from datetime import datetime, date
+    if not value:
+        return ""
+    if isinstance(value, datetime):
+        return f"{value:%m/%d/%Y} " + value.strftime("%I:%M %p").lstrip("0")
+    if isinstance(value, date):
+        return f"{value:%m/%d/%Y}"
+    return str(value)
+
+
 def decode_auth_days(auth_days: str) -> set[int]:
     """'1,3,5' -> {1, 3, 5}. Blank, whitespace-only, and non-numeric tokens are
     ignored so malformed data never raises."""
@@ -1277,7 +1293,7 @@ class MemberTabsWidget(QWidget):
         layout.setContentsMargins(0, 12, 0, 0)
 
         columns = ["ID", "Auth Start", "Auth End", "Days", "Health Plan",
-                   "Document", "Action"]
+                   "Created", "Document", "Action"]
         table = QTableWidget(len(self._authorizations), len(columns))
         table.setHorizontalHeaderLabels(columns)
         table.horizontalHeaderItem(3).setToolTip("1=Mon  2=Tue  3=Wed  4=Thu  5=Fri")
@@ -1320,6 +1336,10 @@ class MemberTabsWidget(QWidget):
             else:
                 table.setItem(r, 4, QTableWidgetItem(""))
 
+            # When the row was created (auto-stamped on insert); blank for rows
+            # that predate the column.
+            table.setItem(r, 5, QTableWidgetItem(format_created_at(a.get("created_at"))))
+
             has_doc = a["id"] in doc_ids
             doc_btn = QPushButton("Open" if has_doc else "Attach")
             doc_btn.setObjectName("btn_edit")
@@ -1329,7 +1349,7 @@ class MemberTabsWidget(QWidget):
             else:
                 doc_btn.clicked.connect(
                     lambda _=False, auth=a: self._attach_auth_document(auth))
-            table.setCellWidget(r, 5, doc_btn)
+            table.setCellWidget(r, 6, doc_btn)
 
             # Every row gets an Edit button so the Action column reads as
             # intentional, but only the most recent authorization is editable.
@@ -1340,7 +1360,7 @@ class MemberTabsWidget(QWidget):
             else:
                 btn.setEnabled(False)
                 btn.setToolTip("Only the most recent authorization can be edited.")
-            table.setCellWidget(r, 6, btn)
+            table.setCellWidget(r, 7, btn)
 
         self._auth_table = table
         layout.addWidget(table)

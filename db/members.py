@@ -55,8 +55,8 @@ UPDATE_ENROLLMENT_END = "UPDATE [Enrollment] SET [end_date]=? WHERE [ID]=?"
 
 INSERT_AUTHORIZATION = (
     "INSERT INTO [Authorization] ([Center ID], [auth_start], [auth_end], "
-    "[effective_start], [effective_end], [auth_days], [Health Plan]) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?)"
+    "[effective_start], [effective_end], [auth_days], [Health Plan], [created_at]) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
 )
 
 DELETE_AUTHORIZATION = "DELETE FROM [Authorization] WHERE [ID]=?"
@@ -68,7 +68,7 @@ UPDATE_AUTHORIZATION = (
 
 AUTHORIZATION_SELECT = (
     "SELECT [ID],[Center ID],[auth_start],[auth_end],"
-    "[effective_start],[effective_end],[auth_days],[Health Plan] "
+    "[effective_start],[effective_end],[auth_days],[Health Plan],[created_at] "
     "FROM [Authorization] WHERE [Center ID]=?"
 )
 
@@ -594,9 +594,11 @@ def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dic
 
 
 def _map_auth_row(row) -> dict:
-    """bsca-core maps 7 columns by index; add the local [Health Plan] (row[7])."""
+    """bsca-core maps 7 columns by index; add the local [Health Plan] (row[7])
+    and [created_at] (row[8], a datetime or None for legacy rows)."""
     d = map_authorization_row(row)
     d["health_plan"] = row[7] or ""
+    d["created_at"] = row[8]
     return d
 
 
@@ -943,7 +945,7 @@ def insert_authorization(
         conn.cursor().execute(
             INSERT_AUTHORIZATION,
             (center_id, auth_start, auth_end, effective_start, effective_end,
-             encode_auth_days(auth_days), health_plan),
+             encode_auth_days(auth_days), health_plan, datetime.now()),
         )
         conn.commit()
     except Exception:
