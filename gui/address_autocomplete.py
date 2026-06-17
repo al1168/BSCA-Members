@@ -23,7 +23,7 @@ def _pencil_icon():
     pm = QPixmap(16, 16)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
-    p.setPen(QColor("#9aa0ad"))
+    p.setPen(QColor("#5b7cf4"))  # accent blue — clearly the edit affordance
     p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "✎")
     p.end()
     return QIcon(pm)

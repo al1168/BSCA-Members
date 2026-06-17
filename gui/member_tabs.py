@@ -196,8 +196,8 @@ def _pencil_icon():
     pm = QPixmap(16, 16)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
-    p.setPen(QColor("#9aa0ad"))
-    p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "✎")  # ✎
+    p.setPen(QColor("#5b7cf4"))  # accent blue — clearly the edit affordance
+    p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "✎")
     p.end()
     return QIcon(pm)
 
@@ -694,10 +694,13 @@ class MemberTabsWidget(QWidget):
         cell(2, "Medicaid", self._info_medicaid)
         state["row"] += 1
         cell(0, "Medicare", self._info_medicare)
-        cell(1, "PCP", self._info_pcp)
-        cell(2, "Hospital", self._info_hospital)
+        cell(1, "Hospital", self._info_hospital)
         state["row"] += 1
-        cell(0, "HHA", self._info_hha)
+        # PCP and HHA can hold long, address-like values — give each the full
+        # row width so the text is visible instead of truncated in a column.
+        cell(0, "PCP", self._info_pcp, wspan=3)
+        state["row"] += 1
+        cell(0, "HHA", self._info_hha, wspan=3)
         state["row"] += 1
 
         section("Care")
