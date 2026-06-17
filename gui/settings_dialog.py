@@ -41,10 +41,20 @@ class SettingsDialog(QDialog):
         ev_hl.addWidget(btn_browse_ev)
         form.addRow("Events log path:", ev_row)
 
-        # Google API key
+        # Google API key: blocked off (masked, read-only) by default so the
+        # secret isn't shown in the clear. "Edit" reveals + unlocks it.
+        api_row = QWidget()
+        api_hl = QHBoxLayout(api_row)
+        api_hl.setContentsMargins(0, 0, 0, 0)
         self._api_key = QLineEdit(self._settings.get("google_api_key", ""))
         self._api_key.setPlaceholderText("Google Maps Platform API key (Places API)")
-        form.addRow("Google API key:", self._api_key)
+        self._api_edit_btn = QPushButton("Edit")
+        self._api_edit_btn.clicked.connect(self._toggle_api_edit)
+        api_hl.addWidget(self._api_key)
+        api_hl.addWidget(self._api_edit_btn)
+        form.addRow("Google API key:", api_row)
+        # An existing key opens locked + masked; an empty one opens ready to type.
+        self._set_api_locked(bool(self._settings.get("google_api_key", "")))
 
         # Theme
         theme_row = QWidget()
@@ -72,6 +82,20 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _set_api_locked(self, locked: bool):
+        """Locked = blocked off: masked and read-only. Unlocked = revealed and
+        editable. The button always offers the opposite action."""
+        self._api_key.setReadOnly(locked)
+        self._api_key.setEchoMode(
+            QLineEdit.EchoMode.Password if locked else QLineEdit.EchoMode.Normal)
+        self._api_edit_btn.setText("Edit" if locked else "Hide")
+
+    def _toggle_api_edit(self):
+        was_locked = self._api_key.isReadOnly()
+        self._set_api_locked(not was_locked)
+        if was_locked:                 # just unlocked -> ready to edit
+            self._api_key.setFocus()
 
     def _browse_db(self):
         path, _ = QFileDialog.getOpenFileName(

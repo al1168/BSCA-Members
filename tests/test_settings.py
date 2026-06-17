@@ -41,3 +41,49 @@ def test_settings_dialog_returns_google_api_key(qtbot):
                           "google_api_key": "KEY123"})
     qtbot.addWidget(dlg)
     assert dlg.result_settings()["google_api_key"] == "KEY123"
+
+
+def _dialog(qtbot, key):
+    from gui.settings_dialog import SettingsDialog
+    dlg = SettingsDialog({"db_path": "", "events_db_path": "", "theme": "dark",
+                          "google_api_key": key})
+    qtbot.addWidget(dlg)
+    return dlg
+
+
+def test_api_key_masked_and_locked_when_present(qtbot):
+    from PyQt6.QtWidgets import QLineEdit
+    dlg = _dialog(qtbot, "KEY123")
+    assert dlg._api_key.echoMode() == QLineEdit.EchoMode.Password  # blocked off
+    assert dlg._api_key.isReadOnly() is True
+    assert dlg._api_edit_btn.text() == "Edit"
+
+
+def test_api_key_editable_when_empty(qtbot):
+    from PyQt6.QtWidgets import QLineEdit
+    dlg = _dialog(qtbot, "")
+    # No key yet: open ready to type, in the clear.
+    assert dlg._api_key.isReadOnly() is False
+    assert dlg._api_key.echoMode() == QLineEdit.EchoMode.Normal
+    assert dlg._api_edit_btn.text() == "Hide"
+
+
+def test_edit_button_toggles_reveal_and_lock(qtbot):
+    from PyQt6.QtWidgets import QLineEdit
+    dlg = _dialog(qtbot, "KEY123")
+
+    dlg._api_edit_btn.click()                       # Edit -> reveal + unlock
+    assert dlg._api_key.isReadOnly() is False
+    assert dlg._api_key.echoMode() == QLineEdit.EchoMode.Normal
+    assert dlg._api_edit_btn.text() == "Hide"
+
+    dlg._api_edit_btn.click()                       # Hide -> re-mask + lock
+    assert dlg._api_key.isReadOnly() is True
+    assert dlg._api_key.echoMode() == QLineEdit.EchoMode.Password
+    assert dlg._api_edit_btn.text() == "Edit"
+
+
+def test_result_settings_returns_key_while_masked(qtbot):
+    # Masking is display-only; the field still holds (and saves) the real key.
+    dlg = _dialog(qtbot, "KEY123")
+    assert dlg.result_settings()["google_api_key"] == "KEY123"
