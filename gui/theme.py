@@ -364,6 +364,15 @@ QLabel#expired_chip {{
     font-size: 9px;
     font-weight: 700;
 }}
+QLabel#active_chip {{
+    background-color: {t['success_bg']};
+    color: {t['success']};
+    border: 1px solid {t['success']};
+    border-radius: 8px;
+    padding: 1px 7px;
+    font-size: 9px;
+    font-weight: 700;
+}}
 QLabel#plan_badge {{
     background-color: {t['accent_bg']};
     color: {t['accent_text']};

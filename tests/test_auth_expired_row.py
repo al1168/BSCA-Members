@@ -35,11 +35,12 @@ def test_no_end_date_never_expired(qapp):
     assert is_auth_expired({}, date(2026, 6, 17)) is False
 
 
-# ── theme exposes the Expired chip ─────────────────────────────────────────
-def test_theme_has_expired_chip(qapp):
+# ── theme exposes the status chips ─────────────────────────────────────────
+def test_theme_has_status_chips(qapp):
     from gui.theme import build_qss, DARK, LIGHT
-    assert "expired_chip" in build_qss(DARK)
-    assert "expired_chip" in build_qss(LIGHT)
+    for t in (build_qss(DARK), build_qss(LIGHT)):
+        assert "expired_chip" in t
+        assert "active_chip" in t
 
 
 # ── the table dims expired rows and tags them ──────────────────────────────
@@ -76,18 +77,22 @@ def test_expired_row_text_is_grayed(qapp, monkeypatch):
     assert table.item(current, 2).foreground().color() != QColor(mt.EXPIRED_FG)
 
 
-def test_expired_row_has_expired_chip(qapp, monkeypatch):
+def _status_chip_name(table, row):
     from PyQt6.QtWidgets import QLabel
+    cell = table.cellWidget(row, 6)        # the dedicated Status column
+    if cell is None:
+        return None
+    for lbl in cell.findChildren(QLabel):
+        if lbl.objectName() in ("expired_chip", "active_chip"):
+            return lbl.objectName()
+    return None
+
+
+def test_expired_row_has_expired_chip(qapp, monkeypatch):
     mt, table, _tab = _build_tab(monkeypatch)
-    expired = _row_for_id(table, 2)
-    current = _row_for_id(table, 1)
+    assert _status_chip_name(table, _row_for_id(table, 2)) == "expired_chip"
 
-    def has_chip(row):
-        cell = table.cellWidget(row, 7)
-        if cell is None:
-            return False
-        return any(lbl.objectName() == "expired_chip"
-                   for lbl in cell.findChildren(QLabel))
 
-    assert has_chip(expired) is True
-    assert has_chip(current) is False
+def test_current_row_has_active_chip(qapp, monkeypatch):
+    mt, table, _tab = _build_tab(monkeypatch)
+    assert _status_chip_name(table, _row_for_id(table, 1)) == "active_chip"

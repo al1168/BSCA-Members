@@ -1311,7 +1311,7 @@ class MemberTabsWidget(QWidget):
         layout.setContentsMargins(0, 12, 0, 0)
 
         columns = ["ID", "Auth Start", "Auth End", "Days", "Health Plan",
-                   "Created", "Document", "Action"]
+                   "Created", "Status", "Document", "Action"]
         table = QTableWidget(len(self._authorizations), len(columns))
         table.setHorizontalHeaderLabels(columns)
         table.horizontalHeaderItem(3).setToolTip("1=Mon  2=Tue  3=Wed  4=Thu  5=Fri")
@@ -1369,7 +1369,7 @@ class MemberTabsWidget(QWidget):
             else:
                 doc_btn.clicked.connect(
                     lambda _=False, auth=a: self._attach_auth_document(auth))
-            table.setCellWidget(r, 6, doc_btn)
+            table.setCellWidget(r, 7, doc_btn)
 
             # Every row gets an Edit button so the Action column reads as
             # intentional, but only the most recent authorization is editable.
@@ -1380,24 +1380,25 @@ class MemberTabsWidget(QWidget):
             else:
                 btn.setEnabled(False)
                 btn.setToolTip("Only the most recent authorization can be edited.")
+            table.setCellWidget(r, 8, btn)
+
+            # Status pill in its own column: a green "Active" or red "Expired"
+            # tag so each authorization's state reads at a glance, without
+            # crowding the action buttons.
+            status_cell = QWidget()
+            sbox = QHBoxLayout(status_cell)
+            sbox.setContentsMargins(10, 2, 8, 2)
+            sbox.setSpacing(0)
+            chip = QLabel("Expired" if expired else "Active")
+            chip.setObjectName("expired_chip" if expired else "active_chip")
+            sbox.addWidget(chip)
+            sbox.addStretch()
+            table.setCellWidget(r, 6, status_cell)
 
             if not expired:
-                table.setCellWidget(r, 7, btn)
                 continue
 
-            # Expired rows stay readable but are dimmed, and a red "Expired" chip
-            # in the action cell makes the lapsed window unmistakable.
-            action_cell = QWidget()
-            abox = QHBoxLayout(action_cell)
-            abox.setContentsMargins(4, 2, 4, 2)
-            abox.setSpacing(6)
-            abox.addWidget(btn)
-            chip = QLabel("Expired")
-            chip.setObjectName("expired_chip")
-            abox.addWidget(chip)
-            abox.addStretch()
-            table.setCellWidget(r, 7, action_cell)
-
+            # Expired rows are dimmed so the in-effect ones stand out.
             for col in (0, 1, 2, 4, 5):
                 item = table.item(r, col)
                 if item is not None:
