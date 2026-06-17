@@ -458,6 +458,45 @@ def test_insert_member_persists_member_id_phones_and_dob():
             conn.close()
 
 
+def test_insert_member_with_authorization_stamps_created_at():
+    """Regression: the new-member flow inserts the authorization inline, and that
+    statement must supply [created_at] too (8 markers, not 7)."""
+    from datetime import date, datetime
+    from db.members import (
+        insert_member, center_id_exists, get_authorizations, _connect,
+    )
+
+    cid = 880100  # implausible test id
+    if center_id_exists(cid, TEST_DB):
+        return  # don't clobber real data; skip
+    insert_member(
+        center_id=cid, last_name="AUTHTEST", first_name="Avi",
+        health_plan="HF", address="3 Elm St, New York, NY",
+        enrollment_start=date(2026, 1, 1), enrollment_end=None,
+        authorization={
+            "auth_start": date(2026, 1, 1), "auth_end": date(2026, 12, 31),
+            "auth_days": {3, 6}, "health_plan": "HF",
+        },
+        availability_rows=[],
+        member_id="M-880100", dob=date(1950, 2, 2),
+        db_path=TEST_DB,
+    )
+    try:
+        auths = get_authorizations(cid, TEST_DB)
+        assert len(auths) == 1
+        assert isinstance(auths[0]["created_at"], datetime)
+    finally:
+        conn = _connect(TEST_DB)
+        try:
+            cc = conn.cursor()
+            cc.execute("DELETE FROM [Authorization] WHERE [Center ID]=?", cid)
+            cc.execute("DELETE FROM [Enrollment] WHERE [Center ID]=?", cid)
+            cc.execute("DELETE FROM [Contacts] WHERE [Center ID]=?", cid)
+            conn.commit()
+        finally:
+            conn.close()
+
+
 def test_dob_round_trips_as_access_datetime():
     """A datetime.date binds correctly to an Access Date/Time column — the type
     Contacts.[DOB] will have in production — and reads back as a real date, not

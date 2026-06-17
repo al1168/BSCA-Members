@@ -776,6 +776,7 @@ def insert_member(
                     authorization.get("effective_end"),
                     encode_auth_days(authorization["auth_days"]),
                     authorization.get("health_plan", ""),
+                    datetime.now(),
                 ),
             )
         for row in availability_rows:
