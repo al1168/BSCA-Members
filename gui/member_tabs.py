@@ -1310,8 +1310,12 @@ class MemberTabsWidget(QWidget):
         layout = QVBoxLayout(w)
         layout.setContentsMargins(0, 12, 0, 0)
 
+        # A trailing spacer column (index SPACER_COL) soaks up the leftover width
+        # as a single grayed strip, instead of leaving a bare gap past the last
+        # real column.
         columns = ["ID", "Auth Start", "Auth End", "Days", "Health Plan",
-                   "Created", "Status", "Document", "Action"]
+                   "Created", "Status", "Document", "Action", ""]
+        SPACER_COL = len(columns) - 1
         table = QTableWidget(len(self._authorizations), len(columns))
         table.setHorizontalHeaderLabels(columns)
         table.horizontalHeaderItem(3).setToolTip("1=Mon  2=Tue  3=Wed  4=Thu  5=Fri")
@@ -1319,10 +1323,10 @@ class MemberTabsWidget(QWidget):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         hdr = table.horizontalHeader()
         hdr.setStretchLastSection(False)
-        # Every column hugs its content. Nothing stretches, so a short plan code
-        # no longer inflates the Health Plan column; the slack falls to the right
-        # of the row instead of opening a gap mid-row.
+        # Real columns hug their content; the spacer alone stretches to fill the
+        # rest of the row.
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(SPACER_COL, QHeaderView.ResizeMode.Stretch)
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
 
@@ -1342,16 +1346,18 @@ class MemberTabsWidget(QWidget):
             chips = WeekdayChips(decode_auth_days(a["auth_days"] or ""), compact=True)
             table.setCellWidget(r, 3, chips)
 
-            # Health plan as the same colored pill used everywhere else, hugged
-            # to the left of the cell so the column sizes to the pill.
+            # Health plan as the same colored pill used everywhere else, filling
+            # the column width with its label centered.
             badge = make_plan_badge(a.get("health_plan", "") or "")
             plan_cell = None
             if badge is not None:
+                badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                badge.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                    QSizePolicy.Policy.Fixed)
                 plan_cell = QWidget()
                 cbox = QHBoxLayout(plan_cell)
-                cbox.setContentsMargins(8, 2, 8, 2)
+                cbox.setContentsMargins(6, 4, 6, 4)
                 cbox.addWidget(badge)
-                cbox.addStretch()
                 table.setCellWidget(r, 4, plan_cell)
             else:
                 table.setItem(r, 4, QTableWidgetItem(""))
@@ -1383,17 +1389,23 @@ class MemberTabsWidget(QWidget):
             table.setCellWidget(r, 8, btn)
 
             # Status pill in its own column: a green "Active" or red "Expired"
-            # tag so each authorization's state reads at a glance, without
-            # crowding the action buttons.
+            # tag, filling the column with its label centered.
             status_cell = QWidget()
             sbox = QHBoxLayout(status_cell)
-            sbox.setContentsMargins(10, 2, 8, 2)
+            sbox.setContentsMargins(6, 4, 6, 4)
             sbox.setSpacing(0)
             chip = QLabel("Expired" if expired else "Active")
             chip.setObjectName("expired_chip" if expired else "active_chip")
+            chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            chip.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             sbox.addWidget(chip)
-            sbox.addStretch()
             table.setCellWidget(r, 6, status_cell)
+
+            # Grayed filler so the leftover width past the row reads as inert.
+            spacer = QTableWidgetItem("")
+            spacer.setFlags(Qt.ItemFlag.NoItemFlags)
+            spacer.setBackground(QColor(120, 124, 140, 38))
+            table.setItem(r, SPACER_COL, spacer)
 
             if not expired:
                 continue
