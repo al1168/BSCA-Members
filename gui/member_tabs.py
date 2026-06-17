@@ -5,6 +5,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from db.members import get_member_context
+from gui.address_autocomplete import (
+    set_active_inline_editor, clear_active_inline_editor,
+)
 
 
 class _NotesEdit(QTextEdit):
@@ -247,6 +250,7 @@ class _ViewEditLineEdit(QLineEdit):
     def _begin_edit(self):
         if not self._editable or not self.isReadOnly():
             return
+        set_active_inline_editor(self)        # finish any other open field
         self._edit_start = self.text()
         self.setReadOnly(False)
         if self._pencil is not None:
@@ -262,6 +266,7 @@ class _ViewEditLineEdit(QLineEdit):
         self.setReadOnly(True)
         self.setProperty("editing", False)
         self._repolish()
+        clear_active_inline_editor(self)
 
     def keyPressEvent(self, e):
         if not self.isReadOnly() and e.key() == Qt.Key.Key_Escape:

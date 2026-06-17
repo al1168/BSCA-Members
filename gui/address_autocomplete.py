@@ -17,6 +17,29 @@ AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete"
 DETAILS_URL = "https://places.googleapis.com/v1/places"  # + /{place_id}
 
 
+# Only one inline field (a _ViewEditLineEdit or an AddressAutocomplete in
+# view_edit mode) may be in edit mode at a time. When one begins editing it
+# registers here, which finishes whichever field was being edited before.
+_active_inline_editor = None
+
+
+def set_active_inline_editor(editor) -> None:
+    global _active_inline_editor
+    prev = _active_inline_editor
+    if prev is not None and prev is not editor:
+        try:
+            prev._finish_edit()
+        except Exception:
+            pass
+    _active_inline_editor = editor
+
+
+def clear_active_inline_editor(editor) -> None:
+    global _active_inline_editor
+    if _active_inline_editor is editor:
+        _active_inline_editor = None
+
+
 def _pencil_icon():
     """A small pencil glyph as a QIcon for the inline 'edit' affordance."""
     from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
@@ -76,6 +99,7 @@ class AddressAutocomplete(QWidget):
         # view_edit (member Info tab): flat, selectable text by default; a pencil
         # on hover turns it editable. Default (Add Member wizard) stays editable.
         self._pencil = None
+        self._edit_start = ""
         if view_edit:
             self._edit.setObjectName("info_field")
             self._edit.setReadOnly(True)
@@ -86,6 +110,7 @@ class AddressAutocomplete(QWidget):
             self._pencil.triggered.connect(self._begin_edit)
             self._pencil.setVisible(False)
             self._edit.editingFinished.connect(self._finish_edit)
+            self._edit.installEventFilter(self)   # Esc cancels the edit
 
         self._status = QLabel("")
         self._status.setStyleSheet("color:#3d9e6e; font-size:10px;")
@@ -117,6 +142,8 @@ class AddressAutocomplete(QWidget):
     def _begin_edit(self):
         if not self._view_edit or not self._edit.isReadOnly():
             return
+        set_active_inline_editor(self)        # finish any other open field
+        self._edit_start = self._edit.text()
         self._edit.setReadOnly(False)
         self._edit.setProperty("editing", True)
         self._edit.style().unpolish(self._edit)
@@ -133,6 +160,17 @@ class AddressAutocomplete(QWidget):
         self._edit.setProperty("editing", False)
         self._edit.style().unpolish(self._edit)
         self._edit.style().polish(self._edit)
+        clear_active_inline_editor(self)
+
+    def eventFilter(self, obj, event):
+        from PyQt6.QtCore import QEvent
+        if (obj is self._edit and event.type() == QEvent.Type.KeyPress
+                and event.key() == Qt.Key.Key_Escape
+                and not self._edit.isReadOnly()):
+            self._edit.setText(self._edit_start)   # cancel the edit
+            self._finish_edit()
+            return True
+        return super().eventFilter(obj, event)
 
     def enterEvent(self, e):
         if self._pencil is not None and self._edit.isReadOnly():
