@@ -184,6 +184,21 @@ def sort_auths_latest_first(auths: list[dict]) -> list[dict]:
     return sorted(auths, key=lambda a: a.get("auth_end") or date.min, reverse=True)
 
 
+# Muted foreground for expired authorization rows. Neutral slate that reads as
+# clearly dimmed against both the dark and light backgrounds.
+EXPIRED_FG = "#7d8198"
+
+
+def is_auth_expired(auth: dict, today) -> bool:
+    """True when an authorization's window has passed (auth_end < today).
+
+    Mirrors auth_warning: today still counts as in-effect, and an open-ended
+    authorization (no auth_end) is never expired.
+    """
+    end = auth.get("auth_end")
+    return bool(end) and end < today
+
+
 class WeekdayChips(QWidget):
     """A row of seven weekday chips, Mon→Sun. Authorized days are filled with the
     accent color (object name 'day_chip_on'); the rest are dimmed
@@ -1283,9 +1298,12 @@ class MemberTabsWidget(QWidget):
     # ── Authorizations tab ─────────────────────────────────────────────────
 
     def _make_auths_tab(self) -> QWidget:
+        from datetime import date
         from PyQt6.QtWidgets import (
             QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView,
+            QGraphicsOpacityEffect,
         )
+        from PyQt6.QtGui import QColor
         from db.members import latest_authorization
 
         w = QWidget()
@@ -1313,23 +1331,28 @@ class MemberTabsWidget(QWidget):
 
         latest = latest_authorization(self._authorizations)
         latest_id = latest["id"] if latest else None
+        today = date.today()
         for r, a in enumerate(sort_auths_latest_first(self._authorizations)):
+            expired = is_auth_expired(a, today)
+
             table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
             table.setItem(r, 1, QTableWidgetItem(str(a["auth_start"])))
             table.setItem(r, 2, QTableWidgetItem(str(a["auth_end"])))
-            table.setCellWidget(r, 3, WeekdayChips(
-                decode_auth_days(a["auth_days"] or ""), compact=True))
+
+            chips = WeekdayChips(decode_auth_days(a["auth_days"] or ""), compact=True)
+            table.setCellWidget(r, 3, chips)
 
             # Health plan as the same colored pill used everywhere else, hugged
             # to the left of the cell so the column sizes to the pill.
             badge = make_plan_badge(a.get("health_plan", "") or "")
+            plan_cell = None
             if badge is not None:
-                cell = QWidget()
-                cbox = QHBoxLayout(cell)
+                plan_cell = QWidget()
+                cbox = QHBoxLayout(plan_cell)
                 cbox.setContentsMargins(8, 2, 8, 2)
                 cbox.addWidget(badge)
                 cbox.addStretch()
-                table.setCellWidget(r, 4, cell)
+                table.setCellWidget(r, 4, plan_cell)
             else:
                 table.setItem(r, 4, QTableWidgetItem(""))
 
@@ -1357,7 +1380,33 @@ class MemberTabsWidget(QWidget):
             else:
                 btn.setEnabled(False)
                 btn.setToolTip("Only the most recent authorization can be edited.")
-            table.setCellWidget(r, 7, btn)
+
+            if not expired:
+                table.setCellWidget(r, 7, btn)
+                continue
+
+            # Expired rows stay readable but are dimmed, and a red "Expired" chip
+            # in the action cell makes the lapsed window unmistakable.
+            action_cell = QWidget()
+            abox = QHBoxLayout(action_cell)
+            abox.setContentsMargins(4, 2, 4, 2)
+            abox.setSpacing(6)
+            abox.addWidget(btn)
+            chip = QLabel("Expired")
+            chip.setObjectName("expired_chip")
+            abox.addWidget(chip)
+            abox.addStretch()
+            table.setCellWidget(r, 7, action_cell)
+
+            for col in (0, 1, 2, 4, 5):
+                item = table.item(r, col)
+                if item is not None:
+                    item.setForeground(QColor(EXPIRED_FG))
+            for widget in (chips, plan_cell):
+                if widget is not None:
+                    eff = QGraphicsOpacityEffect(widget)
+                    eff.setOpacity(0.45)
+                    widget.setGraphicsEffect(eff)
 
         self._auth_table = table
         layout.addWidget(table)

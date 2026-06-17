@@ -355,6 +355,15 @@ QLabel#terminated_badge {{
     font-size: 11px;
     font-weight: 700;
 }}
+QLabel#expired_chip {{
+    background-color: {t['error_bg']};
+    color: {t['error_text']};
+    border: 1px solid {t['error']};
+    border-radius: 8px;
+    padding: 1px 7px;
+    font-size: 9px;
+    font-weight: 700;
+}}
 QLabel#plan_badge {{
     background-color: {t['accent_bg']};
     color: {t['accent_text']};
