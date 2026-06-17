@@ -57,6 +57,23 @@ WEEKDAY_NAMES = {
 }
 
 
+def make_plan_badge(plan: str | None, *, max_height: int = 26):
+    """The colored health-plan pill, or None when there is no plan.
+
+    Reused by the member header and the Authorizations table so the plan
+    renders identically everywhere (per-plan color comes from PLAN_COLORS /
+    the #plan_badge rules in theme.py).
+    """
+    if not plan:
+        return None
+    badge = QLabel(plan)
+    badge.setObjectName("plan_badge")
+    badge.setProperty("plan", plan)
+    badge.setToolTip("Health Plan")
+    badge.setMaximumHeight(max_height)
+    return badge
+
+
 def decode_auth_days(auth_days: str) -> set[int]:
     """'1,3,5' -> {1, 3, 5}. Blank, whitespace-only, and non-numeric tokens are
     ignored so malformed data never raises."""
@@ -519,13 +536,8 @@ class MemberTabsWidget(QWidget):
                             f"<span style='color:gray;font-size:12px'> &nbsp;ID {cid}</span>")
         name_label.setTextFormat(Qt.TextFormat.RichText)
         top_row.addWidget(name_label)
-        plan = self._member.get("health_plan", "")
-        if plan:
-            plan_badge = QLabel(plan)
-            plan_badge.setObjectName("plan_badge")
-            plan_badge.setProperty("plan", plan)
-            plan_badge.setToolTip("Health Plan")
-            plan_badge.setMaximumHeight(26)
+        plan_badge = make_plan_badge(self._member.get("health_plan", ""))
+        if plan_badge is not None:
             top_row.addWidget(plan_badge, alignment=Qt.AlignmentFlag.AlignVCenter)
         from db.members import is_terminated
         if is_terminated(self._enrollments):
@@ -1273,8 +1285,13 @@ class MemberTabsWidget(QWidget):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         hdr = table.horizontalHeader()
         hdr.setStretchLastSection(False)
+        # Every column hugs its content. Nothing stretches, so a short plan code
+        # no longer inflates the Health Plan column; the slack falls to the right
+        # of the row instead of opening a gap mid-row.
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        # The ID is the Access primary key, meaningless to staff. Keep the item
+        # in column 0 (delete reads it) but hide the column.
+        table.setColumnHidden(0, True)
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
 
@@ -1289,7 +1306,19 @@ class MemberTabsWidget(QWidget):
             table.setItem(r, 2, QTableWidgetItem(str(a["auth_end"])))
             table.setCellWidget(r, 3, WeekdayChips(
                 decode_auth_days(a["auth_days"] or ""), compact=True))
-            table.setItem(r, 4, QTableWidgetItem(a.get("health_plan", "") or ""))
+
+            # Health plan as the same colored pill used everywhere else, hugged
+            # to the left of the cell so the column sizes to the pill.
+            badge = make_plan_badge(a.get("health_plan", "") or "")
+            if badge is not None:
+                cell = QWidget()
+                cbox = QHBoxLayout(cell)
+                cbox.setContentsMargins(8, 2, 8, 2)
+                cbox.addWidget(badge)
+                cbox.addStretch()
+                table.setCellWidget(r, 4, cell)
+            else:
+                table.setItem(r, 4, QTableWidgetItem(""))
 
             has_doc = a["id"] in doc_ids
             doc_btn = QPushButton("Open" if has_doc else "Attach")
@@ -1302,11 +1331,16 @@ class MemberTabsWidget(QWidget):
                     lambda _=False, auth=a: self._attach_auth_document(auth))
             table.setCellWidget(r, 5, doc_btn)
 
+            # Every row gets an Edit button so the Action column reads as
+            # intentional, but only the most recent authorization is editable.
+            btn = QPushButton("Edit")
+            btn.setObjectName("btn_edit")
             if a["id"] == latest_id:
-                btn = QPushButton("Edit")
-                btn.setObjectName("btn_edit")
                 btn.clicked.connect(lambda _=False, auth=a: self._edit_auth(auth))
-                table.setCellWidget(r, 6, btn)
+            else:
+                btn.setEnabled(False)
+                btn.setToolTip("Only the most recent authorization can be edited.")
+            table.setCellWidget(r, 6, btn)
 
         self._auth_table = table
         layout.addWidget(table)
