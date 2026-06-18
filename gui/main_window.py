@@ -22,6 +22,31 @@ def active_first(members: list[dict], terminated_ids: set) -> list[dict]:
     return sorted(members, key=lambda m: m["center_id"] in terminated_ids)
 
 
+def matches_search(member: dict, text: str) -> bool:
+    """Whether `member` matches the search box `text`.
+
+    A comma is the trigger for last-name mode ('Last, Firstprefix'): the text
+    before the first comma is an exact, case-insensitive last-name match, and
+    the text after it is a first-name prefix (empty -> last-name only). Spaces
+    around the comma are ignored. Without a comma, fall back to a substring
+    match over last name, first name, and center id.
+    """
+    q = text.strip()
+    if "," in q:
+        last_part, first_part = q.split(",", 1)
+        last = last_part.strip().lower()
+        first = first_part.strip().lower()
+        if (member.get("last_name") or "").strip().lower() != last:
+            return False
+        if first:
+            return (member.get("first_name") or "").strip().lower().startswith(first)
+        return True
+    ql = q.lower()
+    return (ql in (member.get("last_name") or "").lower()
+            or ql in (member.get("first_name") or "").lower()
+            or ql in str(member.get("center_id", "")))
+
+
 class _MemberItemDelegate(QStyledItemDelegate):
     """Paints terminated member rows with a dimmed name and a red TERMINATED tag.
     Active rows fall through to the default rendering."""
@@ -191,13 +216,7 @@ class MainWindow(QMainWindow):
             self._member_list.addItem(item)
 
     def _filter_members(self, text: str):
-        q = text.lower()
-        filtered = [
-            m for m in self._all_members
-            if q in m["last_name"].lower()
-            or q in m["first_name"].lower()
-            or q in str(m["center_id"])
-        ]
+        filtered = [m for m in self._all_members if matches_search(m, text)]
         self._populate_list(filtered)
 
     def _on_member_selected(self, row: int):
