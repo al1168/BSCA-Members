@@ -74,17 +74,36 @@ def make_plan_badge(plan: str | None, *, max_height: int = 26):
     return badge
 
 
+_PILL_CELL_HMARGIN = 6   # left+right inset inside a centered pill cell
+
+
 def _centered_cell(widget) -> QWidget:
     """Wrap a widget in a table cell that centers it horizontally, keeping it at
-    its natural (compact) size rather than stretching it to fill the column."""
+    its natural (compact) size rather than stretching it to fill the column.
+
+    The widget is pinned to at least its own content width so the centering
+    stretches (or a slightly narrow column) can never squeeze it and clip its
+    text."""
+    widget.setMinimumWidth(widget.sizeHint().width())
     cell = QWidget()
     box = QHBoxLayout(cell)
-    box.setContentsMargins(6, 4, 6, 4)
+    box.setContentsMargins(_PILL_CELL_HMARGIN, 4, _PILL_CELL_HMARGIN, 4)
     box.setSpacing(0)
     box.addStretch()
     box.addWidget(widget)
     box.addStretch()
     return cell
+
+
+def _fit_pill_column(table, col: int, pills: list, floor: int) -> None:
+    """Fix `col` to a width that always fits the widest pill (plus the cell
+    insets) or `floor`, whichever is larger. Avoids relying on ResizeToContents,
+    which mis-measures widget-only columns and let the pills clip across DPI."""
+    from PyQt6.QtWidgets import QHeaderView
+    widest = max((p.sizeHint().width() for p in pills), default=0)
+    width = max(widest + 2 * _PILL_CELL_HMARGIN + 4, floor)
+    table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
+    table.setColumnWidth(col, width)
 
 
 def format_created_at(value) -> str:
@@ -1396,10 +1415,6 @@ class MemberTabsWidget(QWidget):
         # rest of the row.
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(SPACER_COL, QHeaderView.ResizeMode.Stretch)
-        # Fixed, comfortable status width so the centered pill never clips and
-        # the column doesn't collapse to the narrow "Status" header.
-        hdr.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
-        table.setColumnWidth(6, 84)
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
 
@@ -1409,6 +1424,7 @@ class MemberTabsWidget(QWidget):
         latest = latest_authorization(self._authorizations)
         latest_id = latest["id"] if latest else None
         today = date.today()
+        plan_badges, status_chips = [], []
         for r, a in enumerate(sort_auths_latest_first(self._authorizations)):
             expired = is_auth_expired(a, today)
 
@@ -1425,6 +1441,7 @@ class MemberTabsWidget(QWidget):
             plan_cell = None
             if badge is not None:
                 plan_cell = _centered_cell(badge)
+                plan_badges.append(badge)
                 table.setCellWidget(r, 4, plan_cell)
             else:
                 table.setItem(r, 4, QTableWidgetItem(""))
@@ -1459,6 +1476,7 @@ class MemberTabsWidget(QWidget):
             # "Expired" tag, centered.
             chip = QLabel("Expired" if expired else "Active")
             chip.setObjectName("expired_chip" if expired else "active_chip")
+            status_chips.append(chip)
             table.setCellWidget(r, 6, _centered_cell(chip))
 
             # Grayed filler so the leftover width past the row reads as inert.
@@ -1480,6 +1498,10 @@ class MemberTabsWidget(QWidget):
                     eff = QGraphicsOpacityEffect(widget)
                     eff.setOpacity(0.45)
                     widget.setGraphicsEffect(eff)
+
+        # Size the pill columns to fit their widest pill so nothing clips.
+        _fit_pill_column(table, 4, plan_badges, floor=96)
+        _fit_pill_column(table, 6, status_chips, floor=96)
 
         self._auth_table = table
         layout.addWidget(table)
@@ -1772,13 +1794,10 @@ class MemberTabsWidget(QWidget):
         hdr.setStretchLastSection(False)
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(SPACER_COL, QHeaderView.ResizeMode.Stretch)
-        # Fixed, comfortable status width so the centered pill never clips and
-        # the column doesn't collapse to the narrow "Status" header.
-        hdr.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
-        table.setColumnWidth(6, 84)
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
 
+        status_chips = []
         for r, a in enumerate(sort_avail_for_table(self._availability, today)):
             expired = is_avail_expired(a, today)
             eff_end = a.get("effective_end_date")
@@ -1794,6 +1813,7 @@ class MemberTabsWidget(QWidget):
             # Compact status pill centered in its column, like the Auth tab.
             chip = QLabel("Expired" if expired else "Active")
             chip.setObjectName("expired_chip" if expired else "active_chip")
+            status_chips.append(chip)
             table.setCellWidget(r, 6, _centered_cell(chip))
 
             btn = QPushButton("Edit")
@@ -1809,6 +1829,8 @@ class MemberTabsWidget(QWidget):
             if expired:
                 for col in (0, 1, 2, 3, 4, 5):
                     table.item(r, col).setForeground(QColor(EXPIRED_FG))
+
+        _fit_pill_column(table, 6, status_chips, floor=96)
 
         self._avail_table = table
         layout.addWidget(table)
