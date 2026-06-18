@@ -81,10 +81,12 @@ def _centered_cell(widget) -> QWidget:
     """Wrap a widget in a table cell that centers it horizontally, keeping it at
     its natural (compact) size rather than stretching it to fill the column.
 
-    The widget is pinned to at least its own content width so the centering
-    stretches (or a slightly narrow column) can never squeeze it and clip its
-    text."""
-    widget.setMinimumWidth(widget.sizeHint().width())
+    The widget is pinned to at least its own content size (width and height) so
+    the centering stretches, a slightly narrow column, or a short row can never
+    squeeze it and clip its text."""
+    hint = widget.sizeHint()
+    widget.setMinimumWidth(hint.width())
+    widget.setMinimumHeight(hint.height())
     cell = QWidget()
     box = QHBoxLayout(cell)
     box.setContentsMargins(_PILL_CELL_HMARGIN, 4, _PILL_CELL_HMARGIN, 4)
@@ -1418,7 +1420,7 @@ class MemberTabsWidget(QWidget):
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(SPACER_COL, QHeaderView.ResizeMode.Stretch)
         table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
+        table.verticalHeader().setDefaultSectionSize(40)  # roomier rows; pills uncramped
 
         from db.members import get_auth_ids_with_documents
         doc_ids = get_auth_ids_with_documents(self._center_id, self._db_path)
@@ -1819,7 +1821,7 @@ class MemberTabsWidget(QWidget):
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(SPACER_COL, QHeaderView.ResizeMode.Stretch)
         table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
+        table.verticalHeader().setDefaultSectionSize(40)  # roomier rows; pills uncramped
 
         status_chips = []
         for r, a in enumerate(sort_avail_for_table(self._availability, today)):
