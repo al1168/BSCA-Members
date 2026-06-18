@@ -1404,7 +1404,7 @@ class MemberTabsWidget(QWidget):
         # as a single grayed strip, instead of leaving a bare gap past the last
         # real column.
         columns = ["ID", "Auth Start", "Auth End", "Days", "Health Plan",
-                   "Created", "Status", "Document", "Action", ""]
+                   "Member ID", "Created", "Status", "Document", "Action", ""]
         SPACER_COL = len(columns) - 1
         table = QTableWidget(len(self._authorizations), len(columns))
         table.setHorizontalHeaderLabels(columns)
@@ -1448,9 +1448,12 @@ class MemberTabsWidget(QWidget):
             else:
                 table.setItem(r, 4, QTableWidgetItem(""))
 
+            # Member ID (per-authorization); blank when unset.
+            table.setItem(r, 5, QTableWidgetItem(a.get("member_id") or ""))
+
             # When the row was created (auto-stamped on insert); blank for rows
             # that predate the column.
-            table.setItem(r, 5, QTableWidgetItem(format_created_at(a.get("created_at"))))
+            table.setItem(r, 6, QTableWidgetItem(format_created_at(a.get("created_at"))))
 
             has_doc = a["id"] in doc_ids
             doc_btn = QPushButton("Open" if has_doc else "Attach")
@@ -1461,7 +1464,7 @@ class MemberTabsWidget(QWidget):
             else:
                 doc_btn.clicked.connect(
                     lambda _=False, auth=a: self._attach_auth_document(auth))
-            table.setCellWidget(r, 7, doc_btn)
+            table.setCellWidget(r, 8, doc_btn)
 
             # Every row gets an Edit button so the Action column reads as
             # intentional, but only the most recent authorization is editable.
@@ -1472,14 +1475,14 @@ class MemberTabsWidget(QWidget):
             else:
                 btn.setEnabled(False)
                 btn.setToolTip("Only the most recent authorization can be edited.")
-            table.setCellWidget(r, 8, btn)
+            table.setCellWidget(r, 9, btn)
 
             # Status pill in its own column: a compact green "Active" or red
             # "Expired" tag, centered.
             chip = QLabel("Expired" if expired else "Active")
             chip.setObjectName("expired_chip" if expired else "active_chip")
             status_chips.append(chip)
-            table.setCellWidget(r, 6, _centered_cell(chip))
+            table.setCellWidget(r, 7, _centered_cell(chip))
 
             # Grayed filler so the leftover width past the row reads as inert.
             spacer = QTableWidgetItem("")
@@ -1491,7 +1494,7 @@ class MemberTabsWidget(QWidget):
                 continue
 
             # Expired rows are dimmed so the in-effect ones stand out.
-            for col in (0, 1, 2, 4, 5):
+            for col in (0, 1, 2, 4, 5, 6):
                 item = table.item(r, col)
                 if item is not None:
                     item.setForeground(QColor(EXPIRED_FG))
@@ -1503,7 +1506,7 @@ class MemberTabsWidget(QWidget):
 
         # Size the pill columns to fit their widest pill so nothing clips.
         _fit_pill_column(table, 4, plan_badges, floor=96)
-        _fit_pill_column(table, 6, status_chips, floor=96)
+        _fit_pill_column(table, 7, status_chips, floor=96)
 
         self._auth_table = table
         layout.addWidget(table)
@@ -1586,13 +1589,21 @@ class MemberTabsWidget(QWidget):
     def _after_auth_change(self, description: str | None):
         """Re-sync the plan, reload auths, refresh the tab, and (optionally)
         log an AUTH event. Called after add/edit/delete of an authorization."""
-        from db.members import get_authorizations, sync_health_plan_from_latest_auth
+        from db.members import (
+            get_authorizations, sync_health_plan_from_latest_auth,
+            sync_member_id_from_latest_auth,
+        )
 
         synced = sync_health_plan_from_latest_auth(self._center_id, self._db_path)
         if synced:
             self._member["health_plan"] = synced
             if hasattr(self, "_info_plan"):
                 self._info_plan.setText(synced)
+        synced_mid = sync_member_id_from_latest_auth(self._center_id, self._db_path)
+        if synced_mid:
+            self._member["member_id"] = synced_mid
+            if hasattr(self, "_info_member_id"):
+                self._info_member_id.setText(synced_mid)
         self._authorizations = get_authorizations(self._center_id, self._db_path)
         self._refresh_tab(2, self._make_auths_tab())
         if description:
@@ -1600,11 +1611,11 @@ class MemberTabsWidget(QWidget):
 
     def _open_auth_dialog(self, existing: dict | None = None) -> dict | None:
         """Build the Add/Edit Authorization dialog. Returns a dict with
-        auth_start, auth_end, days, health_plan — or None if cancelled.
+        auth_start, auth_end, days, health_plan, member_id — or None if cancelled.
         Pre-fills from `existing` when editing."""
         from PyQt6.QtWidgets import (
             QDialog, QFormLayout, QDateEdit, QCheckBox, QComboBox,
-            QHBoxLayout, QDialogButtonBox, QWidget,
+            QHBoxLayout, QDialogButtonBox, QWidget, QLineEdit,
         )
         from PyQt6.QtCore import QDate
         from db.members import HEALTH_PLANS
@@ -1646,10 +1657,18 @@ class MemberTabsWidget(QWidget):
             if idx >= 0:
                 plan_combo.setCurrentIndex(idx)
 
+        # Member ID per authorization; defaults to the member's current Member ID
+        # for a new auth, or the auth's own value when editing.
+        member_id_edit = QLineEdit(
+            (existing.get("member_id") if existing else self._member.get("member_id"))
+            or "")
+        member_id_edit.setPlaceholderText("Health plan member / insurance ID")
+
         form.addRow("Auth Start:", auth_start)
         form.addRow("Auth End:", auth_end)
         form.addRow("Days:", days_widget)
         form.addRow("Health Plan:", plan_combo)
+        form.addRow("Member ID:", member_id_edit)
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
                                 QDialogButtonBox.StandardButton.Cancel)
         btns.rejected.connect(dlg.reject)
@@ -1666,6 +1685,7 @@ class MemberTabsWidget(QWidget):
             "auth_end": auth_end.date().toPyDate(),
             "days": {n for n, cb in day_checks.items() if cb.isChecked()},
             "health_plan": plan_combo.currentText(),
+            "member_id": member_id_edit.text().strip(),
         }
 
     def _add_auth(self):
@@ -1678,6 +1698,7 @@ class MemberTabsWidget(QWidget):
             insert_authorization(
                 self._center_id, result["auth_start"], result["auth_end"],
                 result["days"], None, None, result["health_plan"], self._db_path,
+                member_id=result["member_id"],
             )
             self._after_auth_change(
                 f"Auth added: {result['auth_start']} – {result['auth_end']} · "
@@ -1696,6 +1717,7 @@ class MemberTabsWidget(QWidget):
             update_authorization(
                 auth["id"], result["auth_start"], result["auth_end"],
                 result["days"], result["health_plan"], self._db_path,
+                member_id=result["member_id"],
             )
             self._after_auth_change(
                 f"Auth edited: {result['auth_start']} – {result['auth_end']} · "

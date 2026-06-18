@@ -79,7 +79,7 @@ def test_expired_row_text_is_grayed(qapp, monkeypatch):
 
 def _status_chip_name(table, row):
     from PyQt6.QtWidgets import QLabel
-    cell = table.cellWidget(row, 6)        # the dedicated Status column
+    cell = table.cellWidget(row, 7)        # the dedicated Status column
     if cell is None:
         return None
     for lbl in cell.findChildren(QLabel):

@@ -55,20 +55,22 @@ UPDATE_ENROLLMENT_END = "UPDATE [Enrollment] SET [end_date]=? WHERE [ID]=?"
 
 INSERT_AUTHORIZATION = (
     "INSERT INTO [Authorization] ([Center ID], [auth_start], [auth_end], "
-    "[effective_start], [effective_end], [auth_days], [Health Plan], [created_at]) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    "[effective_start], [effective_end], [auth_days], [Health Plan], [created_at], "
+    "[Member ID]) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 
 DELETE_AUTHORIZATION = "DELETE FROM [Authorization] WHERE [ID]=?"
 
 UPDATE_AUTHORIZATION = (
     "UPDATE [Authorization] SET [auth_start]=?, [auth_end]=?, "
-    "[auth_days]=?, [Health Plan]=? WHERE [ID]=?"
+    "[auth_days]=?, [Health Plan]=?, [Member ID]=? WHERE [ID]=?"
 )
 
 AUTHORIZATION_SELECT = (
     "SELECT [ID],[Center ID],[auth_start],[auth_end],"
-    "[effective_start],[effective_end],[auth_days],[Health Plan],[created_at] "
+    "[effective_start],[effective_end],[auth_days],[Health Plan],[created_at],"
+    "[Member ID] "
     "FROM [Authorization] WHERE [Center ID]=?"
 )
 
@@ -600,6 +602,7 @@ def _map_auth_row(row) -> dict:
     d = map_authorization_row(row)
     d["health_plan"] = row[7] or ""
     d["created_at"] = row[8]
+    d["member_id"] = row[9]
     return d
 
 
@@ -695,6 +698,34 @@ def sync_health_plan_from_latest_auth(center_id: int, db_path: str) -> str | Non
     return plan
 
 
+def sync_member_id_from_latest_auth(center_id: int, db_path: str) -> str | None:
+    """Set Contacts.[Member ID] to the latest authorization's Member ID.
+
+    Mirrors sync_health_plan_from_latest_auth: returns the value written, or
+    None when nothing changed. Never blanks an existing Member ID (skips when
+    there are no authorizations or the latest one's Member ID is empty).
+    """
+    latest = latest_authorization(get_authorizations(center_id, db_path))
+    if not latest:
+        return None
+    member_id = (latest.get("member_id") or "").strip()
+    if not member_id:
+        return None
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(
+            "UPDATE [Contacts] SET [Member ID]=? WHERE [Center ID]=?",
+            (member_id, center_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return member_id
+
+
 def center_id_exists(center_id: int, db_path: str) -> bool:
     conn = _connect(db_path)
     try:
@@ -778,6 +809,7 @@ def insert_member(
                     encode_auth_days(authorization["auth_days"]),
                     authorization.get("health_plan", ""),
                     datetime.now(),
+                    member_id,   # seed the auth's Member ID from the member's
                 ),
             )
         for row in availability_rows:
@@ -941,13 +973,14 @@ def insert_authorization(
     effective_end: date | None,
     health_plan: str,
     db_path: str,
+    member_id: str = "",
 ) -> None:
     conn = _connect(db_path)
     try:
         conn.cursor().execute(
             INSERT_AUTHORIZATION,
             (center_id, auth_start, auth_end, effective_start, effective_end,
-             encode_auth_days(auth_days), health_plan, datetime.now()),
+             encode_auth_days(auth_days), health_plan, datetime.now(), member_id),
         )
         conn.commit()
     except Exception:
@@ -964,13 +997,15 @@ def update_authorization(
     auth_days: set[int],
     health_plan: str,
     db_path: str,
+    member_id: str = "",
 ) -> None:
-    """Update an existing authorization's dates, days, and plan."""
+    """Update an existing authorization's dates, days, plan, and member id."""
     conn = _connect(db_path)
     try:
         conn.cursor().execute(
             UPDATE_AUTHORIZATION,
-            (auth_start, auth_end, encode_auth_days(auth_days), health_plan, record_id),
+            (auth_start, auth_end, encode_auth_days(auth_days), health_plan,
+             member_id, record_id),
         )
         conn.commit()
     except Exception:

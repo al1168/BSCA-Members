@@ -37,9 +37,9 @@ _CREATE_SQL = {
 
 
 # Columns that newer code queries but older test DB fixtures may lack:
-# {table: (column, type)}. Added if missing and dropped at session end.
+# {table: [(column, type), ...]}. Added if missing and dropped at session end.
 _ADD_COLUMNS = {
-    "Authorization": ("created_at", "DATETIME"),
+    "Authorization": [("created_at", "DATETIME"), ("Member ID", "TEXT(255)")],
 }
 
 
@@ -65,11 +65,12 @@ def ensure_optional_tables():
             created.append(name)
 
     added_columns = []
-    for table, (column, coltype) in _ADD_COLUMNS.items():
+    for table, coldefs in _ADD_COLUMNS.items():
         cols = {row.column_name for row in c.columns(table=table)}
-        if column not in cols:
-            c.execute(f"ALTER TABLE [{table}] ADD COLUMN [{column}] {coltype}")
-            added_columns.append((table, column))
+        for column, coltype in coldefs:
+            if column not in cols:
+                c.execute(f"ALTER TABLE [{table}] ADD COLUMN [{column}] {coltype}")
+                added_columns.append((table, column))
     conn.close()
 
     yield
