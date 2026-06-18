@@ -64,6 +64,24 @@ def parse_place_location(details_json) -> str:
         return ""
 
 
+def parse_place_formatted_address(details_json) -> str:
+    """Extract the formatted address (which includes the ZIP) from a Place
+    Details response, trimming a trailing US country suffix so it reads like
+    '123 Main St, New York, NY 10001'. Returns '' if absent. Never raises.
+    """
+    try:
+        addr = details_json["formattedAddress"]
+    except (KeyError, TypeError):
+        return ""
+    if not isinstance(addr, str):
+        return ""
+    addr = addr.strip()
+    for suffix in (", USA", ", United States"):
+        if addr.endswith(suffix):
+            return addr[: -len(suffix)].rstrip()
+    return addr
+
+
 class AddressAutocomplete(QWidget):
     """Address field with Google Places autocomplete (async via QtNetwork).
 
@@ -295,7 +313,8 @@ class AddressAutocomplete(QWidget):
     def _request_details(self, place_id: str):
         req = QNetworkRequest(QUrl(f"{DETAILS_URL}/{place_id}?sessionToken={self._session}"))
         req.setRawHeader(b"X-Goog-Api-Key", self._api_key.encode("utf-8"))
-        req.setRawHeader(b"X-Goog-FieldMask", b"location")
+        # formattedAddress carries the ZIP; location gives the coordinates.
+        req.setRawHeader(b"X-Goog-FieldMask", b"formattedAddress,location")
         reply = self._nam.get(req)
         reply.finished.connect(lambda r=reply: self._on_details(r))
 
@@ -309,6 +328,11 @@ class AddressAutocomplete(QWidget):
             except Exception:
                 data = {}
             self._long_lat = parse_place_location(data)
+            # Replace the suggestion text with the full formatted address so the
+            # stored value includes the ZIP code.
+            formatted = parse_place_formatted_address(data)
+            if formatted:
+                self._edit.setText(formatted)
             if self._long_lat:
                 self._show_status("\U0001F4CD coordinates captured")
             self._session = uuid.uuid4().hex  # rotate token after a completed session

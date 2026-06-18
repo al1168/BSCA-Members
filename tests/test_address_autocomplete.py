@@ -12,6 +12,30 @@ def test_parse_place_location_missing_returns_empty():
     assert parse_place_location(None) == ""
 
 
+def test_parse_place_formatted_address_includes_zip_trims_country():
+    from gui.address_autocomplete import parse_place_formatted_address
+    assert parse_place_formatted_address(
+        {"formattedAddress": "123 Main St, New York, NY 10001, USA"}
+    ) == "123 Main St, New York, NY 10001"
+    assert parse_place_formatted_address(
+        {"formattedAddress": "5 Elm St, Boston, MA 02101, United States"}
+    ) == "5 Elm St, Boston, MA 02101"
+
+
+def test_parse_place_formatted_address_without_country_unchanged():
+    from gui.address_autocomplete import parse_place_formatted_address
+    assert parse_place_formatted_address(
+        {"formattedAddress": "9 Pine St, New York, NY 10002"}
+    ) == "9 Pine St, New York, NY 10002"
+
+
+def test_parse_place_formatted_address_missing_returns_empty():
+    from gui.address_autocomplete import parse_place_formatted_address
+    assert parse_place_formatted_address({}) == ""
+    assert parse_place_formatted_address({"location": {"latitude": 1, "longitude": 2}}) == ""
+    assert parse_place_formatted_address(None) == ""
+
+
 def test_no_key_is_plain_field(qtbot):
     from gui.address_autocomplete import AddressAutocomplete
     w = AddressAutocomplete("")
