@@ -199,6 +199,62 @@ def is_auth_expired(auth: dict, today) -> bool:
     return bool(end) and end < today
 
 
+# ── Availability view helpers (Availability tab) ───────────────────────────
+def is_avail_expired(avail: dict, today) -> bool:
+    """True when an availability's effective window has passed
+    (effective_end_date < today). Open-ended rows are never expired; today
+    still counts as in-effect."""
+    end = avail.get("effective_end_date")
+    return bool(end) and end < today
+
+
+def avail_in_effect_on(avail: dict, today) -> bool:
+    """True when `today` falls inside the availability's effective window:
+    effective_start_date <= today <= effective_end_date (end open = no upper
+    bound; missing start = already begun)."""
+    start = avail.get("effective_start_date")
+    end = avail.get("effective_end_date")
+    if start is not None and start > today:
+        return False
+    if end is not None and end < today:
+        return False
+    return True
+
+
+def format_avail_window(start: str, end: str) -> str:
+    """'08:00'/'16:00' -> '08:00–16:00'; blank/blank -> '—'."""
+    if not start and not end:
+        return "—"
+    return f"{start or '—'}–{end or '—'}"
+
+
+def current_schedule(avails: list[dict], today) -> dict:
+    """Map day_of_week -> [(start, end), ...] for the rows in effect today,
+    each day's windows ordered by start time. Feeds the Current Schedule strip."""
+    sched: dict[int, list] = {}
+    for a in avails:
+        if avail_in_effect_on(a, today):
+            sched.setdefault(a["day_of_week"], []).append(
+                (a.get("avail_start") or "", a.get("avail_end") or ""))
+    for windows in sched.values():
+        windows.sort()
+    return sched
+
+
+def sort_avail_for_table(avails: list[dict], today) -> list[dict]:
+    """Active rows first then expired, each group ordered by weekday (Mon→Sun)
+    then by effective-from date. Returns a new list (input is not mutated)."""
+    from datetime import date
+    return sorted(
+        avails,
+        key=lambda a: (
+            is_avail_expired(a, today),
+            a.get("day_of_week", 0),
+            a.get("effective_start_date") or date.min,
+        ),
+    )
+
+
 class WeekdayChips(QWidget):
     """A row of seven weekday chips, Mon→Sun. Authorized days are filled with the
     accent color (object name 'day_chip_on'); the rest are dimmed
@@ -1644,17 +1700,55 @@ class MemberTabsWidget(QWidget):
 
     # ── Availability tab ───────────────────────────────────────────────────
 
+    def _make_current_schedule_strip(self, today) -> QWidget:
+        """A read-only 'what's in effect today' strip: Mon–Fri always (dash for a
+        day with no current window), plus any weekend day that has one."""
+        box = QWidget()
+        outer = QVBoxLayout(box)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(4)
+        caption = QLabel("Current Schedule")
+        caption.setObjectName("strip_caption")
+        outer.addWidget(caption)
+
+        sched = current_schedule(self._availability, today)
+        days = [1, 2, 3, 4, 5] + [d for d in (6, 7) if d in sched]
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        for d in days:
+            windows = sched.get(d)
+            text = ("\n".join(format_avail_window(s, e) for s, e in windows)
+                    if windows else "—")
+            cell = QLabel(f"{WEEKDAY_NAMES[d]}\n{text}")
+            cell.setObjectName("avail_day" if windows else "avail_day_empty")
+            cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            row.addWidget(cell)
+        row.addStretch()
+        outer.addLayout(row)
+        return box
+
     def _make_avail_tab(self) -> QWidget:
+        from datetime import date
         from PyQt6.QtWidgets import (
             QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView,
+            QSizePolicy,
         )
+        from PyQt6.QtGui import QColor
         day_names = WEEKDAY_NAMES
+        today = date.today()
 
         w = QWidget()
         layout = QVBoxLayout(w)
         layout.setContentsMargins(0, 12, 0, 0)
+        layout.setSpacing(12)
 
-        columns = ["ID", "Day", "Start", "End", "Effective From", "Action"]
+        layout.addWidget(self._make_current_schedule_strip(today))
+
+        # Trailing "" spacer column soaks up the leftover width as a grayed strip.
+        columns = ["ID", "Day", "Start", "End", "Effective From", "Effective To",
+                   "Status", "Action", ""]
+        SPACER_COL = len(columns) - 1
         table = QTableWidget(len(self._availability), len(columns))
         table.setHorizontalHeaderLabels(columns)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -1662,22 +1756,47 @@ class MemberTabsWidget(QWidget):
         hdr = table.horizontalHeader()
         hdr.setStretchLastSection(False)
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(SPACER_COL, QHeaderView.ResizeMode.Stretch)
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
 
-        for r, a in enumerate(self._availability):
+        for r, a in enumerate(sort_avail_for_table(self._availability, today)):
+            expired = is_avail_expired(a, today)
+            eff_end = a.get("effective_end_date")
+
             table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
             table.setItem(r, 1, QTableWidgetItem(
                 day_names.get(a["day_of_week"], str(a["day_of_week"]))))
-            table.setItem(r, 2, QTableWidgetItem(a["avail_start"] or ""))
-            table.setItem(r, 3, QTableWidgetItem(a["avail_end"] or ""))
+            table.setItem(r, 2, QTableWidgetItem(a["avail_start"] or "—"))
+            table.setItem(r, 3, QTableWidgetItem(a["avail_end"] or "—"))
             table.setItem(r, 4, QTableWidgetItem(str(a["effective_start_date"])))
+            table.setItem(r, 5, QTableWidgetItem(str(eff_end) if eff_end else "—"))
+
+            # Status pill filling its column, like the Authorizations tab.
+            status_cell = QWidget()
+            sbox = QHBoxLayout(status_cell)
+            sbox.setContentsMargins(6, 4, 6, 4)
+            sbox.setSpacing(0)
+            chip = QLabel("Expired" if expired else "Active")
+            chip.setObjectName("expired_chip" if expired else "active_chip")
+            chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            chip.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            sbox.addWidget(chip)
+            table.setCellWidget(r, 6, status_cell)
+
             btn = QPushButton("Edit")
             btn.setObjectName("btn_edit")
             btn.clicked.connect(lambda _=False, av=a: self._edit_avail(av))
-            table.setCellWidget(r, 5, btn)
+            table.setCellWidget(r, 7, btn)
+
+            spacer = QTableWidgetItem("")
+            spacer.setFlags(Qt.ItemFlag.NoItemFlags)
+            spacer.setBackground(QColor(120, 124, 140, 38))
+            table.setItem(r, SPACER_COL, spacer)
+
+            if expired:
+                for col in (0, 1, 2, 3, 4, 5):
+                    table.item(r, col).setForeground(QColor(EXPIRED_FG))
 
         self._avail_table = table
         layout.addWidget(table)

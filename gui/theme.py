@@ -373,6 +373,30 @@ QLabel#active_chip {{
     font-size: 9px;
     font-weight: 700;
 }}
+/* Current Schedule strip cells on the Availability tab. */
+QLabel#avail_day {{
+    background-color: {t['raised']};
+    color: {t['text']};
+    border: 1px solid {t['border']};
+    border-radius: 7px;
+    padding: 6px 12px;
+    font-size: 11px;
+}}
+QLabel#avail_day_empty {{
+    background-color: {t['surface']};
+    color: {t['text3']};
+    border: 1px dashed {t['border']};
+    border-radius: 7px;
+    padding: 6px 12px;
+    font-size: 11px;
+}}
+QLabel#strip_caption {{
+    color: {t['text3']};
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}}
 QLabel#plan_badge {{
     background-color: {t['accent_bg']};
     color: {t['accent_text']};
