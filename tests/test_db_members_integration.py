@@ -396,7 +396,7 @@ def test_update_authorization_round_trips_changes():
         delete_authorization(new_id, TEST_DB)
 
 
-def test_update_availability_round_trips_changes():
+def test_update_availability_round_trips_times_and_effective_dates():
     from datetime import date
     from db.members import (
         get_all_members, insert_availability, update_availability,
@@ -409,10 +409,20 @@ def test_update_availability_round_trips_changes():
     insert_availability(cid, 1, "08:00", "16:00", date(2026, 1, 1), None, TEST_DB)
     new_id = ({a["id"] for a in get_availability(cid, TEST_DB)} - before).pop()
     try:
-        update_availability(new_id, "09:30", "14:45", TEST_DB)
+        # Times + a bounded effective window.
+        update_availability(new_id, "09:30", "14:45",
+                            date(2026, 2, 1), date(2026, 8, 31), TEST_DB)
         row = next(a for a in get_availability(cid, TEST_DB) if a["id"] == new_id)
         assert row["avail_start"] == "09:30"
         assert row["avail_end"] == "14:45"
+        assert row["effective_start_date"] == date(2026, 2, 1)
+        assert row["effective_end_date"] == date(2026, 8, 31)
+
+        # End can be cleared back to open-ended (NULL).
+        update_availability(new_id, "09:30", "14:45",
+                            date(2026, 2, 1), None, TEST_DB)
+        row = next(a for a in get_availability(cid, TEST_DB) if a["id"] == new_id)
+        assert row["effective_end_date"] is None
     finally:
         delete_availability(new_id, TEST_DB)
 

@@ -750,7 +750,9 @@ class MemberTabsWidget(QWidget):
         self._info_dob       = field("dob")
         self._info_cid       = _ViewEditLineEdit(str(self._center_id),
                                                  editable=False)
-        self._info_member_id = field("member_id")
+        # Member ID is assigned at member creation and shown read-only here.
+        self._info_member_id = _ViewEditLineEdit(m.get("member_id", "") or "",
+                                                 editable=False)
 
         from gui.address_autocomplete import AddressAutocomplete
         self._info_address = AddressAutocomplete(self._api_key, view_edit=True)
@@ -1200,7 +1202,7 @@ class MemberTabsWidget(QWidget):
         self._dirty = False
         line_edits = (
             self._info_first, self._info_last, self._info_chinese,
-            self._info_gender, self._info_dob, self._info_member_id,
+            self._info_gender, self._info_dob,
             self._info_medicaid, self._info_medicare, self._info_ssn,
             self._info_language, self._info_case_manager,
             self._info_home_tell, self._info_cell, self._info_address,
@@ -1847,7 +1849,12 @@ class MemberTabsWidget(QWidget):
         return w
 
     def _edit_avail(self, avail: dict):
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QDialogButtonBox
+        from datetime import date as _date
+        from PyQt6.QtWidgets import (
+            QDialog, QVBoxLayout, QFormLayout, QLabel, QDialogButtonBox,
+            QDateEdit, QCheckBox, QWidget, QHBoxLayout,
+        )
+        from PyQt6.QtCore import QDate
         from gui.time_range_editor import TimeRangeEditor
         from db.members import update_availability
         from monthly_schedule.db import get_availability
@@ -1864,20 +1871,61 @@ class MemberTabsWidget(QWidget):
         editor.set_window(avail["avail_start"] or "08:00", avail["avail_end"] or "16:00")
         v.addWidget(editor)
 
+        form = QFormLayout()
+        start_d = avail.get("effective_start_date") or _date.today()
+        eff_start = QDateEdit()
+        eff_start.setCalendarPopup(True)
+        eff_start.setDate(QDate(start_d.year, start_d.month, start_d.day))
+        form.addRow("Effective From:", eff_start)
+
+        end_row = QWidget()
+        end_hl = QHBoxLayout(end_row)
+        end_hl.setContentsMargins(0, 0, 0, 0)
+        eff_end = QDateEdit()
+        eff_end.setCalendarPopup(True)
+        ongoing = QCheckBox("Ongoing (no end date)")
+        end_d = avail.get("effective_end_date")
+        if end_d:
+            eff_end.setDate(QDate(end_d.year, end_d.month, end_d.day))
+        else:
+            eff_end.setDate(QDate(start_d.year, start_d.month, start_d.day))
+            ongoing.setChecked(True)
+        eff_end.setEnabled(not ongoing.isChecked())
+        ongoing.toggled.connect(lambda on: eff_end.setEnabled(not on))
+        end_hl.addWidget(eff_end)
+        end_hl.addWidget(ongoing)
+        form.addRow("Effective To:", end_row)
+        v.addLayout(form)
+
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Save |
                                 QDialogButtonBox.StandardButton.Cancel)
-        btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
+
+        def on_accept():
+            es = eff_start.date().toPyDate()
+            ee = None if ongoing.isChecked() else eff_end.date().toPyDate()
+            if ee is not None and ee < es:
+                QMessageBox.warning(dlg, "Validation",
+                    "Effective To must be on or after Effective From.")
+                return
+            dlg.accept()
+        btns.accepted.connect(on_accept)
         v.addWidget(btns)
 
         if not dlg.exec():
             return
         ts, te = editor.start_hhmm(), editor.end_hhmm()
+        es = eff_start.date().toPyDate()
+        ee = None if ongoing.isChecked() else eff_end.date().toPyDate()
         try:
-            update_availability(avail["id"], ts, te, self._db_path)
+            update_availability(avail["id"], ts, te, es, ee, self._db_path)
             self._availability = get_availability(self._center_id, self._db_path)
             self._refresh_tab(3, self._make_avail_tab())
-            self._log_event("AVAIL", f"Availability edited: {day_name} {ts}–{te}")
+            end_txt = ee.isoformat() if ee else "ongoing"
+            self._log_event(
+                "AVAIL",
+                f"Availability edited: {day_name} {ts}–{te} "
+                f"(eff {es.isoformat()} → {end_txt})")
         except Exception as exc:
             QMessageBox.critical(self, "Error", str(exc))
 

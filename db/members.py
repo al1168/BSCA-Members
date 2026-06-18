@@ -81,7 +81,8 @@ INSERT_AVAILABILITY = (
 DELETE_AVAILABILITY = "DELETE FROM [Availability] WHERE [ID]=?"
 
 UPDATE_AVAILABILITY = (
-    "UPDATE [Availability] SET [avail_start]=?, [avail_end]=? WHERE [ID]=?"
+    "UPDATE [Availability] SET [avail_start]=?, [avail_end]=?, "
+    "[effective_start_date]=?, [effective_end_date]=? WHERE [ID]=?"
 )
 
 INSERT_ABSENCE = (
@@ -1016,13 +1017,16 @@ def insert_availability(
 
 
 def update_availability(record_id: int, avail_start: str, avail_end: str,
+                        effective_start: date, effective_end: date | None,
                         db_path: str) -> None:
-    """Update an availability row's start/end times (24-hour 'HH:mm')."""
+    """Update an availability row's start/end times (24-hour 'HH:mm') and its
+    effective window. `effective_end` may be None for an open-ended window."""
     conn = _connect(db_path)
     try:
         conn.cursor().execute(
             UPDATE_AVAILABILITY,
-            (_hhmm_to_datetime(avail_start), _hhmm_to_datetime(avail_end), record_id),
+            (_hhmm_to_datetime(avail_start), _hhmm_to_datetime(avail_end),
+             effective_start, effective_end, record_id),
         )
         conn.commit()
     except Exception:
