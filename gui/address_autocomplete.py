@@ -52,6 +52,15 @@ def _pencil_icon():
     return QIcon(pm)
 
 
+def make_phone_validator(parent=None):
+    """A validator that limits a phone field to phone characters (digits, dashes,
+    parentheses, spaces) so letters can't be entered. Display formatting to
+    (xxx)-xxx-xxxx is handled separately by db.members.format_phone."""
+    from PyQt6.QtGui import QRegularExpressionValidator
+    from PyQt6.QtCore import QRegularExpression
+    return QRegularExpressionValidator(QRegularExpression(r"[0-9()\-\s]*"), parent)
+
+
 def parse_place_location(details_json) -> str:
     """Extract 'lng,lat' from a Places API (New) Place Details response, or ''.
 

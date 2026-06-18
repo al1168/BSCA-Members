@@ -501,7 +501,7 @@ def test_insert_member_persists_member_id_phones_and_dob():
         enrollment_start=date(2026, 1, 1), enrollment_end=None,
         authorization=None, availability_rows=[],
         member_id="M-880099", home_tell="212-555-0100", cell="646-555-0199",
-        dob=date(1948, 5, 14),
+        dob=date(1948, 5, 14), gender="F",
         db_path=TEST_DB,
     )
     try:
@@ -509,6 +509,7 @@ def test_insert_member_persists_member_id_phones_and_dob():
         assert member["member_id"] == "M-880099"
         assert member["home_tell"] == "212-555-0100"
         assert member["cell"] == "646-555-0199"
+        assert member["gender"] == "F"  # stored via INSERT_CONTACT [Gender]
         assert "1948" in member["dob"]  # date forwarded through to [DOB]
     finally:
         conn = _connect(TEST_DB)

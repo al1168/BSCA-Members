@@ -158,12 +158,13 @@ def test_time_12h_to_24h_invalid(text, period):
         time_12h_to_24h(text, period)
 
 
-def test_insert_contact_includes_long_lat():
+def test_insert_contact_includes_long_lat_and_gender():
     from db.members import INSERT_CONTACT
     assert "[Long Lat]" in INSERT_CONTACT
+    assert "[Gender]" in INSERT_CONTACT
     # Center ID, Last Name, First Name, Health Plan, Address, Long Lat,
-    # Member ID, Home Tell, Cell, DOB
-    assert INSERT_CONTACT.count("?") == 10
+    # Member ID, Home Tell, Cell, DOB, Gender
+    assert INSERT_CONTACT.count("?") == 11
 
 
 def test_set_long_lat_targets_correct_columns():

@@ -4,9 +4,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from db.members import get_member_context
+from db.members import get_member_context, format_phone
 from gui.address_autocomplete import (
-    set_active_inline_editor, clear_active_inline_editor,
+    set_active_inline_editor, clear_active_inline_editor, make_phone_validator,
 )
 
 
@@ -744,6 +744,12 @@ class MemberTabsWidget(QWidget):
             # Flat, selectable text that becomes editable on the hover pencil.
             return _ViewEditLineEdit(m.get(key, "") or "")
 
+        def phone_field(key: str) -> "_ViewEditLineEdit":
+            # Shown formatted as (xxx)-xxx-xxxx; typing limited to phone chars.
+            f = _ViewEditLineEdit(format_phone(m.get(key, "") or ""))
+            f.setValidator(make_phone_validator(f))
+            return f
+
         # ── Widgets (attribute names unchanged so save/discard/dirty work) ──
         self._info_first     = field("first_name")
         self._info_last      = field("last_name")
@@ -759,8 +765,8 @@ class MemberTabsWidget(QWidget):
         from gui.address_autocomplete import AddressAutocomplete
         self._info_address = AddressAutocomplete(self._api_key, view_edit=True)
         self._info_address.set_address(m.get("address", "") or "")
-        self._info_home_tell = field("home_tell")
-        self._info_cell      = field("cell")
+        self._info_home_tell = phone_field("home_tell")
+        self._info_cell      = phone_field("cell")
         self._info_emergency = field("emergency")
 
         self._info_plan = _ViewEditLineEdit(m.get("health_plan", "") or "",
@@ -936,7 +942,7 @@ class MemberTabsWidget(QWidget):
             name_item = QTableWidgetItem(ec["full_name"])
             name_item.setData(Qt.ItemDataRole.UserRole, ec["id"])
             table.setItem(r, 0, name_item)
-            table.setItem(r, 1, QTableWidgetItem(ec["phone"]))
+            table.setItem(r, 1, QTableWidgetItem(format_phone(ec["phone"])))
             table.setItem(r, 2, QTableWidgetItem(ec["relationship"]))
             btn = QPushButton("Edit")
             btn.setObjectName("btn_edit")
@@ -991,7 +997,8 @@ class MemberTabsWidget(QWidget):
                            else "Add Emergency Contact")
         form = QFormLayout(dlg)
         name_edit = QLineEdit(e.get("full_name", ""))
-        phone_edit = QLineEdit(e.get("phone", ""))
+        phone_edit = QLineEdit(format_phone(e.get("phone", "")))
+        phone_edit.setValidator(make_phone_validator(phone_edit))
         rel_edit = QLineEdit(e.get("relationship", ""))
         form.addRow("Full Name:", name_edit)
         form.addRow("Phone Number:", phone_edit)
@@ -1012,7 +1019,7 @@ class MemberTabsWidget(QWidget):
             return None
         return {
             "full_name": name_edit.text().strip(),
-            "phone": phone_edit.text().strip(),
+            "phone": format_phone(phone_edit.text().strip()),
             "relationship": rel_edit.text().strip(),
         }
 
@@ -1131,8 +1138,8 @@ class MemberTabsWidget(QWidget):
             "ssn":            self._info_ssn.text().strip(),
             "language":       self._info_language.text().strip(),
             "case_manager":   self._info_case_manager.text().strip(),
-            "home_tell":      self._info_home_tell.text().strip(),
-            "cell":           self._info_cell.text().strip(),
+            "home_tell":      format_phone(self._info_home_tell.text().strip()),
+            "cell":           format_phone(self._info_cell.text().strip()),
             "address":        self._info_address.text().strip(),
             "emergency":      self._info_emergency.text().strip(),
             "pcp":            self._info_pcp.text().strip(),

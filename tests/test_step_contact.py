@@ -98,10 +98,12 @@ def test_validate_happy_path(qapp):
 
 def test_collect_includes_new_fields(qapp):
     w = _make_filled()
+    w.gender.setCurrentText("F")
     d = w.collect()
     assert d["member_id"] == "M12345"
-    assert d["home_tell"] == "212-555-0100"
+    assert d["home_tell"] == "(212)-555-0100"   # formatted on collect
     assert d["cell"] == ""
+    assert d["gender"] == "F"
 
 
 def test_validate_rejects_empty_dob(qapp):

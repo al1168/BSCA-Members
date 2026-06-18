@@ -65,7 +65,7 @@ class StepAuths(QWidget):
         avail_layout = QVBoxLayout(avail_box)
         avail_layout.setContentsMargins(14, 14, 14, 14)
 
-        title_avail = QLabel("Availability")
+        title_avail = QLabel("Time Slot Availability")
         title_avail.setStyleSheet("font-weight:600; font-size:11px;")
         avail_layout.addWidget(title_avail)
 

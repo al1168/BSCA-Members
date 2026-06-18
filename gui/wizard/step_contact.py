@@ -4,8 +4,8 @@ from datetime import date, datetime
 from PyQt6.QtWidgets import (
     QWidget, QFormLayout, QLineEdit, QComboBox, QLabel, QVBoxLayout,
 )
-from db.members import HEALTH_PLANS
-from gui.address_autocomplete import AddressAutocomplete
+from db.members import HEALTH_PLANS, format_phone
+from gui.address_autocomplete import AddressAutocomplete, make_phone_validator
 
 # DOB is a free-text field (so staff can type it) with a gray placeholder, not a
 # date-picker dropdown. The format is enforced: slash-separated, a 1-or-2-digit
@@ -58,13 +58,17 @@ class StepContact(QWidget):
         self.member_id.setPlaceholderText("Health plan member / insurance ID")
         self.dob = QLineEdit()
         self.dob.setPlaceholderText("Select date of birth (MM/DD/YYYY)")
+        self.gender = QComboBox()
+        self.gender.addItems(["", "M", "F"])
         self.health_plan = QComboBox()
         self.health_plan.addItem("")
         self.health_plan.addItems(HEALTH_PLANS)
         self.home_tell = QLineEdit()
         self.home_tell.setPlaceholderText("e.g. 212-555-0100")
+        self.home_tell.setValidator(make_phone_validator(self.home_tell))
         self.cell = QLineEdit()
         self.cell.setPlaceholderText("e.g. 646-555-0199")
+        self.cell.setValidator(make_phone_validator(self.cell))
         self.address = AddressAutocomplete(self._api_key)
         self.address.setPlaceholderText("Street, City, State ZIP")
 
@@ -76,6 +80,7 @@ class StepContact(QWidget):
         form.addRow("Center ID *", self.center_id)
         form.addRow("Member ID *", self.member_id)
         form.addRow("Date of Birth *", self.dob)
+        form.addRow("Gender", self.gender)
         form.addRow("Health Plan *", self.health_plan)
         form.addRow("Home Phone", self.home_tell)
         form.addRow("Cell", self.cell)
@@ -147,9 +152,10 @@ class StepContact(QWidget):
             "center_id": int(self.center_id.text().strip()),
             "member_id": self.member_id.text().strip(),
             "dob": parse_dob(self.dob.text().strip()),
+            "gender": self.gender.currentText(),
             "health_plan": self.health_plan.currentText(),
-            "home_tell": self.home_tell.text().strip(),
-            "cell": self.cell.text().strip(),
+            "home_tell": format_phone(self.home_tell.text().strip()),
+            "cell": format_phone(self.cell.text().strip()),
             "address": self.address.text().strip(),
             "long_lat": self.address.long_lat(),
         }

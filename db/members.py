@@ -31,8 +31,18 @@ ALL_MEMBERS_QUERY = (
 INSERT_CONTACT = (
     "INSERT INTO [Contacts] ([Center ID], [Last Name], [First Name], "
     "[Health Plan], [Address], [Long Lat], [Member ID], [Home Tell], [Cell], "
-    "[DOB]) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "[DOB], [Gender]) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
+
+
+def format_phone(value) -> str:
+    """Render a US phone as (xxx)-xxx-xxxx when it has exactly 10 digits;
+    otherwise return the input unchanged (trimmed). Idempotent; never raises."""
+    s = "" if value is None else str(value).strip()
+    digits = "".join(ch for ch in s if ch.isdigit())
+    if len(digits) == 10:
+        return f"({digits[:3]})-{digits[3:6]}-{digits[6:]}"
+    return s
 
 SET_LONG_LAT = "UPDATE [Contacts] SET [Long Lat]=? WHERE [Center ID]=?"
 
@@ -787,6 +797,7 @@ def insert_member(
     home_tell: str = "",
     cell: str = "",
     dob: date | None = None,
+    gender: str = "",
     db_path: str = "",
 ) -> None:
     """Insert a new member and all related records in one transaction."""
@@ -795,7 +806,7 @@ def insert_member(
         c = conn.cursor()
         c.execute(INSERT_CONTACT,
                   (center_id, last_name, first_name, health_plan, address,
-                   long_lat, member_id, home_tell, cell, dob))
+                   long_lat, member_id, home_tell, cell, dob, gender))
         c.execute(INSERT_ENROLLMENT, (center_id, enrollment_start, enrollment_end))
         if authorization:
             c.execute(

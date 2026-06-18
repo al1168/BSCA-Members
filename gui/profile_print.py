@@ -10,6 +10,8 @@ attaches the photo as a document resource, and shows a QPrintPreviewDialog
 """
 import html as _html
 
+from db.members import format_phone
+
 # Subtle, print-friendly palette (white paper, dark text, calm accent).
 _ACCENT = "#5b7cf4"
 _LABEL = "#6b7280"
@@ -109,8 +111,8 @@ def build_profile_html(
         ("Admission Date", m.get("admission_date")),
     ], cols=2)
     contact = _fields_grid([
-        ("Home Phone", m.get("home_tell")),
-        ("Cell", m.get("cell")),
+        ("Home Phone", format_phone(m.get("home_tell"))),
+        ("Cell", format_phone(m.get("cell"))),
         ("Address", m.get("address")),
     ], cols=2)
     insurance = _fields_grid([
@@ -130,7 +132,7 @@ def build_profile_html(
             f'<tr>'
             f'<td width="36%" style="color:{_VALUE}; font-size:12pt;">'
             f'{_esc(ec.get("full_name"))}</td>'
-            f'<td style="color:{_VALUE}; font-size:12pt;">{_esc(ec.get("phone"))}</td>'
+            f'<td style="color:{_VALUE}; font-size:12pt;">{_esc(format_phone(ec.get("phone")))}</td>'
             f'<td style="color:{_VALUE}; font-size:12pt;">'
             f'{_esc(ec.get("relationship"))}</td>'
             f'</tr>'

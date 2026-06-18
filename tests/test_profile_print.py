@@ -37,7 +37,7 @@ def test_includes_member_name_and_id():
 
 def test_includes_identity_contact_and_insurance_fields():
     html = build_profile_html(_member(), [], "2026-01-01")
-    for value in ("5/14/1948", "M-1234", "212-555-0100", "1 Main St, NY",
+    for value in ("5/14/1948", "M-1234", "(212)-555-0100", "1 Main St, NY",
                   "Cantonese", "Dr. Smith", "Mt Sinai"):
         assert value in html
 
@@ -55,7 +55,7 @@ def test_lists_emergency_contacts():
             "relationship": "Son"}]
     html = build_profile_html(_member(), ecs, "2026-01-01")
     assert "John Doe" in html
-    assert "917-555-0000" in html
+    assert "(917)-555-0000" in html
     assert "Son" in html
 
 

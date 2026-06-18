@@ -162,6 +162,7 @@ class AddMemberWizard(QDialog):
                 home_tell=c.get("home_tell", ""),
                 cell=c.get("cell", ""),
                 dob=c.get("dob"),
+                gender=c.get("gender", ""),
                 db_path=self._db_path,
             )
             if self._events_path:
