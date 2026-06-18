@@ -1383,6 +1383,9 @@ class MemberTabsWidget(QWidget):
         # rest of the row.
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(SPACER_COL, QHeaderView.ResizeMode.Stretch)
+        # Fixed status width so the filled pill always fits "Expired" / "Active".
+        hdr.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
+        table.setColumnWidth(6, 92)
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
 
@@ -1460,7 +1463,7 @@ class MemberTabsWidget(QWidget):
             # Grayed filler so the leftover width past the row reads as inert.
             spacer = QTableWidgetItem("")
             spacer.setFlags(Qt.ItemFlag.NoItemFlags)
-            spacer.setBackground(QColor(120, 124, 140, 38))
+            spacer.setBackground(QColor(120, 124, 140, 18))
             table.setItem(r, SPACER_COL, spacer)
 
             if not expired:
@@ -1718,11 +1721,22 @@ class MemberTabsWidget(QWidget):
         row.setSpacing(8)
         for d in days:
             windows = sched.get(d)
-            text = ("\n".join(format_avail_window(s, e) for s, e in windows)
-                    if windows else "—")
-            cell = QLabel(f"{WEEKDAY_NAMES[d]}\n{text}")
+            cell = QWidget()
             cell.setObjectName("avail_day" if windows else "avail_day_empty")
-            cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            cell.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            cell.setMinimumWidth(104)
+            cv = QVBoxLayout(cell)
+            cv.setContentsMargins(10, 7, 10, 7)
+            cv.setSpacing(2)
+            day_lbl = QLabel(WEEKDAY_NAMES[d])
+            day_lbl.setObjectName("avail_day_name")
+            day_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            cv.addWidget(day_lbl)
+            for s, e in (windows or [(None, None)]):
+                t_lbl = QLabel(format_avail_window(s, e) if windows else "—")
+                t_lbl.setObjectName("avail_day_time" if windows else "avail_day_dash")
+                t_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                cv.addWidget(t_lbl)
             row.addWidget(cell)
         row.addStretch()
         outer.addLayout(row)
@@ -1757,6 +1771,10 @@ class MemberTabsWidget(QWidget):
         hdr.setStretchLastSection(False)
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(SPACER_COL, QHeaderView.ResizeMode.Stretch)
+        # Fixed status width so the filled pill always fits "Expired" / "Active"
+        # (ResizeToContents under-measures the cell widget and clips it).
+        hdr.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
+        table.setColumnWidth(6, 92)
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
 
@@ -1791,7 +1809,7 @@ class MemberTabsWidget(QWidget):
 
             spacer = QTableWidgetItem("")
             spacer.setFlags(Qt.ItemFlag.NoItemFlags)
-            spacer.setBackground(QColor(120, 124, 140, 38))
+            spacer.setBackground(QColor(120, 124, 140, 18))
             table.setItem(r, SPACER_COL, spacer)
 
             if expired:
