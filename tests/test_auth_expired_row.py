@@ -41,6 +41,7 @@ def test_theme_has_status_chips(qapp):
     for t in (build_qss(DARK), build_qss(LIGHT)):
         assert "expired_chip" in t
         assert "active_chip" in t
+        assert "upcoming_chip" in t
 
 
 # ── the table dims expired rows and tags them ──────────────────────────────

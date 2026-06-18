@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from db.members import get_member_context, format_phone
+from db.members import get_member_context, format_phone, format_date_only
 from gui.address_autocomplete import (
     set_active_inline_editor, clear_active_inline_editor, make_phone_validator,
 )
@@ -231,6 +231,20 @@ def is_auth_expired(auth: dict, today) -> bool:
     """
     end = auth.get("auth_end")
     return bool(end) and end < today
+
+
+def auth_status(auth: dict, today) -> str:
+    """An authorization's state for the status pill:
+    'expired' (ended before today), 'upcoming' (starts after today), or
+    'active' (in effect today). Today's date counts as active at either edge.
+    """
+    end = auth.get("auth_end")
+    if end and end < today:
+        return "expired"
+    start = auth.get("auth_start")
+    if start and start > today:
+        return "upcoming"
+    return "active"
 
 
 # ── Availability view helpers (Availability tab) ───────────────────────────
@@ -755,7 +769,8 @@ class MemberTabsWidget(QWidget):
         self._info_last      = field("last_name")
         self._info_chinese   = field("chinese_name")
         self._info_gender    = field("gender")
-        self._info_dob       = field("dob")
+        self._info_dob       = _ViewEditLineEdit(
+            format_date_only(m.get("dob", "") or ""))
         self._info_cid       = _ViewEditLineEdit(str(self._center_id),
                                                  editable=False)
         # Member ID is assigned at member creation and shown read-only here.
@@ -1103,7 +1118,7 @@ class MemberTabsWidget(QWidget):
         self._info_last.setText(m.get("last_name", "") or "")
         self._info_chinese.setText(m.get("chinese_name", "") or "")
         self._info_gender.setText(m.get("gender", "") or "")
-        self._info_dob.setText(m.get("dob", "") or "")
+        self._info_dob.setText(format_date_only(m.get("dob", "") or ""))
         self._info_member_id.setText(m.get("member_id", "") or "")
         self._info_medicaid.setText(m.get("medicaid", "") or "")
         self._info_medicare.setText(m.get("medicare", "") or "")
@@ -1113,8 +1128,8 @@ class MemberTabsWidget(QWidget):
         self._info_hha.setText(m.get("hha", "") or "")
         self._info_language.setText(m.get("language", "") or "")
         self._info_address.setText(m.get("address", "") or "")
-        self._info_home_tell.setText(m.get("home_tell", "") or "")
-        self._info_cell.setText(m.get("cell", "") or "")
+        self._info_home_tell.setText(format_phone(m.get("home_tell", "") or ""))
+        self._info_cell.setText(format_phone(m.get("cell", "") or ""))
         self._info_emergency.setText(m.get("emergency", "") or "")
         self._info_case_manager.setText(m.get("case_manager", "") or "")
         self._info_admission_date.setText(m.get("admission_date", "") or "")
@@ -1130,7 +1145,7 @@ class MemberTabsWidget(QWidget):
             "first_name":     self._info_first.text().strip(),
             "chinese_name":   self._info_chinese.text().strip(),
             "gender":         self._info_gender.text().strip(),
-            "dob":            self._info_dob.text().strip(),
+            "dob":            format_date_only(self._info_dob.text().strip()),
             "member_id":      self._info_member_id.text().strip(),
             "health_plan":    self._member.get("health_plan", "") or "",
             "medicaid":       self._info_medicaid.text().strip(),
@@ -1437,7 +1452,7 @@ class MemberTabsWidget(QWidget):
         today = date.today()
         plan_badges, status_chips = [], []
         for r, a in enumerate(sort_auths_latest_first(self._authorizations)):
-            expired = is_auth_expired(a, today)
+            status = auth_status(a, today)
 
             table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
             table.setItem(r, 1, QTableWidgetItem(str(a["auth_start"])))
@@ -1486,10 +1501,13 @@ class MemberTabsWidget(QWidget):
                 btn.setToolTip("Only the most recent authorization can be edited.")
             table.setCellWidget(r, 9, btn)
 
-            # Status pill in its own column: a compact green "Active" or red
-            # "Expired" tag, centered.
-            chip = QLabel("Expired" if expired else "Active")
-            chip.setObjectName("expired_chip" if expired else "active_chip")
+            # Status pill: green Active / amber Upcoming / red Expired, centered.
+            _label = {"active": "Active", "upcoming": "Upcoming",
+                      "expired": "Expired"}[status]
+            _chip_obj = {"active": "active_chip", "upcoming": "upcoming_chip",
+                         "expired": "expired_chip"}[status]
+            chip = QLabel(_label)
+            chip.setObjectName(_chip_obj)
             status_chips.append(chip)
             table.setCellWidget(r, 7, _centered_cell(chip))
 
@@ -1499,7 +1517,7 @@ class MemberTabsWidget(QWidget):
             spacer.setBackground(QColor(120, 124, 140, 18))
             table.setItem(r, SPACER_COL, spacer)
 
-            if not expired:
+            if status != "expired":
                 continue
 
             # Expired rows are dimmed so the in-effect ones stand out.
@@ -1599,16 +1617,16 @@ class MemberTabsWidget(QWidget):
         """Re-sync the plan, reload auths, refresh the tab, and (optionally)
         log an AUTH event. Called after add/edit/delete of an authorization."""
         from db.members import (
-            get_authorizations, sync_health_plan_from_latest_auth,
-            sync_member_id_from_latest_auth,
+            get_authorizations, sync_health_plan_from_current_auth,
+            sync_member_id_from_current_auth,
         )
 
-        synced = sync_health_plan_from_latest_auth(self._center_id, self._db_path)
+        synced = sync_health_plan_from_current_auth(self._center_id, self._db_path)
         if synced:
             self._member["health_plan"] = synced
             if hasattr(self, "_info_plan"):
                 self._info_plan.setText(synced)
-        synced_mid = sync_member_id_from_latest_auth(self._center_id, self._db_path)
+        synced_mid = sync_member_id_from_current_auth(self._center_id, self._db_path)
         if synced_mid:
             self._member["member_id"] = synced_mid
             if hasattr(self, "_info_member_id"):

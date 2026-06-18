@@ -373,6 +373,15 @@ QLabel#active_chip {{
     font-size: 9px;
     font-weight: 700;
 }}
+QLabel#upcoming_chip {{
+    background-color: {t['warning_bg']};
+    color: {t['warning']};
+    border: 1px solid {t['warning']};
+    border-radius: 8px;
+    padding: 1px 7px;
+    font-size: 9px;
+    font-weight: 700;
+}}
 /* Current Schedule strip cells on the Availability tab. */
 QWidget#avail_day {{
     background-color: {t['raised']};

@@ -44,6 +44,17 @@ def format_phone(value) -> str:
         return f"({digits[:3]})-{digits[3:6]}-{digits[6:]}"
     return s
 
+
+def format_date_only(value) -> str:
+    """Drop a trailing clock time so a date stored as a datetime
+    ('2000-03-15 00:00:00') shows as just the date ('2000-03-15'). Leaves plain
+    date strings untouched; never raises."""
+    s = "" if value is None else str(value).strip()
+    head, sep, tail = s.partition(" ")
+    if sep and ":" in tail:        # the part after the space is a clock time
+        return head
+    return s
+
 SET_LONG_LAT = "UPDATE [Contacts] SET [Long Lat]=? WHERE [Center ID]=?"
 
 UPDATE_CONTACT = (
@@ -670,7 +681,7 @@ def get_emergency_contacts(center_id: int, db_path: str,
 
 
 def latest_authorization(authorizations: list[dict]) -> dict | None:
-    """The 'current' authorization: latest by (auth_start, id).
+    """The latest authorization by (auth_start, id).
 
     Returns None if the list is empty or no row has an auth_start.
     """
@@ -680,17 +691,35 @@ def latest_authorization(authorizations: list[dict]) -> dict | None:
     return max(candidates, key=lambda a: (a["auth_start"], a["id"]))
 
 
-def sync_health_plan_from_latest_auth(center_id: int, db_path: str) -> str | None:
-    """Set Contacts.[Health Plan] to the latest authorization's plan.
+def current_authorization(authorizations: list[dict], today=None) -> dict | None:
+    """The authorization in effect today: effective_start <= today <=
+    effective_end, preferring the latest start. None if none is in effect (e.g.
+    every auth is expired or upcoming). This is what the header / Info tab show,
+    so a future ("upcoming") auth never displaces the active one."""
+    from datetime import date
+    if today is None:
+        today = date.today()
+    candidates = [
+        a for a in authorizations
+        if a.get("effective_start") and a.get("effective_end")
+        and a["effective_start"] <= today <= a["effective_end"]
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda a: a["effective_start"])
+
+
+def sync_health_plan_from_current_auth(center_id: int, db_path: str) -> str | None:
+    """Set Contacts.[Health Plan] to the current (in-effect-today) auth's plan.
 
     Returns the plan written, or None when nothing changed. Never blanks an
-    existing plan: if there are no authorizations, or the latest one's plan is
-    empty, Contacts is left untouched.
+    existing plan: if no auth is currently in effect, or its plan is empty,
+    Contacts is left untouched (so an upcoming auth doesn't change it).
     """
-    latest = latest_authorization(get_authorizations(center_id, db_path))
-    if not latest:
+    current = current_authorization(get_authorizations(center_id, db_path))
+    if not current:
         return None
-    plan = (latest.get("health_plan") or "").strip()
+    plan = (current.get("health_plan") or "").strip()
     if not plan:
         return None
     conn = _connect(db_path)
@@ -708,17 +737,16 @@ def sync_health_plan_from_latest_auth(center_id: int, db_path: str) -> str | Non
     return plan
 
 
-def sync_member_id_from_latest_auth(center_id: int, db_path: str) -> str | None:
-    """Set Contacts.[Member ID] to the latest authorization's Member ID.
+def sync_member_id_from_current_auth(center_id: int, db_path: str) -> str | None:
+    """Set Contacts.[Member ID] to the current (in-effect-today) auth's Member ID.
 
-    Mirrors sync_health_plan_from_latest_auth: returns the value written, or
-    None when nothing changed. Never blanks an existing Member ID (skips when
-    there are no authorizations or the latest one's Member ID is empty).
+    Mirrors sync_health_plan_from_current_auth: returns the value written, or
+    None when nothing changed. Never blanks an existing Member ID.
     """
-    latest = latest_authorization(get_authorizations(center_id, db_path))
-    if not latest:
+    current = current_authorization(get_authorizations(center_id, db_path))
+    if not current:
         return None
-    member_id = (latest.get("member_id") or "").strip()
+    member_id = (current.get("member_id") or "").strip()
     if not member_id:
         return None
     conn = _connect(db_path)

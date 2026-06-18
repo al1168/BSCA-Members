@@ -350,24 +350,24 @@ def test_insert_authorization_stamps_created_at():
         delete_authorization(new_id, TEST_DB)
 
 
-def test_sync_writes_latest_auth_plan_into_contacts():
+def test_sync_writes_current_auth_plan_into_contacts():
     from datetime import date
     from db.members import (
         get_all_members, get_member_context, insert_authorization,
         delete_authorization, get_authorizations, update_contact,
-        sync_health_plan_from_latest_auth,
+        sync_health_plan_from_current_auth,
     )
     cid = get_all_members(TEST_DB)[0]["center_id"]
     m = get_member_context(cid, TEST_DB)["member"]
     original_plan = m["health_plan"]
     before = {a["id"] for a in get_authorizations(cid, TEST_DB)}
-    # Insert an authorization with a far-future start so it is the latest.
+    # Insert an authorization in effect today with the latest start (today).
     insert_authorization(
-        cid, date(2099, 1, 1), date(2099, 12, 31), {1}, None, None, "VCM", TEST_DB,
+        cid, date.today(), date(2099, 12, 31), {1}, None, None, "VCM", TEST_DB,
     )
     new_id = ({a["id"] for a in get_authorizations(cid, TEST_DB)} - before).pop()
     try:
-        returned = sync_health_plan_from_latest_auth(cid, TEST_DB)
+        returned = sync_health_plan_from_current_auth(cid, TEST_DB)
         assert returned == "VCM"
         assert get_member_context(cid, TEST_DB)["member"]["health_plan"] == "VCM"
     finally:
@@ -382,26 +382,26 @@ def test_sync_writes_latest_auth_plan_into_contacts():
         )
 
 
-def test_sync_member_id_from_latest_auth_into_contacts():
+def test_sync_member_id_from_current_auth_into_contacts():
     from datetime import date
     from db.members import (
         get_all_members, get_member_context, insert_authorization,
         delete_authorization, get_authorizations, update_contact,
-        sync_member_id_from_latest_auth,
+        sync_member_id_from_current_auth,
     )
     cid = get_all_members(TEST_DB)[0]["center_id"]
     m = get_member_context(cid, TEST_DB)["member"]
     original_mid = m["member_id"]
     before = {a["id"] for a in get_authorizations(cid, TEST_DB)}
     insert_authorization(
-        cid, date(2099, 1, 1), date(2099, 12, 31), {1}, None, None, "VCM", TEST_DB,
-        member_id="M-LATEST-9",
+        cid, date.today(), date(2099, 12, 31), {1}, None, None, "VCM", TEST_DB,
+        member_id="M-CURRENT-9",
     )
     new_id = ({a["id"] for a in get_authorizations(cid, TEST_DB)} - before).pop()
     try:
-        returned = sync_member_id_from_latest_auth(cid, TEST_DB)
-        assert returned == "M-LATEST-9"
-        assert get_member_context(cid, TEST_DB)["member"]["member_id"] == "M-LATEST-9"
+        returned = sync_member_id_from_current_auth(cid, TEST_DB)
+        assert returned == "M-CURRENT-9"
+        assert get_member_context(cid, TEST_DB)["member"]["member_id"] == "M-CURRENT-9"
     finally:
         delete_authorization(new_id, TEST_DB)
         update_contact(
@@ -414,11 +414,11 @@ def test_sync_member_id_from_latest_auth_into_contacts():
 
 
 def test_sync_noop_when_no_authorizations():
-    from db.members import get_all_members, get_authorizations, sync_health_plan_from_latest_auth
+    from db.members import get_all_members, get_authorizations, sync_health_plan_from_current_auth
     members = get_all_members(TEST_DB)
     for mem in members:
         if not get_authorizations(mem["center_id"], TEST_DB):
-            assert sync_health_plan_from_latest_auth(mem["center_id"], TEST_DB) is None
+            assert sync_health_plan_from_current_auth(mem["center_id"], TEST_DB) is None
             return
 
 

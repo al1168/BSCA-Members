@@ -10,7 +10,7 @@ attaches the photo as a document resource, and shows a QPrintPreviewDialog
 """
 import html as _html
 
-from db.members import format_phone
+from db.members import format_phone, format_date_only
 
 # Subtle, print-friendly palette (white paper, dark text, calm accent).
 _ACCENT = "#5b7cf4"
@@ -27,12 +27,9 @@ def _esc(value) -> str:
 
 
 def _date_only(value) -> str:
-    """Drop a trailing midnight time so a DOB stored as a datetime
+    """Drop a trailing time so a DOB stored as a datetime
     (e.g. '1941-06-04 00:00:00') prints as just the date."""
-    text = "" if value is None else str(value).strip()
-    if text.endswith(" 00:00:00"):
-        text = text[: -len(" 00:00:00")]
-    return text
+    return format_date_only(value)
 
 
 def _fields_grid(pairs, cols: int = 2) -> str:
