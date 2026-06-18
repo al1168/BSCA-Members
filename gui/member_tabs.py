@@ -500,6 +500,24 @@ class MemberTabsWidget(QWidget):
             self._emergency_contacts = ctx.get("emergency_contacts", [])
         except Exception as exc:
             QMessageBox.critical(self, "Load Error", str(exc))
+        self._overlay_current_auth()
+
+    def _overlay_current_auth(self):
+        """Show the *current* (in-effect-today) authorization's plan and member
+        id on the header and Info tab. Contacts.[Health Plan]/[Member ID] are
+        only re-synced on auth edits, so on open they can be stale (showing the
+        latest-start auth); this overlays the in-effect values for display.
+        Skips empty values so a current auth never blanks an existing one."""
+        from db.members import current_authorization
+        current = current_authorization(self._authorizations)
+        if not current:
+            return
+        plan = (current.get("health_plan") or "").strip()
+        if plan:
+            self._member["health_plan"] = plan
+        mid = (current.get("member_id") or "").strip()
+        if mid:
+            self._member["member_id"] = mid
 
     def _log_event(self, event_type: str, description: str) -> None:
         """Record an event for this member (when an events log is configured)

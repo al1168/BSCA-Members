@@ -51,3 +51,24 @@ def test_current_authorization_none_when_no_in_effect():
         {"effective_start": date(2000, 1, 1), "effective_end": date(2000, 12, 31)},
     ]
     assert current_authorization(auths, TODAY) is None
+
+
+# ── header/Info overlay uses the in-effect auth, not the latest ────────────
+def test_overlay_current_auth_uses_in_effect_values():
+    from datetime import timedelta
+    import gui.member_tabs as mt
+    today = date.today()
+    w = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
+    w._member = {"health_plan": "Anthem", "member_id": "23457"}  # stale latest
+    w._authorizations = [
+        {"effective_start": today - timedelta(days=10),
+         "effective_end": today + timedelta(days=10),
+         "health_plan": "AE", "member_id": "123456"},            # current
+        {"effective_start": today + timedelta(days=30),
+         "effective_end": today + timedelta(days=300),
+         "health_plan": "Anthem", "member_id": "23457"},          # upcoming
+    ]
+    w._overlay_current_auth()
+    assert w._member["health_plan"] == "AE"
+    assert w._member["member_id"] == "123456"
+
