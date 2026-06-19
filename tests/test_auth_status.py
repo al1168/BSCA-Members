@@ -21,6 +21,22 @@ def test_auth_status_upcoming():
     ) == "upcoming"
 
 
+def test_auth_status_handles_datetime_values():
+    # Access Date/Time fields can come back as datetime; status must still work
+    # (not raise "can't compare datetime to date") and read the calendar date.
+    from datetime import datetime
+    from gui.member_tabs import auth_status
+    assert auth_status(
+        {"auth_start": datetime(2025, 1, 1), "auth_end": datetime(2025, 12, 31)},
+        TODAY) == "expired"
+    assert auth_status(
+        {"auth_start": datetime(2026, 7, 1, 9, 30), "auth_end": datetime(2027, 6, 30)},
+        TODAY) == "upcoming"
+    assert auth_status(
+        {"auth_start": datetime(2026, 1, 1), "auth_end": datetime(2026, 12, 31)},
+        TODAY) == "active"
+
+
 def test_auth_status_active_and_boundaries():
     from gui.member_tabs import auth_status
     assert auth_status(

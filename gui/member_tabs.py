@@ -223,14 +223,28 @@ def sort_auths_latest_first(auths: list[dict]) -> list[dict]:
 EXPIRED_FG = "#7d8198"
 
 
+def _as_date(value):
+    """Normalize a temporal value to a datetime.date for comparison: a datetime
+    becomes its date, a date stays a date, anything else (None, strings) becomes
+    None. Prevents 'can't compare datetime to date' errors and silently-wrong
+    status when an Access Date/Time field comes back as a datetime."""
+    from datetime import date as _d, datetime as _dt
+    if isinstance(value, _dt):
+        return value.date()
+    if isinstance(value, _d):
+        return value
+    return None
+
+
 def is_auth_expired(auth: dict, today) -> bool:
     """True when an authorization's window has passed (auth_end < today).
 
     Mirrors auth_warning: today still counts as in-effect, and an open-ended
     authorization (no auth_end) is never expired.
     """
-    end = auth.get("auth_end")
-    return bool(end) and end < today
+    end = _as_date(auth.get("auth_end"))
+    today = _as_date(today)
+    return end is not None and today is not None and end < today
 
 
 def auth_status(auth: dict, today) -> str:
@@ -238,11 +252,12 @@ def auth_status(auth: dict, today) -> str:
     'expired' (ended before today), 'upcoming' (starts after today), or
     'active' (in effect today). Today's date counts as active at either edge.
     """
-    end = auth.get("auth_end")
-    if end and end < today:
+    today = _as_date(today)
+    end = _as_date(auth.get("auth_end"))
+    if end is not None and end < today:
         return "expired"
-    start = auth.get("auth_start")
-    if start and start > today:
+    start = _as_date(auth.get("auth_start"))
+    if start is not None and start > today:
         return "upcoming"
     return "active"
 
@@ -252,12 +267,14 @@ def auth_overlap_map(auths: list[dict]) -> dict:
     range overlaps it. Two ranges overlap when each starts on or before the
     other ends (a single shared day counts). Rows missing a start or end date
     are skipped (can't determine an overlap, so never flagged)."""
-    dated = [a for a in auths if a.get("auth_start") and a.get("auth_end")]
-    overlaps = {a["id"]: [] for a in dated}
+    dated = [(a, _as_date(a.get("auth_start")), _as_date(a.get("auth_end")))
+             for a in auths]
+    dated = [(a, s, e) for (a, s, e) in dated if s is not None and e is not None]
+    overlaps = {a["id"]: [] for (a, _s, _e) in dated}
     for i in range(len(dated)):
         for j in range(i + 1, len(dated)):
-            a, b = dated[i], dated[j]
-            if a["auth_start"] <= b["auth_end"] and b["auth_start"] <= a["auth_end"]:
+            (a, sa, ea), (b, sb, eb) = dated[i], dated[j]
+            if sa <= eb and sb <= ea:
                 overlaps[a["id"]].append(b)
                 overlaps[b["id"]].append(a)
     return overlaps
@@ -266,13 +283,14 @@ def auth_overlap_map(auths: list[dict]) -> dict:
 def auths_overlapping(auths: list[dict], start, end, exclude_id=None) -> list[dict]:
     """The existing auths whose range overlaps the candidate [start, end] window,
     ignoring the row identified by `exclude_id` (the one being edited)."""
+    start, end = _as_date(start), _as_date(end)
     if not start or not end:
         return []
     hits = []
     for a in auths:
         if exclude_id is not None and a.get("id") == exclude_id:
             continue
-        s, e = a.get("auth_start"), a.get("auth_end")
+        s, e = _as_date(a.get("auth_start")), _as_date(a.get("auth_end"))
         if s and e and s <= end and start <= e:
             hits.append(a)
     return hits
@@ -283,8 +301,9 @@ def is_avail_expired(avail: dict, today) -> bool:
     """True when an availability's effective window has passed
     (effective_end_date < today). Open-ended rows are never expired; today
     still counts as in-effect."""
-    end = avail.get("effective_end_date")
-    return bool(end) and end < today
+    end = _as_date(avail.get("effective_end_date"))
+    today = _as_date(today)
+    return end is not None and today is not None and end < today
 
 
 def avail_in_effect_on(avail: dict, today) -> bool:
