@@ -1517,7 +1517,6 @@ class MemberTabsWidget(QWidget):
             QGraphicsOpacityEffect,
         )
         from PyQt6.QtGui import QColor
-        from db.members import latest_authorization
 
         w = QWidget()
         layout = QVBoxLayout(w)
@@ -1546,8 +1545,6 @@ class MemberTabsWidget(QWidget):
         from db.members import get_auth_ids_with_documents
         doc_ids = get_auth_ids_with_documents(self._center_id, self._db_path)
 
-        latest = latest_authorization(self._authorizations)
-        latest_id = latest["id"] if latest else None
         today = date.today()
         overlaps = auth_overlap_map(self._authorizations)
         plan_badges, status_chips = [], []
@@ -1603,15 +1600,10 @@ class MemberTabsWidget(QWidget):
                     lambda _=False, auth=a: self._attach_auth_document(auth))
             table.setCellWidget(r, 8, doc_btn)
 
-            # Every row gets an Edit button so the Action column reads as
-            # intentional, but only the most recent authorization is editable.
+            # Every authorization is editable (older ones included).
             btn = QPushButton("Edit")
             btn.setObjectName("btn_edit")
-            if a["id"] == latest_id:
-                btn.clicked.connect(lambda _=False, auth=a: self._edit_auth(auth))
-            else:
-                btn.setEnabled(False)
-                btn.setToolTip("Only the most recent authorization can be edited.")
+            btn.clicked.connect(lambda _=False, auth=a: self._edit_auth(auth))
             table.setCellWidget(r, 9, btn)
 
             # Status pill: green Active / amber Upcoming / red Expired, centered.
