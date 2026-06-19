@@ -249,7 +249,24 @@ class MainWindow(QMainWindow):
         events_path = self._settings.get("events_db_path", "")
         api_key = self._settings.get("google_api_key", "")
         widget = MemberTabsWidget(center_id, db_path, events_path, api_key)
+        widget.members_changed.connect(self._refresh_terminated_marks)
         self._set_detail(widget)
+
+    def _refresh_terminated_marks(self):
+        """Re-read which members are terminated and update the sidebar marks in
+        place (e.g. after a member is re-enrolled or terminated), without
+        rebuilding the list or disturbing the open member."""
+        from db.members import get_terminated_center_ids
+        db_path = self._settings.get("db_path", "")
+        try:
+            self._terminated_ids = get_terminated_center_ids(db_path)
+        except Exception:
+            return
+        for i in range(self._member_list.count()):
+            item = self._member_list.item(i)
+            cid = item.data(Qt.ItemDataRole.UserRole)
+            item.setData(TERMINATED_ROLE, cid in self._terminated_ids)
+        self._member_list.viewport().update()
 
     def _set_detail(self, widget: QWidget):
         while self._detail_stack.count() > 1:

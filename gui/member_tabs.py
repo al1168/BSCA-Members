@@ -495,6 +495,10 @@ _PHOTO_CACHE: dict = {}
 
 
 class MemberTabsWidget(QWidget):
+    # Emitted when this member's enrollments change (add/terminate/delete), so
+    # the main window can refresh the sidebar's terminated marks.
+    members_changed = pyqtSignal()
+
     def __init__(self, center_id: int, db_path: str, events_path: str,
                  api_key: str = "", parent=None):
         super().__init__(parent)
@@ -547,6 +551,25 @@ class MemberTabsWidget(QWidget):
             self._header_top_row.insertWidget(   # right after the name label
                 1, badge, alignment=Qt.AlignmentFlag.AlignVCenter)
             self._header_plan_badge = badge
+
+    def _refresh_terminated_badge(self):
+        """Add or remove the header 'Terminated' badge to match the member's
+        current enrollment state, so re-enrolling clears it without reopening."""
+        if not hasattr(self, "_header_top_row"):
+            return
+        from db.members import is_terminated
+        if self._term_badge is not None:
+            self._header_top_row.removeWidget(self._term_badge)
+            self._term_badge.deleteLater()
+            self._term_badge = None
+        if is_terminated(self._enrollments):
+            badge = QLabel("⊘ Terminated")
+            badge.setObjectName("terminated_badge")
+            badge.setMaximumHeight(26)
+            idx = 2 if self._header_plan_badge is not None else 1
+            self._header_top_row.insertWidget(
+                idx, badge, alignment=Qt.AlignmentFlag.AlignVCenter)
+            self._term_badge = badge
 
     def _overlay_current_auth(self):
         """Show the *current* (in-effect-today) authorization's plan and member
@@ -743,11 +766,13 @@ class MemberTabsWidget(QWidget):
             top_row.addWidget(self._header_plan_badge,
                               alignment=Qt.AlignmentFlag.AlignVCenter)
         from db.members import is_terminated
+        self._term_badge = None
         if is_terminated(self._enrollments):
-            term_badge = QLabel("⊘ Terminated")
-            term_badge.setObjectName("terminated_badge")
-            term_badge.setMaximumHeight(26)
-            top_row.addWidget(term_badge, alignment=Qt.AlignmentFlag.AlignVCenter)
+            self._term_badge = QLabel("⊘ Terminated")
+            self._term_badge.setObjectName("terminated_badge")
+            self._term_badge.setMaximumHeight(26)
+            top_row.addWidget(self._term_badge,
+                              alignment=Qt.AlignmentFlag.AlignVCenter)
         top_row.addStretch()
         from datetime import date
         warn = auth_warning(self._authorizations, date.today())
@@ -1429,6 +1454,8 @@ class MemberTabsWidget(QWidget):
                 insert_enrollment(self._center_id, s, e, self._db_path)
                 self._enrollments = get_enrollments(self._center_id, self._db_path)
                 self._refresh_tab(1, self._make_enrollments_tab())
+                self._refresh_terminated_badge()
+                self.members_changed.emit()
                 self._log_event("ENROLL", f"Enrollment added: {s} – {e or 'ongoing'}")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
@@ -1447,6 +1474,8 @@ class MemberTabsWidget(QWidget):
                 delete_enrollment(record_id, self._db_path)
                 self._enrollments = get_enrollments(self._center_id, self._db_path)
                 self._refresh_tab(1, self._make_enrollments_tab())
+                self._refresh_terminated_badge()
+                self.members_changed.emit()
                 if entry:
                     self._log_event(
                         "ENROLL",
@@ -1472,6 +1501,8 @@ class MemberTabsWidget(QWidget):
             terminate_enrollment(record_id, self._db_path)
             self._enrollments = get_enrollments(self._center_id, self._db_path)
             self._refresh_tab(1, self._make_enrollments_tab())
+            self._refresh_terminated_badge()
+            self.members_changed.emit()
             self._log_event("ENROLL",
                             f"Enrollment terminated: end set to {today.isoformat()}")
         except Exception as exc:
