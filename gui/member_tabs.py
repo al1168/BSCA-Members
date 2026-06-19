@@ -773,9 +773,14 @@ class MemberTabsWidget(QWidget):
         top_row = QHBoxLayout()
         name = f"{self._member.get('last_name', '')}, {self._member.get('first_name', '')}"
         cid = str(self._center_id)
-        name_label = QLabel(f"<b style='font-size:15px'>{name}</b>"
-                            f"<span style='color:gray;font-size:12px'> &nbsp;ID {cid}</span>")
+        name_label = QLabel(
+            f"<span style='font-size:15px; font-weight:700'>{name}</span>"
+            f"<span style='font-size:14px; font-weight:700; color:#5b7cf4'>"
+            f"&nbsp;&nbsp;ID {cid}</span>")
         name_label.setTextFormat(Qt.TextFormat.RichText)
+        # Let staff highlight + copy the ID (and name).
+        name_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
         top_row.addWidget(name_label)
         # Kept as attributes so the badge can be refreshed in place when an auth
         # change moves which plan is currently in effect.
