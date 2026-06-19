@@ -851,7 +851,7 @@ class MemberTabsWidget(QWidget):
         self._tabs.addTab(self._tab_auths,
             "Auths ⚠" if warn else "Authorizations")
         self._tabs.addTab(self._tab_avail, "Time Slot Availability")
-        self._tabs.addTab(self._tab_unavail, "Unavailable Times")
+        self._tabs.addTab(self._tab_unavail, "Availability Override")
         self._tabs.addTab(self._tab_absences, "Absences")
 
         # Events tab added after (Task 11 wires it in)
@@ -2272,7 +2272,8 @@ class MemberTabsWidget(QWidget):
         layout = QVBoxLayout(w)
         layout.setContentsMargins(0, 12, 0, 0)
 
-        caption = QLabel("Times the member is unavailable on a specific date.")
+        caption = QLabel(
+            "Date-specific availability overrides (times the member is unavailable).")
         caption.setObjectName("field_label")
         layout.addWidget(caption)
 
@@ -2324,8 +2325,8 @@ class MemberTabsWidget(QWidget):
         from gui.time_range_editor import TimeRangeEditor
 
         dlg = QDialog(self)
-        dlg.setWindowTitle("Edit Unavailable Time" if existing
-                           else "Add Unavailable Time")
+        dlg.setWindowTitle("Edit Availability Override" if existing
+                           else "Add Availability Override")
         form = QFormLayout(dlg)
 
         date_edit = QDateEdit()
@@ -2379,7 +2380,7 @@ class MemberTabsWidget(QWidget):
             self._refresh_tab(4, self._make_unavailable_tab())
             self._log_event(
                 "AVAIL",
-                f"One-off unavailable added: {result['date']} "
+                f"Availability override added: {result['date']} "
                 f"{result['avail_start']}–{result['avail_end']}")
         except Exception as exc:
             QMessageBox.critical(self, "Error", str(exc))
@@ -2400,7 +2401,7 @@ class MemberTabsWidget(QWidget):
             self._refresh_tab(4, self._make_unavailable_tab())
             self._log_event(
                 "AVAIL",
-                f"One-off unavailable edited: {result['date']} "
+                f"Availability override edited: {result['date']} "
                 f"{result['avail_start']}–{result['avail_end']}")
         except Exception as exc:
             QMessageBox.critical(self, "Error", str(exc))
@@ -2410,7 +2411,7 @@ class MemberTabsWidget(QWidget):
         if row < 0:
             return
         record_id = int(table.item(row, 0).text())
-        if QMessageBox.question(self, "Confirm", "Delete this unavailable time?") \
+        if QMessageBox.question(self, "Confirm", "Delete this availability override?") \
                 == QMessageBox.StandardButton.Yes:
             from db.members import (
                 delete_one_off_availability, get_one_off_availability,
@@ -2424,7 +2425,7 @@ class MemberTabsWidget(QWidget):
                 if entry:
                     self._log_event(
                         "AVAIL",
-                        f"One-off unavailable deleted: {entry['date']} "
+                        f"Availability override deleted: {entry['date']} "
                         f"{entry['avail_start']}–{entry['avail_end']}")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
