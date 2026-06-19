@@ -44,6 +44,39 @@ def test_theme_has_status_chips(qapp):
         assert "upcoming_chip" in t
 
 
+def test_overlapping_auths_show_conflict_tooltip(qapp, monkeypatch):
+    import db.members as dbm
+    monkeypatch.setattr(dbm, "get_auth_ids_with_documents", lambda cid, path: set())
+    import gui.member_tabs as mt
+
+    def a(i, s, e):
+        return {"id": i, "auth_start": s, "auth_end": e,
+                "effective_start": s, "effective_end": e,
+                "auth_days": "12", "health_plan": "HF",
+                "created_at": None, "member_id": ""}
+
+    w = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
+    w._authorizations = [
+        a(1, date(2026, 1, 1), date(2026, 6, 30)),
+        a(2, date(2026, 6, 1), date(2026, 12, 31)),   # overlaps 1
+        a(3, date(2027, 1, 1), date(2027, 6, 30)),     # clear
+    ]
+    w._center_id = 1
+    w._db_path = "x"
+    tab = w._make_auths_tab()
+    t = w._auth_table
+
+    def end_tooltip(auth_id):
+        for r in range(t.rowCount()):
+            if t.item(r, 0).text() == str(auth_id):
+                return t.item(r, 2).toolTip()
+        return None
+
+    assert "Overlaps" in end_tooltip(1)
+    assert "Overlaps" in end_tooltip(2)
+    assert end_tooltip(3) == ""
+
+
 # ── the table dims expired rows and tags them ──────────────────────────────
 def _build_tab(monkeypatch):
     import db.members as dbm

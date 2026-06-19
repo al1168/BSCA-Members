@@ -247,6 +247,37 @@ def auth_status(auth: dict, today) -> str:
     return "active"
 
 
+def auth_overlap_map(auths: list[dict]) -> dict:
+    """Map each auth id to the list of other auths whose [auth_start, auth_end]
+    range overlaps it. Two ranges overlap when each starts on or before the
+    other ends (a single shared day counts). Rows missing a start or end date
+    are skipped (can't determine an overlap, so never flagged)."""
+    dated = [a for a in auths if a.get("auth_start") and a.get("auth_end")]
+    overlaps = {a["id"]: [] for a in dated}
+    for i in range(len(dated)):
+        for j in range(i + 1, len(dated)):
+            a, b = dated[i], dated[j]
+            if a["auth_start"] <= b["auth_end"] and b["auth_start"] <= a["auth_end"]:
+                overlaps[a["id"]].append(b)
+                overlaps[b["id"]].append(a)
+    return overlaps
+
+
+def auths_overlapping(auths: list[dict], start, end, exclude_id=None) -> list[dict]:
+    """The existing auths whose range overlaps the candidate [start, end] window,
+    ignoring the row identified by `exclude_id` (the one being edited)."""
+    if not start or not end:
+        return []
+    hits = []
+    for a in auths:
+        if exclude_id is not None and a.get("id") == exclude_id:
+            continue
+        s, e = a.get("auth_start"), a.get("auth_end")
+        if s and e and s <= end and start <= e:
+            hits.append(a)
+    return hits
+
+
 # ── Availability view helpers (Availability tab) ───────────────────────────
 def is_avail_expired(avail: dict, today) -> bool:
     """True when an availability's effective window has passed
@@ -502,6 +533,21 @@ class MemberTabsWidget(QWidget):
             QMessageBox.critical(self, "Load Error", str(exc))
         self._overlay_current_auth()
 
+    def _refresh_header_plan(self):
+        """Rebuild the header plan badge to match the member's current plan,
+        so adding/editing an auth updates the header without reopening."""
+        if not hasattr(self, "_header_top_row"):
+            return
+        if self._header_plan_badge is not None:
+            self._header_top_row.removeWidget(self._header_plan_badge)
+            self._header_plan_badge.deleteLater()
+            self._header_plan_badge = None
+        badge = make_plan_badge(self._member.get("health_plan", ""))
+        if badge is not None:
+            self._header_top_row.insertWidget(   # right after the name label
+                1, badge, alignment=Qt.AlignmentFlag.AlignVCenter)
+            self._header_plan_badge = badge
+
     def _overlay_current_auth(self):
         """Show the *current* (in-effect-today) authorization's plan and member
         id on the header and Info tab. Contacts.[Health Plan]/[Member ID] are
@@ -689,9 +735,13 @@ class MemberTabsWidget(QWidget):
                             f"<span style='color:gray;font-size:12px'> &nbsp;ID {cid}</span>")
         name_label.setTextFormat(Qt.TextFormat.RichText)
         top_row.addWidget(name_label)
-        plan_badge = make_plan_badge(self._member.get("health_plan", ""))
-        if plan_badge is not None:
-            top_row.addWidget(plan_badge, alignment=Qt.AlignmentFlag.AlignVCenter)
+        # Kept as attributes so the badge can be refreshed in place when an auth
+        # change moves which plan is currently in effect.
+        self._header_top_row = top_row
+        self._header_plan_badge = make_plan_badge(self._member.get("health_plan", ""))
+        if self._header_plan_badge is not None:
+            top_row.addWidget(self._header_plan_badge,
+                              alignment=Qt.AlignmentFlag.AlignVCenter)
         from db.members import is_terminated
         if is_terminated(self._enrollments):
             term_badge = QLabel("⊘ Terminated")
@@ -1468,13 +1518,27 @@ class MemberTabsWidget(QWidget):
         latest = latest_authorization(self._authorizations)
         latest_id = latest["id"] if latest else None
         today = date.today()
+        overlaps = auth_overlap_map(self._authorizations)
         plan_badges, status_chips = [], []
         for r, a in enumerate(sort_auths_latest_first(self._authorizations)):
             status = auth_status(a, today)
 
+            start_item = QTableWidgetItem(str(a["auth_start"]))
+            end_item = QTableWidgetItem(str(a["auth_end"]))
             table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
-            table.setItem(r, 1, QTableWidgetItem(str(a["auth_start"])))
-            table.setItem(r, 2, QTableWidgetItem(str(a["auth_end"])))
+            table.setItem(r, 1, start_item)
+            table.setItem(r, 2, end_item)
+
+            # Conflict: this auth's date range overlaps another's. Tint the date
+            # cells red and explain which auth(s) it collides with.
+            conflicts = overlaps.get(a["id"]) or []
+            if conflicts:
+                tip = "⚠ Overlaps " + ", ".join(
+                    f"#{o['id']} ({o['auth_start']} – {o['auth_end']})"
+                    for o in conflicts)
+                for it in (start_item, end_item):
+                    it.setBackground(QColor(208, 85, 85, 70))
+                    it.setToolTip(tip)
 
             chips = WeekdayChips(decode_auth_days(a["auth_days"] or ""), compact=True)
             table.setCellWidget(r, 3, chips)
@@ -1639,17 +1703,19 @@ class MemberTabsWidget(QWidget):
             sync_member_id_from_current_auth,
         )
 
-        synced = sync_health_plan_from_current_auth(self._center_id, self._db_path)
-        if synced:
-            self._member["health_plan"] = synced
-            if hasattr(self, "_info_plan"):
-                self._info_plan.setText(synced)
-        synced_mid = sync_member_id_from_current_auth(self._center_id, self._db_path)
-        if synced_mid:
-            self._member["member_id"] = synced_mid
-            if hasattr(self, "_info_member_id"):
-                self._info_member_id.setText(synced_mid)
+        sync_health_plan_from_current_auth(self._center_id, self._db_path)
+        sync_member_id_from_current_auth(self._center_id, self._db_path)
         self._authorizations = get_authorizations(self._center_id, self._db_path)
+
+        # Refresh the profile so it reflects the change: re-derive the current
+        # auth's plan/member id, then update the header badge and Info fields.
+        self._overlay_current_auth()
+        if hasattr(self, "_info_plan"):
+            self._info_plan.setText(self._member.get("health_plan", "") or "")
+        if hasattr(self, "_info_member_id"):
+            self._info_member_id.setText(self._member.get("member_id", "") or "")
+        self._refresh_header_plan()
+
         self._refresh_tab(2, self._make_auths_tab())
         if description:
             self._log_event("AUTH", description)
@@ -1733,11 +1799,30 @@ class MemberTabsWidget(QWidget):
             "member_id": member_id_edit.text().strip(),
         }
 
+    def _confirm_overlap(self, start, end, exclude_id=None) -> bool:
+        """If the candidate [start, end] overlaps existing auths, warn that it
+        would leave two authorizations active at once and ask to proceed.
+        Returns True to continue, False to abort."""
+        conflicts = auths_overlapping(self._authorizations, start, end, exclude_id)
+        if not conflicts:
+            return True
+        listing = "\n".join(
+            f"  •  #{a['id']}: {a['auth_start']} – {a['auth_end']}"
+            for a in conflicts)
+        return QMessageBox.question(
+            self, "Overlapping authorization",
+            "These dates overlap an existing authorization, which would leave "
+            "two authorizations active at the same time:\n\n"
+            f"{listing}\n\nSave it anyway?",
+        ) == QMessageBox.StandardButton.Yes
+
     def _add_auth(self):
         from db.members import insert_authorization, encode_auth_days
 
         result = self._open_auth_dialog()
         if not result:
+            return
+        if not self._confirm_overlap(result["auth_start"], result["auth_end"]):
             return
         try:
             insert_authorization(
@@ -1757,6 +1842,9 @@ class MemberTabsWidget(QWidget):
 
         result = self._open_auth_dialog(existing=auth)
         if not result:
+            return
+        if not self._confirm_overlap(result["auth_start"], result["auth_end"],
+                                     exclude_id=auth["id"]):
             return
         try:
             update_authorization(
