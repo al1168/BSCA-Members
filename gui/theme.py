@@ -171,6 +171,23 @@ QLineEdit:read-only {{
     color: {t['text3']};
     border-style: dashed;
 }}
+/* QDateEdit calendar popup: the global input padding above squeezes the
+   navbar's year editor so the digits clip. Give it room and lighter padding. */
+QCalendarWidget QSpinBox {{
+    min-width: 84px;
+    padding: 2px 6px;
+    margin: 2px;
+    font-size: 12px;
+}}
+QCalendarWidget QToolButton {{
+    color: {t['text']};
+    background-color: transparent;
+    padding: 4px 10px;
+}}
+QCalendarWidget QToolButton:hover {{
+    background-color: {t['raised']};
+    border-radius: 5px;
+}}
 /* Inline view/edit fields on the member Info tab: flat selectable text by
    default, a box only while being edited, a left accent when changed-unsaved. */
 QLineEdit#info_field, QLineEdit#info_field:read-only {{

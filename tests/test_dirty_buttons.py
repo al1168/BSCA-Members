@@ -34,3 +34,11 @@ def test_theme_has_discard_button_style(qapp):
     from gui.theme import build_qss, DARK, LIGHT
     for t in (build_qss(DARK), build_qss(LIGHT)):
         assert "btn_discard" in t
+
+
+def test_theme_styles_calendar_popup(qapp):
+    # The QDateEdit calendar popup needs its own rule so the year editor isn't
+    # clipped by the global input padding.
+    from gui.theme import build_qss, DARK, LIGHT
+    for t in (build_qss(DARK), build_qss(LIGHT)):
+        assert "QCalendarWidget QSpinBox" in t
