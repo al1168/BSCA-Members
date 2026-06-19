@@ -1007,10 +1007,16 @@ class MemberTabsWidget(QWidget):
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         btn_discard = QPushButton("Discard Changes")
+        btn_discard.setObjectName("btn_discard")
         btn_discard.clicked.connect(self._confirm_discard)
         btn_save = QPushButton("Save Changes")
         btn_save.setObjectName("btn_save")
         btn_save.clicked.connect(self._save_info)
+        # Grayed/disabled until there are unsaved edits (see _set_dirty).
+        btn_discard.setEnabled(False)
+        btn_save.setEnabled(False)
+        self._btn_discard = btn_discard
+        self._btn_save = btn_save
         btn_row.addWidget(btn_discard)
         btn_row.addWidget(btn_save)
         outer_layout.addLayout(btn_row)
@@ -1227,7 +1233,7 @@ class MemberTabsWidget(QWidget):
         self._info_case_manager.setText(m.get("case_manager", "") or "")
         self._info_admission_date.setText(m.get("admission_date", "") or "")
         self._info_notes.setPlainText(m.get("notes", "") or "")
-        self._dirty = False
+        self._set_dirty(False)
 
     def _save_info(self):
         from db.members import update_contact
@@ -1259,7 +1265,7 @@ class MemberTabsWidget(QWidget):
 
         summary = build_change_summary(old, fields)
         if not summary:
-            self._dirty = False
+            self._set_dirty(False)
             return
 
         name = f"{old.get('last_name', '')}, {old.get('first_name', '')}"
@@ -1302,7 +1308,7 @@ class MemberTabsWidget(QWidget):
                 db_path=self._db_path,
             )
             self._member.update(fields)
-            self._dirty = False
+            self._set_dirty(False)
             for w in self.findChildren(_ViewEditLineEdit):
                 w.set_baseline()                 # saved values -> clear highlight
             new_long_lat = self._info_address.long_lat()
@@ -1315,8 +1321,18 @@ class MemberTabsWidget(QWidget):
 
     # ── Dirty tracking ─────────────────────────────────────────────────────
 
+    def _set_dirty(self, dirty: bool):
+        """Track unsaved edits and reflect them on the action buttons: grayed and
+        disabled when clean, enabled and colored (Save green, Discard red) when
+        there are edits."""
+        self._dirty = dirty
+        if hasattr(self, "_btn_save"):
+            self._btn_save.setEnabled(dirty)
+        if hasattr(self, "_btn_discard"):
+            self._btn_discard.setEnabled(dirty)
+
     def _setup_dirty_tracking(self):
-        self._dirty = False
+        self._set_dirty(False)
         line_edits = (
             self._info_first, self._info_last, self._info_chinese,
             self._info_gender, self._info_dob,
@@ -1327,8 +1343,8 @@ class MemberTabsWidget(QWidget):
             self._info_hha, self._info_admission_date,
         )
         for w in line_edits:
-            w.textChanged.connect(lambda: setattr(self, '_dirty', True))
-        self._info_notes.textChanged.connect(lambda: setattr(self, '_dirty', True))
+            w.textChanged.connect(lambda: self._set_dirty(True))
+        self._info_notes.textChanged.connect(lambda: self._set_dirty(True))
 
     def is_dirty(self) -> bool:
         return self._dirty

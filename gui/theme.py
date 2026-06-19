@@ -138,6 +138,21 @@ QPushButton#btn_save:hover {{
     background-color: {t['success']};
     opacity: 0.9;
 }}
+QPushButton#btn_discard {{
+    background-color: {t['error']};
+    color: #ffffff;
+    border: none;
+    font-weight: 600;
+}}
+QPushButton#btn_discard:hover {{
+    background-color: {t['error_text']};
+}}
+/* Grayed out until there are unsaved edits. */
+QPushButton#btn_save:disabled, QPushButton#btn_discard:disabled {{
+    background-color: {t['surface']};
+    color: {t['text4']};
+    border: 1px solid {t['border_mid']};
+}}
 QLineEdit, QComboBox, QDateEdit, QTimeEdit, QSpinBox {{
     background-color: {t['raised']};
     color: {t['text']};
