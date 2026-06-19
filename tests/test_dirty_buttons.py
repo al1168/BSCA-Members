@@ -42,3 +42,23 @@ def test_theme_styles_calendar_popup(qapp):
     from gui.theme import build_qss, DARK, LIGHT
     for t in (build_qss(DARK), build_qss(LIGHT)):
         assert "QCalendarWidget QSpinBox" in t
+
+
+def test_dateedit_step_buttons_collapsed(qapp):
+    # Styling a QDateEdit makes Qt render spin up/down buttons whose hit area
+    # increments the highlighted section on click. The theme must collapse them
+    # to zero width so a click can't increment the date.
+    from PyQt6.QtWidgets import QDateEdit, QStyle, QStyleOptionSpinBox
+    from gui.theme import apply_theme
+    apply_theme(qapp, "light")
+    de = QDateEdit()
+    de.setCalendarPopup(True)
+    de.resize(160, 32)
+    de.show()              # polish so the stylesheet applies to subcontrol rects
+    qapp.processEvents()
+    opt = QStyleOptionSpinBox()
+    opt.initFrom(de)
+    opt.buttonSymbols = de.buttonSymbols()
+    up = de.style().subControlRect(
+        QStyle.ComplexControl.CC_SpinBox, opt, QStyle.SubControl.SC_SpinBoxUp, de)
+    assert up.width() == 0

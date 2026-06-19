@@ -171,6 +171,19 @@ QLineEdit:read-only {{
     color: {t['text3']};
     border-style: dashed;
 }}
+/* Date fields use the calendar popup, not up/down steppers. Once a QDateEdit is
+   styled, Qt renders spin buttons on the right whose hit area increments the
+   highlighted section on a click. Hide them and show only the calendar arrow. */
+QDateEdit::up-button, QDateEdit::down-button {{
+    width: 0px;
+    border: none;
+}}
+QDateEdit::drop-down {{
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 22px;
+    border: none;
+}}
 /* QDateEdit calendar popup: the global input padding above squeezes the
    navbar's year editor so the digits clip. Give it room and lighter padding
    (no margin — a margin on a styled spinbox breaks the step-button geometry). */
