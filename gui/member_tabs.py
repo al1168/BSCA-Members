@@ -141,6 +141,16 @@ def format_auth_days(auth_days: str) -> str:
     return " ".join(WEEKDAY_NAMES.get(d, str(d)) for d in days)
 
 
+def authorized_weekdays(authorizations: list[dict], today=None) -> set[int]:
+    """Day numbers (1=Mon … 7=Sun) the member is authorized for under the
+    authorization in effect today; empty when no auth is currently in effect."""
+    from db.members import current_authorization
+    current = current_authorization(authorizations, today)
+    if not current:
+        return set()
+    return decode_auth_days(current.get("auth_days") or "")
+
+
 def auth_warning(authorizations: list, today) -> str | None:
     """Warning label for a member's authorization state, or None.
 
@@ -1966,22 +1976,34 @@ class MemberTabsWidget(QWidget):
 
     def _make_current_schedule_strip(self, today) -> QWidget:
         """A read-only 'what's in effect today' strip: Mon–Fri always (dash for a
-        day with no current window), plus any weekend day that has one."""
+        day with no current window), plus any weekend day that has a window or is
+        authorized. Authorized days are flagged with a green check."""
         box = QWidget()
         outer = QVBoxLayout(box)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(4)
+
+        # Caption + a small legend explaining the green check.
+        cap_row = QHBoxLayout()
+        cap_row.setSpacing(8)
         caption = QLabel("Current Schedule")
         caption.setObjectName("strip_caption")
-        outer.addWidget(caption)
+        cap_row.addWidget(caption)
+        legend = QLabel("✓ authorized day")
+        legend.setObjectName("avail_legend")
+        cap_row.addWidget(legend)
+        cap_row.addStretch()
+        outer.addLayout(cap_row)
 
         sched = current_schedule(self._availability, today)
-        days = [1, 2, 3, 4, 5] + [d for d in (6, 7) if d in sched]
+        auth_days = authorized_weekdays(self._authorizations, today)
+        days = [1, 2, 3, 4, 5] + [d for d in (6, 7) if d in sched or d in auth_days]
 
         row = QHBoxLayout()
         row.setSpacing(8)
         for d in days:
             windows = sched.get(d)
+            authorized = d in auth_days
             cell = QWidget()
             cell.setObjectName("avail_day" if windows else "avail_day_empty")
             cell.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -1989,10 +2011,24 @@ class MemberTabsWidget(QWidget):
             cv = QVBoxLayout(cell)
             cv.setContentsMargins(10, 7, 10, 7)
             cv.setSpacing(2)
+
+            # Day name, with a green check appended when the day is authorized.
+            name_row = QHBoxLayout()
+            name_row.setContentsMargins(0, 0, 0, 0)
+            name_row.setSpacing(4)
+            name_row.addStretch()
             day_lbl = QLabel(WEEKDAY_NAMES[d])
             day_lbl.setObjectName("avail_day_name")
-            day_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            cv.addWidget(day_lbl)
+            name_row.addWidget(day_lbl)
+            if authorized:
+                check = QLabel("✓")
+                check.setObjectName("avail_day_check")
+                check.setToolTip("Authorized day")
+                name_row.addWidget(check)
+            name_row.addStretch()
+            cv.addLayout(name_row)
+            cell.setToolTip("Authorized day" if authorized
+                            else "Not authorized under the current authorization")
             for s, e in (windows or [(None, None)]):
                 t_lbl = QLabel(format_avail_window(s, e) if windows else "—")
                 t_lbl.setObjectName("avail_day_time" if windows else "avail_day_dash")

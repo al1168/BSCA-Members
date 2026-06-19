@@ -453,6 +453,17 @@ QLabel#avail_day_name {{
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }}
+QLabel#avail_day_check {{
+    color: {t['success']};
+    font-size: 11px;
+    font-weight: 700;
+}}
+QLabel#avail_legend {{
+    color: {t['success']};
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}}
 QLabel#avail_day_time {{
     color: {t['text']};
     font-size: 12px;

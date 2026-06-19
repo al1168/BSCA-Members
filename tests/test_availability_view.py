@@ -107,6 +107,7 @@ def test_table_sorts_grays_and_tags(qapp):
         _av(1, 1, "08:00", "16:00", date(2025, 1, 1), date(2025, 12, 31)),  # expired
         _av(2, 1, "08:00", "16:00", date(2026, 1, 1), None),                # active
     ]
+    w._authorizations = []   # strip reads this for the authorized-day check
     w._center_id = 1
     w._db_path = "x"
     tab = w._make_avail_tab()            # keep ref so the table isn't GC'd
