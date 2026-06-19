@@ -962,6 +962,33 @@ def is_terminated(enrollments: list[dict]) -> bool:
     return latest.get("end_date") is not None
 
 
+def enrollment_active(enrollment: dict, today) -> bool:
+    """True when an enrollment is currently in effect: no end date, or an end
+    date strictly after today (an enrollment ending today reads as ended)."""
+    end = enrollment.get("end_date")
+    if end is None:
+        return True
+    if isinstance(end, datetime):
+        end = end.date()
+    return end > today
+
+
+def has_active_enrollment(enrollments: list[dict], today) -> bool:
+    """Whether any enrollment is currently in effect."""
+    return any(enrollment_active(e, today) for e in enrollments)
+
+
+def sort_enrollments_active_first(enrollments: list[dict], today) -> list[dict]:
+    """Active (in-effect) enrollments first, then ended ones; within each group
+    by start date, most recent first. Returns a new list (input not mutated)."""
+    def key(e):
+        start = e.get("start_date") or date.min
+        if isinstance(start, datetime):
+            start = start.date()
+        return (enrollment_active(e, today), start)
+    return sorted(enrollments, key=key, reverse=True)
+
+
 def terminated_ids_from_rows(rows) -> set[int]:
     """Group raw (center_id, start_date, end_date) rows by member and return the
     set of terminated center ids. Pure (no DB) so it is unit-testable."""

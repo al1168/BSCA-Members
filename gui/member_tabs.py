@@ -1434,13 +1434,17 @@ class MemberTabsWidget(QWidget):
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
 
+        from db.members import enrollment_active, sort_enrollments_active_first
+
         today = date.today()
-        for r, e in enumerate(self._enrollments):
+        # Active (in-effect) enrollments on top, ended ones below; each by start
+        # date, most recent first.
+        for r, e in enumerate(sort_enrollments_active_first(self._enrollments, today)):
             end = e["end_date"]
             table.setItem(r, 0, QTableWidgetItem(str(e["id"])))
             table.setItem(r, 1, QTableWidgetItem(str(e["start_date"])))
             table.setItem(r, 2, QTableWidgetItem(str(end) if end else "ongoing"))
-            if end is None or end > today:
+            if enrollment_active(e, today):
                 btn = QPushButton("Terminate")
                 btn.setObjectName("btn_terminate")
                 btn.clicked.connect(
@@ -1467,7 +1471,10 @@ class MemberTabsWidget(QWidget):
     def _add_enrollment(self):
         from PyQt6.QtWidgets import QDialog, QFormLayout, QDateEdit, QDialogButtonBox
         from PyQt6.QtCore import QDate
-        from db.members import insert_enrollment
+        from datetime import date
+        from db.members import (
+            insert_enrollment, enrollment_active, has_active_enrollment,
+        )
         from monthly_schedule.db import get_enrollments
 
         dlg = QDialog(self)
@@ -1490,6 +1497,17 @@ class MemberTabsWidget(QWidget):
         if dlg.exec():
             s = start.date().toPyDate()
             e = end.date().toPyDate() if end.date() != QDate(2000, 1, 1) else None
+            # A member can have only one active enrollment at a time. Block adding
+            # a second in-effect enrollment; the existing one must be terminated
+            # first.
+            today = date.today()
+            new_active = enrollment_active({"end_date": e}, today)
+            if new_active and has_active_enrollment(self._enrollments, today):
+                QMessageBox.warning(
+                    self, "Active enrollment exists",
+                    "This member already has an active enrollment. Terminate it "
+                    "before adding a new one.")
+                return
             try:
                 insert_enrollment(self._center_id, s, e, self._db_path)
                 self._enrollments = get_enrollments(self._center_id, self._db_path)
