@@ -837,6 +837,10 @@ def insert_member(
                    long_lat, member_id, home_tell, cell, dob, gender))
         c.execute(INSERT_ENROLLMENT, (center_id, enrollment_start, enrollment_end))
         if authorization:
+            # The wizard's auth step has no plan field — the member's selected
+            # plan is the authorization's plan. Fall back to it so a new member's
+            # authorization is never created without a health plan.
+            auth_plan = (authorization.get("health_plan") or "").strip() or health_plan
             c.execute(
                 INSERT_AUTHORIZATION,
                 (
@@ -846,7 +850,7 @@ def insert_member(
                     authorization.get("effective_start"),
                     authorization.get("effective_end"),
                     encode_auth_days(authorization["auth_days"]),
-                    authorization.get("health_plan", ""),
+                    auth_plan,
                     datetime.now(),
                     member_id,   # seed the auth's Member ID from the member's
                 ),
