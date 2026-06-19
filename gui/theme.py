@@ -172,12 +172,20 @@ QLineEdit:read-only {{
     border-style: dashed;
 }}
 /* QDateEdit calendar popup: the global input padding above squeezes the
-   navbar's year editor so the digits clip. Give it room and lighter padding. */
+   navbar's year editor so the digits clip. Give it room and lighter padding
+   (no margin — a margin on a styled spinbox breaks the step-button geometry). */
 QCalendarWidget QSpinBox {{
-    min-width: 84px;
+    min-width: 72px;
     padding: 2px 6px;
-    margin: 2px;
     font-size: 12px;
+}}
+/* Hide the year spinner's step buttons: once the spinbox is styled their hit
+   area can overlap the field and increment the year on a plain click. The year
+   stays editable by typing. */
+QCalendarWidget QSpinBox::up-button,
+QCalendarWidget QSpinBox::down-button {{
+    width: 0px;
+    border: none;
 }}
 QCalendarWidget QToolButton {{
     color: {t['text']};
