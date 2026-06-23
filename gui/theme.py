@@ -357,6 +357,37 @@ QPushButton#btn_icon_delete:hover {{
     color: #ffffff;
     border-color: {t['error']};
 }}
+/* Row Add (green) / Delete (red) action buttons. Delete is grayed + disabled
+   until a row is selected. */
+QPushButton#btn_row_add {{
+    background-color: {t['success_bg']};
+    color: {t['success']};
+    border: 1px solid {t['success']};
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: 5px;
+}}
+QPushButton#btn_row_add:hover {{
+    background-color: {t['success']};
+    color: #ffffff;
+}}
+QPushButton#btn_row_delete {{
+    background-color: {t['error_bg']};
+    color: {t['error']};
+    border: 1px solid {t['error']};
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: 5px;
+}}
+QPushButton#btn_row_delete:hover {{
+    background-color: {t['error']};
+    color: #ffffff;
+}}
+QPushButton#btn_row_delete:disabled {{
+    background-color: {t['surface']};
+    color: {t['text4']};
+    border: 1px solid {t['border_mid']};
+}}
 QLabel {{
     background-color: transparent;
     color: {t['text']};

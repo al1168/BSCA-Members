@@ -1186,6 +1186,7 @@ class MemberTabsWidget(QWidget):
         btn_add.clicked.connect(self._add_emergency)
         btn_del = QPushButton("Delete Selected")
         btn_del.clicked.connect(lambda: self._delete_emergency(table))
+        self._style_crud_buttons(table, btn_add, btn_del)
         btn_row.addWidget(btn_add)
         btn_row.addStretch()
         btn_row.addWidget(btn_del)
@@ -1483,6 +1484,7 @@ class MemberTabsWidget(QWidget):
         btn_add.clicked.connect(on_add)
         btn_del = QPushButton("Delete Selected")
         btn_del.clicked.connect(lambda: on_delete(table))
+        self._style_crud_buttons(table, btn_add, btn_del)
         btn_row.addWidget(btn_add)
         btn_row.addStretch()
         btn_row.addWidget(btn_del)
@@ -1497,6 +1499,18 @@ class MemberTabsWidget(QWidget):
         self._tabs.setCurrentIndex(index)
         if old:
             old.deleteLater()
+
+    @staticmethod
+    def _style_crud_buttons(table, btn_add, btn_del):
+        """Color-code the row Add (green) / Delete (red) buttons, and keep Delete
+        grayed/disabled until a row is selected (it acts on the selection)."""
+        btn_add.setObjectName("btn_row_add")
+        btn_del.setObjectName("btn_row_delete")
+
+        def _sync():
+            btn_del.setEnabled(len(table.selectionModel().selectedRows()) > 0)
+        table.itemSelectionChanged.connect(_sync)
+        _sync()
 
     # ── Enrollments tab ────────────────────────────────────────────────────
 
@@ -1545,6 +1559,7 @@ class MemberTabsWidget(QWidget):
         btn_add.clicked.connect(self._add_enrollment)
         btn_del = QPushButton("Delete Selected")
         btn_del.clicked.connect(lambda: self._delete_enrollment(table))
+        self._style_crud_buttons(table, btn_add, btn_del)
         btn_row.addWidget(btn_add)
         btn_row.addStretch()
         btn_row.addWidget(btn_del)
@@ -1789,6 +1804,7 @@ class MemberTabsWidget(QWidget):
         btn_add.clicked.connect(self._add_auth)
         btn_del = QPushButton("Delete Selected")
         btn_del.clicked.connect(lambda: self._delete_auth(table))
+        self._style_crud_buttons(table, btn_add, btn_del)
         btn_row.addWidget(btn_add)
         btn_row.addStretch()
         btn_row.addWidget(btn_del)
@@ -2198,6 +2214,7 @@ class MemberTabsWidget(QWidget):
         btn_sched.clicked.connect(self._open_scheduled_changes)
         btn_del = QPushButton("Delete Selected")
         btn_del.clicked.connect(lambda: self._delete_avail(table))
+        self._style_crud_buttons(table, btn_add, btn_del)
         btn_row.addWidget(btn_add)
         btn_row.addWidget(btn_sched)
         btn_row.addStretch()
@@ -2671,6 +2688,7 @@ class MemberTabsWidget(QWidget):
         btn_add.clicked.connect(self._add_unavailable)
         btn_del = QPushButton("Delete Selected")
         btn_del.clicked.connect(lambda: self._delete_unavailable(table))
+        self._style_crud_buttons(table, btn_add, btn_del)
         btn_row.addWidget(btn_add)
         btn_row.addStretch()
         btn_row.addWidget(btn_del)
