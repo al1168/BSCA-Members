@@ -470,6 +470,14 @@ class _ViewEditLineEdit(QLineEdit):
         self._update_pencil()
         super().leaveEvent(e)
 
+    def mouseDoubleClickEvent(self, e):
+        # Double-click a flat field to start editing, same as the pencil. While
+        # already editing, fall through to the normal word-select behavior.
+        if self._editable and self.isReadOnly():
+            self._begin_edit()
+            return
+        super().mouseDoubleClickEvent(e)
+
     def _begin_edit(self):
         if not self._editable or not self.isReadOnly():
             return

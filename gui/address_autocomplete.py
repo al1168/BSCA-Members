@@ -214,6 +214,11 @@ class AddressAutocomplete(QWidget):
             self._edit.setText(self._edit_start)   # cancel the edit
             self._finish_edit()
             return True
+        if (obj is self._edit
+                and event.type() == QEvent.Type.MouseButtonDblClick
+                and self._edit.isReadOnly()):
+            self._begin_edit()                      # double-click to edit
+            return True
         return super().eventFilter(obj, event)
 
     def enterEvent(self, e):
