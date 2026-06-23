@@ -996,7 +996,6 @@ class MemberTabsWidget(QWidget):
         self._info_language = field("language")
 
         self._info_case_manager   = field("case_manager")
-        self._info_admission_date = field("admission_date")
         # Notes is built in the header (always-visible band), not here.
 
         enroll_start = self._enrollment_start(self._enrollments)
@@ -1083,7 +1082,6 @@ class MemberTabsWidget(QWidget):
 
         section("Care")
         cell(0, "Case Manager", self._info_case_manager)
-        cell(1, "Admission Date", self._info_admission_date)
         state["row"] += 1
 
         section("Emergency")
@@ -1339,7 +1337,6 @@ class MemberTabsWidget(QWidget):
         self._info_cell.setText(format_phone(m.get("cell", "") or ""))
         self._info_emergency.setText(m.get("emergency", "") or "")
         self._info_case_manager.setText(m.get("case_manager", "") or "")
-        self._info_admission_date.setText(m.get("admission_date", "") or "")
         self._info_notes.setPlainText(m.get("notes", "") or "")
         self._set_dirty(False)
 
@@ -1367,7 +1364,9 @@ class MemberTabsWidget(QWidget):
             "pcp":            self._info_pcp.text().strip(),
             "hospital":       self._info_hospital.text().strip(),
             "hha":            self._info_hha.text().strip(),
-            "admission_date": self._info_admission_date.text().strip(),
+            # Admission Date is no longer shown/edited here; preserve the stored
+            # value so saving the form never blanks it.
+            "admission_date": old.get("admission_date", "") or "",
             "notes":          self._info_notes.toPlainText().strip(),
         }
 
@@ -1448,7 +1447,7 @@ class MemberTabsWidget(QWidget):
             self._info_language, self._info_case_manager,
             self._info_home_tell, self._info_cell, self._info_address,
             self._info_emergency, self._info_pcp, self._info_hospital,
-            self._info_hha, self._info_admission_date,
+            self._info_hha,
         )
         for w in line_edits:
             w.textChanged.connect(lambda: self._set_dirty(True))
