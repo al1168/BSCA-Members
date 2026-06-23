@@ -336,17 +336,83 @@ def format_avail_window(start: str, end: str) -> str:
     return f"{start or '—'}–{end or '—'}"
 
 
+def avail_status(avail: dict, today) -> str:
+    """'expired' (effective_end < today), 'upcoming' (effective_start > today),
+    or 'active' (in effect today). Mirrors auth_status."""
+    start = _as_date(avail.get("effective_start_date"))
+    end = _as_date(avail.get("effective_end_date"))
+    today = _as_date(today)
+    if end is not None and today is not None and end < today:
+        return "expired"
+    if start is not None and today is not None and start > today:
+        return "upcoming"
+    return "active"
+
+
 def current_schedule(avails: list[dict], today) -> dict:
-    """Map day_of_week -> [(start, end), ...] for the rows in effect today,
-    each day's windows ordered by start time. Feeds the Current Schedule strip."""
-    sched: dict[int, list] = {}
+    """Map day_of_week -> [(start, end)] for the row in effect today, one window
+    per weekday. When several rows are in effect (e.g. a just-activated change
+    that hasn't capped the old row), the latest effective_start wins, tie-break
+    largest id — the same rule the scheduler uses in availability_for. Feeds the
+    Current Schedule strip."""
+    from datetime import date
+    best: dict[int, tuple] = {}   # day -> ((eff_start, id), (start, end))
     for a in avails:
-        if avail_in_effect_on(a, today):
-            sched.setdefault(a["day_of_week"], []).append(
-                (a.get("avail_start") or "", a.get("avail_end") or ""))
-    for windows in sched.values():
-        windows.sort()
-    return sched
+        if not avail_in_effect_on(a, today):
+            continue
+        d = a["day_of_week"]
+        key = (_as_date(a.get("effective_start_date")) or date.min, a.get("id") or 0)
+        win = (a.get("avail_start") or "", a.get("avail_end") or "")
+        if d not in best or key > best[d][0]:
+            best[d] = (key, win)
+    return {d: [win] for d, (_k, win) in best.items()}
+
+
+def pending_changes(avails: list[dict], today) -> list[dict]:
+    """Future-effective availability rows (a queued change not yet in effect),
+    soonest first then by weekday. Returns a new list."""
+    from datetime import date
+    today = _as_date(today)
+    future = [a for a in avails
+              if (_as_date(a.get("effective_start_date")) or date.min) > today]
+    return sorted(future, key=lambda a: (
+        _as_date(a.get("effective_start_date")) or date.min,
+        a.get("day_of_week", 0)))
+
+
+def avail_to_cap(avails: list[dict], day_of_week: int, new_start) -> dict | None:
+    """The row a scheduled change supersedes: the same-weekday row in effect at
+    `new_start` (effective_start before it, end open or on/after it). Its end
+    should be capped to new_start - 1. None when nothing needs capping."""
+    from datetime import date
+    new_start = _as_date(new_start)
+    cands = []
+    for a in avails:
+        if a.get("day_of_week") != day_of_week:
+            continue
+        s = _as_date(a.get("effective_start_date"))
+        e = _as_date(a.get("effective_end_date"))
+        if s is not None and s < new_start and (e is None or e >= new_start):
+            cands.append((s, a.get("id") or 0, a))
+    if not cands:
+        return None
+    return max(cands, key=lambda t: (t[0], t[1]))[2]
+
+
+def avail_to_restore(avails: list[dict], day_of_week: int, removed_start) -> dict | None:
+    """The predecessor that was capped when a change starting `removed_start`
+    was added: the same-weekday row whose effective_end is the day before. Used
+    to re-extend it when the change is deleted. None if not found."""
+    from datetime import date, timedelta
+    removed_start = _as_date(removed_start)
+    target_end = removed_start - timedelta(days=1)
+    cands = [a for a in avails
+             if a.get("day_of_week") == day_of_week
+             and _as_date(a.get("effective_end_date")) == target_end]
+    if not cands:
+        return None
+    return max(cands, key=lambda a: (
+        _as_date(a.get("effective_start_date")) or date.min, a.get("id") or 0))
 
 
 def sort_avail_for_table(avails: list[dict], today) -> list[dict]:
@@ -2081,7 +2147,7 @@ class MemberTabsWidget(QWidget):
 
         status_chips = []
         for r, a in enumerate(sort_avail_for_table(self._availability, today)):
-            expired = is_avail_expired(a, today)
+            status = avail_status(a, today)
             eff_end = a.get("effective_end_date")
 
             table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
@@ -2092,9 +2158,14 @@ class MemberTabsWidget(QWidget):
             table.setItem(r, 4, QTableWidgetItem(str(a["effective_start_date"])))
             table.setItem(r, 5, QTableWidgetItem(str(eff_end) if eff_end else "—"))
 
-            # Compact status pill centered in its column, like the Auth tab.
-            chip = QLabel("Expired" if expired else "Active")
-            chip.setObjectName("expired_chip" if expired else "active_chip")
+            # Compact status pill centered in its column, like the Auth tab:
+            # green Active / amber Upcoming (a scheduled change) / red Expired.
+            _label = {"active": "Active", "upcoming": "Upcoming",
+                      "expired": "Expired"}[status]
+            _obj = {"active": "active_chip", "upcoming": "upcoming_chip",
+                    "expired": "expired_chip"}[status]
+            chip = QLabel(_label)
+            chip.setObjectName(_obj)
             status_chips.append(chip)
             table.setCellWidget(r, 6, _centered_cell(chip))
 
@@ -2108,7 +2179,7 @@ class MemberTabsWidget(QWidget):
             spacer.setBackground(QColor(120, 124, 140, 18))
             table.setItem(r, SPACER_COL, spacer)
 
-            if expired:
+            if status == "expired":
                 for col in (0, 1, 2, 3, 4, 5):
                     table.item(r, col).setForeground(QColor(EXPIRED_FG))
 
@@ -2117,12 +2188,19 @@ class MemberTabsWidget(QWidget):
         self._avail_table = table
         layout.addWidget(table)
 
+        n_pending = len(pending_changes(self._availability, today))
         btn_row = QHBoxLayout()
         btn_add = QPushButton("+ Add")
         btn_add.clicked.connect(self._add_avail)
+        btn_sched = QPushButton(
+            f"Scheduled Changes ({n_pending})" if n_pending else "Scheduled Changes")
+        btn_sched.setToolTip(
+            "Review and manage availability changes queued to take effect later")
+        btn_sched.clicked.connect(self._open_scheduled_changes)
         btn_del = QPushButton("Delete Selected")
         btn_del.clicked.connect(lambda: self._delete_avail(table))
         btn_row.addWidget(btn_add)
+        btn_row.addWidget(btn_sched)
         btn_row.addStretch()
         btn_row.addWidget(btn_del)
         layout.addLayout(btn_row)
@@ -2305,6 +2383,244 @@ class MemberTabsWidget(QWidget):
                         f"{entry['avail_start']}–{entry['avail_end']}")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
+
+    # ── Scheduled availability changes (future-effective rows) ───────────────
+
+    def _open_scheduled_changes(self):
+        """A popup listing availability changes queued to take effect later, with
+        add / edit / delete. Each is just a future-effective Availability row."""
+        from datetime import date
+        from PyQt6.QtWidgets import (
+            QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
+            QAbstractItemView, QHeaderView, QPushButton, QLabel, QWidget,
+        )
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Scheduled Availability Changes")
+        dlg.resize(580, 380)
+        v = QVBoxLayout(dlg)
+
+        cap = QLabel("Changes queued to take effect on a future date. Each one "
+                     "replaces that weekday's current window when its date arrives.")
+        cap.setWordWrap(True)
+        cap.setObjectName("field_label")
+        v.addWidget(cap)
+
+        table = QTableWidget(0, 4)
+        table.setHorizontalHeaderLabels(
+            ["Day", "New Window", "Effective From", "Action"])
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(36)
+        hdr = table.horizontalHeader()
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        v.addWidget(table)
+
+        empty = QLabel("No scheduled changes yet. Use “+ Schedule a change”.")
+        empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty.setObjectName("field_label")
+        v.addWidget(empty)
+
+        def repopulate():
+            rows = pending_changes(self._availability, date.today())
+            table.setRowCount(len(rows))
+            for r, a in enumerate(rows):
+                day = WEEKDAY_NAMES.get(a["day_of_week"], str(a["day_of_week"]))
+                table.setItem(r, 0, QTableWidgetItem(day))
+                table.setItem(r, 1, QTableWidgetItem(format_avail_window(
+                    a.get("avail_start") or "", a.get("avail_end") or "")))
+                table.setItem(r, 2, QTableWidgetItem(str(a["effective_start_date"])))
+                cellw = QWidget()
+                hl = QHBoxLayout(cellw)
+                hl.setContentsMargins(0, 0, 0, 0)
+                hl.setSpacing(4)
+                edit = QPushButton("Edit")
+                edit.setObjectName("btn_edit")
+                edit.clicked.connect(
+                    lambda _=False, av=a: (self._edit_scheduled_change(av),
+                                           repopulate()))
+                dele = QPushButton("Delete")
+                dele.clicked.connect(
+                    lambda _=False, av=a: (self._delete_scheduled_change(av),
+                                           repopulate()))
+                hl.addWidget(edit)
+                hl.addWidget(dele)
+                table.setCellWidget(r, 3, cellw)
+            table.setVisible(bool(rows))
+            empty.setVisible(not rows)
+
+        repopulate()
+
+        btns = QHBoxLayout()
+        add = QPushButton("+ Schedule a change")
+        add.setObjectName("btn_primary")
+        add.clicked.connect(lambda: (self._add_scheduled_change(), repopulate()))
+        close = QPushButton("Close")
+        close.clicked.connect(dlg.accept)
+        btns.addWidget(add)
+        btns.addStretch()
+        btns.addWidget(close)
+        v.addLayout(btns)
+        dlg.exec()
+
+    def _schedule_change_form(self, existing: dict | None = None) -> dict | None:
+        """Dedicated 'schedule a change' form: weekday, new window, future
+        effective date. Returns {day, ts, te, eff} or None. When editing, the
+        weekday is fixed (matching how a row's day is immutable elsewhere)."""
+        from datetime import date
+        from PyQt6.QtWidgets import (
+            QDialog, QFormLayout, QComboBox, QDateEdit, QDialogButtonBox, QLabel,
+        )
+        from PyQt6.QtCore import QDate
+        from gui.time_range_editor import TimeRangeEditor
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Edit Scheduled Change" if existing
+                           else "Schedule a Change")
+        form = QFormLayout(dlg)
+
+        day_combo = QComboBox()
+        for num, name in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"),
+                          (5, "Fri"), (6, "Sat"), (7, "Sun")]:
+            day_combo.addItem(name, num)
+        editor = TimeRangeEditor()
+        eff = QDateEdit()
+        eff.setCalendarPopup(True)
+        tomorrow = QDate.currentDate().addDays(1)
+        eff.setMinimumDate(tomorrow)
+
+        if existing:
+            idx = day_combo.findData(existing["day_of_week"])
+            if idx >= 0:
+                day_combo.setCurrentIndex(idx)
+            day_combo.setEnabled(False)   # weekday is fixed when editing
+            editor.set_window(existing.get("avail_start") or "08:00",
+                              existing.get("avail_end") or "16:00")
+            d = existing["effective_start_date"]
+            eff.setDate(QDate(d.year, d.month, d.day))
+        else:
+            editor.set_window("08:00", "16:00")
+            eff.setDate(tomorrow)
+
+        form.addRow("Weekday:", day_combo)
+        form.addRow("New Window:", editor)
+        form.addRow("Effective From:", eff)
+        hint = QLabel("Takes effect on this date and replaces the current window "
+                      "for that weekday.")
+        hint.setWordWrap(True)
+        hint.setObjectName("field_label")
+        form.addRow(hint)
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Save |
+                                QDialogButtonBox.StandardButton.Cancel)
+        btns.rejected.connect(dlg.reject)
+
+        def on_accept():
+            if eff.date().toPyDate() <= date.today():
+                QMessageBox.warning(dlg, "Validation",
+                    "A scheduled change must take effect on a future date.")
+                return
+            dlg.accept()
+        btns.accepted.connect(on_accept)
+        form.addRow(btns)
+
+        if not dlg.exec():
+            return None
+        return {"day": day_combo.currentData(),
+                "ts": editor.start_hhmm(), "te": editor.end_hhmm(),
+                "eff": eff.date().toPyDate()}
+
+    def _add_scheduled_change(self):
+        from datetime import timedelta
+        from db.members import insert_availability, update_availability
+        from monthly_schedule.db import get_availability
+
+        result = self._schedule_change_form()
+        if not result:
+            return
+        day, ts, te, eff = result["day"], result["ts"], result["te"], result["eff"]
+        try:
+            # Cap the current window for that weekday so it ends the day before
+            # the change starts (the change becomes the new ongoing window).
+            pred = avail_to_cap(self._availability, day, eff)
+            if pred is not None:
+                update_availability(
+                    pred["id"], pred["avail_start"], pred["avail_end"],
+                    pred["effective_start_date"], eff - timedelta(days=1),
+                    self._db_path)
+            insert_availability(self._center_id, day, ts, te, eff, None,
+                                self._db_path)
+            self._availability = get_availability(self._center_id, self._db_path)
+            self._refresh_tab(3, self._make_avail_tab())
+            day_name = WEEKDAY_NAMES.get(day, str(day))
+            self._log_event("AVAIL", f"Scheduled change: {day_name} → {ts}–{te} "
+                            f"effective {eff.isoformat()}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
+
+    def _edit_scheduled_change(self, entry: dict):
+        from datetime import timedelta
+        from db.members import update_availability
+        from monthly_schedule.db import get_availability
+
+        result = self._schedule_change_form(existing=entry)
+        if not result:
+            return
+        day, ts, te, eff = result["day"], result["ts"], result["te"], result["eff"]
+        try:
+            # Re-extend the predecessor capped for the old date, then re-cap for
+            # the new date — so moving the change date keeps the hand-off clean.
+            pred_old = avail_to_restore(self._availability, entry["day_of_week"],
+                                        entry["effective_start_date"])
+            if pred_old is not None:
+                update_availability(
+                    pred_old["id"], pred_old["avail_start"], pred_old["avail_end"],
+                    pred_old["effective_start_date"], entry.get("effective_end_date"),
+                    self._db_path)
+            update_availability(entry["id"], ts, te, eff, None, self._db_path)
+            self._availability = get_availability(self._center_id, self._db_path)
+            pred_new = avail_to_cap(self._availability, day, eff)
+            if pred_new is not None and pred_new["id"] != entry["id"]:
+                update_availability(
+                    pred_new["id"], pred_new["avail_start"], pred_new["avail_end"],
+                    pred_new["effective_start_date"], eff - timedelta(days=1),
+                    self._db_path)
+            self._availability = get_availability(self._center_id, self._db_path)
+            self._refresh_tab(3, self._make_avail_tab())
+            day_name = WEEKDAY_NAMES.get(day, str(day))
+            self._log_event("AVAIL", f"Scheduled change updated: {day_name} → "
+                            f"{ts}–{te} effective {eff.isoformat()}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
+
+    def _delete_scheduled_change(self, entry: dict):
+        from db.members import delete_availability, update_availability
+        from monthly_schedule.db import get_availability
+
+        day_name = WEEKDAY_NAMES.get(entry["day_of_week"], str(entry["day_of_week"]))
+        if QMessageBox.question(
+                self, "Confirm",
+                f"Cancel the scheduled change for {day_name} effective "
+                f"{entry['effective_start_date']}?") \
+                != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            # Re-extend the capped predecessor over the gap the change leaves.
+            pred = avail_to_restore(self._availability, entry["day_of_week"],
+                                    entry["effective_start_date"])
+            if pred is not None:
+                update_availability(
+                    pred["id"], pred["avail_start"], pred["avail_end"],
+                    pred["effective_start_date"], entry.get("effective_end_date"),
+                    self._db_path)
+            delete_availability(entry["id"], self._db_path)
+            self._availability = get_availability(self._center_id, self._db_path)
+            self._refresh_tab(3, self._make_avail_tab())
+            self._log_event("AVAIL", f"Scheduled change canceled: {day_name} "
+                            f"effective {entry['effective_start_date']}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
 
     # ── Unavailable Times tab (one-off) ──────────────────────────────────────
 
