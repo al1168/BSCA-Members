@@ -419,6 +419,27 @@ QLabel#field_label {{
     font-size: 11px;
     padding-right: 2px;
 }}
+/* Ctrl+K quick-search palette: a floating rounded card with a big search box. */
+QWidget#quick_search {{
+    background-color: {t['surface']};
+    border: 1px solid {t['border_mid']};
+    border-radius: 12px;
+}}
+QLineEdit#quick_search_input {{
+    background-color: {t['raised']};
+    border: 1px solid {t['border']};
+    border-radius: 8px;
+    font-size: 15px;
+    padding: 10px 12px;
+}}
+QListWidget#quick_search_list {{
+    background: transparent;
+    border: none;
+}}
+QLabel#quick_search_hint {{
+    color: {t['text3']};
+    font-size: 10px;
+}}
 /* Schedule summary card on the Info tab: a contained, spaced-out row instead of
    stretched grid cells. */
 QWidget#schedule_card {{

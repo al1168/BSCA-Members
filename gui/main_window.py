@@ -7,7 +7,9 @@ from PyQt6.QtWidgets import (
     QStyledItemDelegate, QStyle, QStyleOptionViewItem,
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QTextDocument, QAbstractTextDocumentLayout
+from PyQt6.QtGui import (
+    QTextDocument, QAbstractTextDocumentLayout, QShortcut, QKeySequence,
+)
 
 from settings import save_settings
 from gui.settings_dialog import SettingsDialog
@@ -117,8 +119,12 @@ class MainWindow(QMainWindow):
         self._btn_add.clicked.connect(self._open_wizard)
 
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Search members…")
+        self._search.setPlaceholderText("Search members…   (Ctrl+K)")
         self._search.textChanged.connect(self._filter_members)
+
+        # Ctrl+K opens the command-palette member search from anywhere.
+        quick = QShortcut(QKeySequence("Ctrl+K"), self)
+        quick.activated.connect(self._open_quick_search)
 
         self._member_list = QListWidget()
         self._member_list.currentRowChanged.connect(self._on_member_selected)
@@ -219,10 +225,8 @@ class MainWindow(QMainWindow):
         filtered = [m for m in self._all_members if matches_search(m, text)]
         self._populate_list(filtered)
 
-    def _on_member_selected(self, row: int):
-        if row < 0:
-            return
-        # Guard: check if current detail widget has unsaved changes
+    def _ok_to_leave_current(self) -> bool:
+        """True to proceed (no unsaved edits, or the user chose to discard)."""
         if self._detail_stack.count() > 1:
             current = self._detail_stack.widget(1)
             if hasattr(current, "is_dirty") and current.is_dirty():
@@ -231,16 +235,45 @@ class MainWindow(QMainWindow):
                     "You have unsaved changes. Discard them?",
                     QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
                 )
-                if reply != QMessageBox.StandardButton.Discard:
-                    self._member_list.blockSignals(True)
-                    self._member_list.setCurrentRow(-1)
-                    self._member_list.blockSignals(False)
-                    return
+                return reply == QMessageBox.StandardButton.Discard
+        return True
+
+    def _on_member_selected(self, row: int):
+        if row < 0:
+            return
+        if not self._ok_to_leave_current():
+            self._member_list.blockSignals(True)
+            self._member_list.setCurrentRow(-1)
+            self._member_list.blockSignals(False)
+            return
         item = self._member_list.item(row)
         if item is None:
             return
         center_id = item.data(Qt.ItemDataRole.UserRole)
         self._show_member(center_id)
+
+    def _open_quick_search(self):
+        """Ctrl+K: a command-palette member search overlay."""
+        if not self._all_members:
+            return
+        from gui.quick_search import QuickSearchDialog
+        dlg = QuickSearchDialog(self._all_members, matches_search, self)
+        if dlg.exec() and dlg.chosen_center_id is not None:
+            self._jump_to_member(dlg.chosen_center_id)
+
+    def _jump_to_member(self, center_id):
+        """Open a member by id (from quick search), honoring the unsaved guard
+        and syncing the sidebar highlight when that member is visible."""
+        if not self._ok_to_leave_current():
+            return
+        self._show_member(center_id)
+        self._member_list.blockSignals(True)
+        self._member_list.setCurrentRow(-1)
+        for i in range(self._member_list.count()):
+            if self._member_list.item(i).data(Qt.ItemDataRole.UserRole) == center_id:
+                self._member_list.setCurrentRow(i)
+                break
+        self._member_list.blockSignals(False)
 
     def _show_member(self, center_id: int):
         self._last_center_id = center_id
