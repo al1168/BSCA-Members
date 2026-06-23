@@ -220,6 +220,8 @@ QLineEdit#info_field, QLineEdit#info_field:read-only {{
     border: none;
     border-radius: 0;
     color: {t['text']};
+    font-size: 13px;
+    font-weight: 600;          /* bolder values so they read clearly */
     padding: 3px 2px;
 }}
 QLineEdit#info_field[changed="true"],
@@ -357,6 +359,19 @@ QPushButton#btn_icon_delete:hover {{
     color: #ffffff;
     border-color: {t['error']};
 }}
+/* Compact icon-only edit (the ✎ on a scheduled change): accent on hover. */
+QPushButton#btn_icon_edit {{
+    background-color: {t['accent_bg']};
+    color: {t['accent_text']};
+    border: 1px solid {t['accent']};
+    font-weight: 700;
+    padding: 4px 0;
+    border-radius: 5px;
+}}
+QPushButton#btn_icon_edit:hover {{
+    background-color: {t['accent']};
+    color: #ffffff;
+}}
 /* Row Add (green) / Delete (red) action buttons. Delete is grayed + disabled
    until a row is selected. */
 QPushButton#btn_row_add {{
@@ -403,6 +418,18 @@ QLabel#field_label {{
     color: {t['text3']};
     font-size: 11px;
     padding-right: 2px;
+}}
+/* Schedule summary card on the Info tab: a contained, spaced-out row instead of
+   stretched grid cells. */
+QWidget#schedule_card {{
+    background-color: {t['raised']};
+    border: 1px solid {t['border']};
+    border-radius: 10px;
+}}
+QLabel#schedule_value {{
+    color: {t['text']};
+    font-size: 13px;
+    font-weight: 700;
 }}
 QLabel#notes_label {{
     color: {t['accent_text']};

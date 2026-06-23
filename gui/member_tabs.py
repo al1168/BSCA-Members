@@ -858,14 +858,14 @@ class MemberTabsWidget(QWidget):
         name = f"{self._member.get('last_name', '')}, {self._member.get('first_name', '')}"
         cid = str(self._center_id)
         name_label = QLabel(
-            f"<span style='font-size:15px; font-weight:700'>{name}</span>"
-            f"<span style='font-size:14px; font-weight:700; color:#5b7cf4'>"
-            f"&nbsp;&nbsp;ID {cid}</span>")
+            f"<span style='font-size:16px; font-weight:700'>{name}</span><br>"
+            f"<span style='font-size:13px; font-weight:700; color:#5b7cf4'>"
+            f"ID {cid}</span>")
         name_label.setTextFormat(Qt.TextFormat.RichText)
         # Let staff highlight + copy the ID (and name).
         name_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
-        top_row.addWidget(name_label)
+        top_row.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignVCenter)
         # Kept as attributes so the badge can be refreshed in place when an auth
         # change moves which plan is currently in effect.
         self._header_top_row = top_row
@@ -947,6 +947,39 @@ class MemberTabsWidget(QWidget):
 
     # ── Info tab (Task 9) ──────────────────────────────────────────────────
 
+    def _make_schedule_card(self, active_days, period_text) -> QWidget:
+        """A compact, contained Schedule summary: authorized-day chips and the
+        auth period on one spaced row (instead of stretched grid cells)."""
+        card = QWidget()
+        card.setObjectName("schedule_card")
+        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        outer = QVBoxLayout(card)
+        outer.setContentsMargins(16, 12, 16, 12)
+        outer.setSpacing(8)
+
+        caption = QLabel("Schedule")
+        caption.setObjectName("strip_caption")
+        outer.addWidget(caption)
+
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        days_lbl = QLabel("Authorized Days")
+        days_lbl.setObjectName("field_label")
+        row.addWidget(days_lbl)
+        row.addWidget(WeekdayChips(active_days))
+        row.addSpacing(28)
+        period_lbl = QLabel("Auth Period")
+        period_lbl.setObjectName("field_label")
+        row.addWidget(period_lbl)
+        period_val = QLabel(period_text)
+        period_val.setObjectName("schedule_value")
+        period_val.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        row.addWidget(period_val)
+        row.addStretch()
+        outer.addLayout(row)
+        return card
+
     def _make_info_tab(self) -> QWidget:
         from PyQt6.QtWidgets import (
             QLineEdit, QScrollArea, QGridLayout,
@@ -1011,7 +1044,7 @@ class MemberTabsWidget(QWidget):
         else:
             active_days = set()
             period_text = "None"
-        auth_period_lbl = _ViewEditLineEdit(period_text, editable=False)
+        schedule_card = self._make_schedule_card(active_days, period_text)
 
         # ── Dense sectioned grid: 3 field columns, no card chrome ──────────
         grid = QGridLayout()
@@ -1037,12 +1070,6 @@ class MemberTabsWidget(QWidget):
             grid.addWidget(lab, state["row"], slot * 2,
                            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             grid.addWidget(widget, state["row"], slot * 2 + 1, 1, wspan * 2 - 1)
-
-        section("Schedule")
-        cell(0, "Authorized Days", WeekdayChips(active_days), wspan=3)
-        state["row"] += 1
-        cell(0, "Auth Period", auth_period_lbl, wspan=2)
-        state["row"] += 1
 
         section("Identity")
         cell(0, "First Name", self._info_first)
@@ -1096,6 +1123,8 @@ class MemberTabsWidget(QWidget):
         content = QWidget()
         cvbox = QVBoxLayout(content)
         cvbox.setContentsMargins(0, 4, 0, 4)
+        cvbox.setSpacing(10)
+        cvbox.addWidget(schedule_card)
         cvbox.addLayout(grid)
         cvbox.addStretch()
 
@@ -2451,8 +2480,10 @@ class MemberTabsWidget(QWidget):
                 hl = QHBoxLayout(cellw)
                 hl.setContentsMargins(0, 0, 0, 0)
                 hl.setSpacing(4)
-                edit = QPushButton("Edit")
-                edit.setObjectName("btn_edit")
+                edit = QPushButton("✎")
+                edit.setObjectName("btn_icon_edit")
+                edit.setFixedWidth(28)
+                edit.setToolTip("Edit this scheduled change")
                 edit.clicked.connect(
                     lambda _=False, av=a: (self._edit_scheduled_change(av),
                                            repopulate()))
