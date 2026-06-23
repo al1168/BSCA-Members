@@ -5,7 +5,9 @@ from PyQt6.QtWidgets import (
     QWidget, QFormLayout, QLineEdit, QComboBox, QLabel, QVBoxLayout,
 )
 from db.members import HEALTH_PLANS, format_phone
-from gui.address_autocomplete import AddressAutocomplete, make_phone_validator
+from gui.address_autocomplete import (
+    AddressAutocomplete, PhoneLineEdit, set_widget_error,
+)
 
 # DOB is a free-text field (so staff can type it) with a gray placeholder, not a
 # date-picker dropdown. The format is enforced: slash-separated, a 1-or-2-digit
@@ -63,17 +65,22 @@ class StepContact(QWidget):
         self.health_plan = QComboBox()
         self.health_plan.addItem("")
         self.health_plan.addItems(HEALTH_PLANS)
-        self.home_tell = QLineEdit()
-        self.home_tell.setPlaceholderText("e.g. 212-555-0100")
-        self.home_tell.setValidator(make_phone_validator(self.home_tell))
-        self.cell = QLineEdit()
-        self.cell.setPlaceholderText("e.g. 646-555-0199")
-        self.cell.setValidator(make_phone_validator(self.cell))
+        # Phone fields: type just digits; they auto-format to (xxx)-xxx-xxxx on
+        # leaving the field, and outline red if the entry isn't 10 digits.
+        self.home_tell = PhoneLineEdit()
+        self.cell = PhoneLineEdit()
         self.address = AddressAutocomplete(self._api_key)
         self.address.setPlaceholderText("Street, City, State ZIP")
 
-        phone_hint = QLabel("Enter at least one phone number.")
+        phone_hint = QLabel("Enter at least one phone number (just digits is fine).")
         phone_hint.setStyleSheet("color: #7a7f93; font-size: 10px;")
+
+        # Clear a field's error outline as soon as the user edits it.
+        for w in (self.first_name, self.last_name, self.center_id,
+                  self.member_id, self.dob):
+            w.textEdited.connect(lambda _t, w=w: set_widget_error(w, False))
+        self.health_plan.currentIndexChanged.connect(
+            lambda: set_widget_error(self.health_plan, False))
 
         form.addRow("First Name *", self.first_name)
         form.addRow("Last Name *", self.last_name)
@@ -91,8 +98,24 @@ class StepContact(QWidget):
         layout.addWidget(self._error_label)
         layout.addStretch()
 
+    def _clear_errors(self):
+        for w in (self.first_name, self.last_name, self.center_id,
+                  self.member_id, self.dob, self.health_plan,
+                  self.home_tell, self.cell):
+            set_widget_error(w, False)
+        self.address.set_error(False)
+
+    def _fail(self, message: str, *widgets) -> bool:
+        """Show the message and outline the offending field(s); returns False."""
+        self._error_label.setText(message)
+        for w in widgets:
+            (w.set_error(True) if isinstance(w, AddressAutocomplete)
+             else set_widget_error(w, True))
+        return False
+
     def validate(self, db_path: str) -> bool:
         self._error_label.setText("")
+        self._clear_errors()
         fn = self.first_name.text().strip()
         ln = self.last_name.text().strip()
         cid_text = self.center_id.text().strip()
@@ -103,46 +126,44 @@ class StepContact(QWidget):
         address = self.address.text().strip()
 
         if not fn or not ln:
-            self._error_label.setText("First and Last Name are required.")
-            return False
+            return self._fail(
+                "First and Last Name are required.",
+                *([self.first_name] if not fn else []),
+                *([self.last_name] if not ln else []))
         try:
             cid = int(cid_text)
             if cid <= 0:
                 raise ValueError
         except ValueError:
-            self._error_label.setText("Center ID must be a positive integer.")
-            return False
+            return self._fail("Center ID must be a positive integer.", self.center_id)
         if not member_id:
-            self._error_label.setText("Member ID is required.")
-            return False
+            return self._fail("Member ID is required.", self.member_id)
         dob_text = self.dob.text().strip()
         if not dob_text:
-            self._error_label.setText("Date of Birth is required.")
-            return False
+            return self._fail("Date of Birth is required.", self.dob)
         dob = parse_dob(dob_text)
         if dob is None:
-            self._error_label.setText(
-                "Date of Birth must be a valid date (MM/DD/YYYY)."
-            )
-            return False
+            return self._fail(
+                "Date of Birth must be a valid date (MM/DD/YYYY).", self.dob)
         if dob > date.today():
-            self._error_label.setText("Date of Birth can't be in the future.")
-            return False
+            return self._fail("Date of Birth can't be in the future.", self.dob)
         if not plan:
-            self._error_label.setText("Health Plan is required.")
-            return False
+            return self._fail("Health Plan is required.", self.health_plan)
         if not home_tell and not cell:
-            self._error_label.setText(
-                "Enter at least one phone number (Home Phone or Cell)."
-            )
-            return False
+            return self._fail(
+                "Enter at least one phone number (Home Phone or Cell).",
+                self.home_tell, self.cell)
+        # Any provided phone must be a valid 10-digit US number.
+        for w in (self.home_tell, self.cell):
+            if w.text().strip() and not w.is_valid():
+                return self._fail(
+                    "Phone numbers must be 10 digits.", w)
         if not address:
-            self._error_label.setText("Address is required.")
-            return False
+            return self._fail("Address is required.", self.address)
         from db.members import center_id_exists
         if center_id_exists(cid, db_path):
-            self._error_label.setText(f"Center ID {cid} already exists in the database.")
-            return False
+            return self._fail(
+                f"Center ID {cid} already exists in the database.", self.center_id)
         return True
 
     def collect(self) -> dict:

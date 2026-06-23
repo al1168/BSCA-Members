@@ -61,6 +61,41 @@ def make_phone_validator(parent=None):
     return QRegularExpressionValidator(QRegularExpression(r"[0-9()\-\s]*"), parent)
 
 
+def set_widget_error(widget, on: bool) -> None:
+    """Toggle a red 'error' outline on an input by flipping its `error` dynamic
+    property and repolishing (the theme styles QLineEdit[error="true"], etc.)."""
+    widget.setProperty("error", bool(on))
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
+
+class PhoneLineEdit(QLineEdit):
+    """A phone field: staff can just type digits, and on focus-out it auto-formats
+    to (xxx)-xxx-xxxx. It flags an error outline when the entry has digits but
+    isn't a valid 10-digit US number (e.g. too long). Empty is allowed (phones
+    are individually optional)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setValidator(make_phone_validator(self))
+        self.setPlaceholderText("e.g. 2125550100")
+        self.textEdited.connect(lambda: set_widget_error(self, False))
+
+    def digits(self) -> str:
+        return "".join(ch for ch in self.text() if ch.isdigit())
+
+    def is_valid(self) -> bool:
+        return len(self.digits()) in (0, 10)
+
+    def focusOutEvent(self, e):
+        from db.members import format_phone
+        digits = self.digits()
+        if len(digits) == 10:
+            self.setText(format_phone(digits))   # auto-format on leaving the field
+        set_widget_error(self, not self.is_valid())
+        super().focusOutEvent(e)
+
+
 def parse_place_location(details_json) -> str:
     """Extract 'lng,lat' from a Places API (New) Place Details response, or ''.
 
@@ -246,6 +281,9 @@ class AddressAutocomplete(QWidget):
 
     def setPlaceholderText(self, text: str) -> None:
         self._edit.setPlaceholderText(text)
+
+    def set_error(self, on: bool) -> None:
+        set_widget_error(self._edit, on)
 
     def long_lat(self) -> str:
         return self._long_lat

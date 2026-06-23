@@ -166,6 +166,10 @@ QLineEdit, QComboBox, QDateEdit, QTimeEdit, QSpinBox {{
 QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QTimeEdit:focus {{
     border-color: {t['accent']};
 }}
+/* Invalid input / failed-constraint highlight (set via the `error` property). */
+QLineEdit[error="true"], QComboBox[error="true"], QDateEdit[error="true"] {{
+    border: 1px solid {t['error']};
+}}
 QLineEdit:read-only {{
     background-color: {t['surface']};
     color: {t['text3']};
