@@ -135,7 +135,7 @@ def test_dob_is_a_typeable_field_with_placeholder(qapp):
     w = StepContact()
     assert isinstance(w.dob, QLineEdit)          # typeable, not a dropdown
     assert not w.dob.text()                       # empty by default
-    assert "birth" in w.dob.placeholderText().lower()  # gray placeholder hint
+    assert "mm/dd/yyyy" in w.dob.placeholderText().lower()  # format hint
 
 
 def test_collect_returns_dob_as_date(qapp):

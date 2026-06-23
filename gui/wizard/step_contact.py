@@ -4,6 +4,8 @@ from datetime import date, datetime
 from PyQt6.QtWidgets import (
     QWidget, QFormLayout, QLineEdit, QComboBox, QLabel, QVBoxLayout,
 )
+from PyQt6.QtGui import QRegularExpressionValidator
+from PyQt6.QtCore import QRegularExpression
 from db.members import HEALTH_PLANS, format_phone
 from gui.address_autocomplete import (
     AddressAutocomplete, PhoneLineEdit, set_widget_error,
@@ -28,6 +30,29 @@ def parse_dob(text: str):
         return datetime.strptime(text, "%m/%d/%Y").date()
     except ValueError:
         return None
+
+
+class DobLineEdit(QLineEdit):
+    """Date-of-birth field: staff can type just 8 digits (MMDDYYYY) and it
+    auto-formats to MM/DD/YYYY on focus-out. Outlines red when a non-empty entry
+    isn't a valid date. Slash-separated input (e.g. 1/1/2000) is left as typed."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setValidator(
+            QRegularExpressionValidator(QRegularExpression(r"[0-9/]*"), self))
+        self.setPlaceholderText("MM/DD/YYYY (or type 8 digits)")
+        self.textEdited.connect(lambda: set_widget_error(self, False))
+
+    def focusOutEvent(self, e):
+        text = self.text().strip()
+        if "/" not in text:
+            digits = "".join(ch for ch in text if ch.isdigit())
+            if len(digits) == 8:
+                self.setText(f"{digits[:2]}/{digits[2:4]}/{digits[4:]}")
+        value = self.text().strip()
+        set_widget_error(self, bool(value) and parse_dob(value) is None)
+        super().focusOutEvent(e)
 
 
 class StepContact(QWidget):
@@ -58,8 +83,7 @@ class StepContact(QWidget):
             self.center_id.setReadOnly(True)
         self.member_id = QLineEdit()
         self.member_id.setPlaceholderText("Health plan member / insurance ID")
-        self.dob = QLineEdit()
-        self.dob.setPlaceholderText("Select date of birth (MM/DD/YYYY)")
+        self.dob = DobLineEdit()
         self.gender = QComboBox()
         self.gender.addItems(["", "M", "F"])
         self.health_plan = QComboBox()
@@ -75,9 +99,10 @@ class StepContact(QWidget):
         phone_hint = QLabel("Enter at least one phone number (just digits is fine).")
         phone_hint.setStyleSheet("color: #7a7f93; font-size: 10px;")
 
-        # Clear a field's error outline as soon as the user edits it.
+        # Clear a field's error outline as soon as the user edits it. (DOB and
+        # the phone fields self-clear on edit.)
         for w in (self.first_name, self.last_name, self.center_id,
-                  self.member_id, self.dob):
+                  self.member_id):
             w.textEdited.connect(lambda _t, w=w: set_widget_error(w, False))
         self.health_plan.currentIndexChanged.connect(
             lambda: set_widget_error(self.health_plan, False))
