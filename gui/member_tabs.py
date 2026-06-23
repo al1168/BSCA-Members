@@ -2440,7 +2440,10 @@ class MemberTabsWidget(QWidget):
                 edit.clicked.connect(
                     lambda _=False, av=a: (self._edit_scheduled_change(av),
                                            repopulate()))
-                dele = QPushButton("Delete")
+                dele = QPushButton("✕")
+                dele.setObjectName("btn_icon_delete")
+                dele.setFixedWidth(28)
+                dele.setToolTip("Delete this scheduled change")
                 dele.clicked.connect(
                     lambda _=False, av=a: (self._delete_scheduled_change(av),
                                            repopulate()))

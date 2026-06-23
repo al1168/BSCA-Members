@@ -338,6 +338,21 @@ QPushButton#btn_edit:hover {{
     background-color: {t['accent']};
     color: #ffffff;
 }}
+/* Compact icon-only delete (the ✕ on a scheduled change): muted by default,
+   red on hover so it reads as a destructive action. */
+QPushButton#btn_icon_delete {{
+    background-color: transparent;
+    color: {t['text3']};
+    border: 1px solid {t['border']};
+    font-weight: 700;
+    padding: 4px 0;
+    border-radius: 5px;
+}}
+QPushButton#btn_icon_delete:hover {{
+    background-color: {t['error']};
+    color: #ffffff;
+    border-color: {t['error']};
+}}
 QLabel {{
     background-color: transparent;
     color: {t['text']};
