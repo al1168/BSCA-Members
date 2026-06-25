@@ -1,8 +1,11 @@
+from datetime import date
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-    QDateEdit, QCheckBox, QTimeEdit, QPushButton, QAbstractSpinBox, QGridLayout,
+    QCheckBox, QTimeEdit, QPushButton, QAbstractSpinBox, QGridLayout,
 )
-from PyQt6.QtCore import QDate, QTime
+from PyQt6.QtCore import QTime
+from gui.address_autocomplete import DateLineEdit
 
 
 class StepAuths(QWidget):
@@ -36,10 +39,11 @@ class StepAuths(QWidget):
         title_auth.setStyleSheet("font-weight:600; font-size:11px;")
         auth_layout.addRow(title_auth)
 
-        self.auth_start = QDateEdit(QDate.currentDate())
-        self.auth_start.setCalendarPopup(True)
-        self.auth_end = QDateEdit(QDate.currentDate().addYears(1))
-        self.auth_end.setCalendarPopup(True)
+        today = date.today()
+        self.auth_start = DateLineEdit()
+        self.auth_start.set_pydate(today)
+        self.auth_end = DateLineEdit()
+        self.auth_end.set_pydate(today.replace(year=today.year + 1))
         auth_layout.addRow("Auth Start:", self.auth_start)
         auth_layout.addRow("Auth End:", self.auth_end)
 
@@ -117,15 +121,22 @@ class StepAuths(QWidget):
     def is_skipped(self) -> bool:
         return not any(cb.isChecked() for cb in self._day_checks.values())
 
+    def validate(self) -> bool:
+        """When not skipped, the auth dates must be valid. Flags bad fields."""
+        if self.is_skipped():
+            return True
+        ok = self.auth_start.flag_validity(required=True)
+        ok = self.auth_end.flag_validity(required=True) and ok
+        return ok
+
     def collect(self) -> dict:
-        from datetime import date
         if self.is_skipped():
             return {"authorization": None, "availability_rows": []}
 
         selected_days = {n for n, cb in self._day_checks.items() if cb.isChecked()}
         auth = {
-            "auth_start": self.auth_start.date().toPyDate(),
-            "auth_end": self.auth_end.date().toPyDate(),
+            "auth_start": self.auth_start.to_pydate(),
+            "auth_end": self.auth_end.to_pydate(),
             "auth_days": selected_days,
         }
         avail = [

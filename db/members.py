@@ -103,6 +103,34 @@ def is_valid_medicare(value) -> bool:
     return s == "" or bool(_MEDICARE_RE.match(s))
 
 
+# Free-text date entry (MM/DD/YYYY) for the date fields.
+_MDY_RE = re.compile(r"^\d{1,2}/\d{1,2}/\d{4}$")
+
+
+def parse_mdy(text):
+    """Parse 'M/D/YYYY' (1-2 digit month/day, 4-digit year) to a date, or None
+    if it isn't a real calendar date in that form."""
+    text = (text or "").strip()
+    if not _MDY_RE.match(text):
+        return None
+    try:
+        return datetime.strptime(text, "%m/%d/%Y").date()
+    except ValueError:
+        return None
+
+
+def format_mdy(value) -> str:
+    """Auto-format a typed date: 8 bare digits (MMDDYYYY) -> MM/DD/YYYY.
+    Anything already containing '/' (or not 8 digits) is returned trimmed."""
+    s = "" if value is None else str(value).strip()
+    if "/" in s:
+        return s
+    digits = "".join(ch for ch in s if ch.isdigit())
+    if len(digits) == 8:
+        return f"{digits[:2]}/{digits[2:4]}/{digits[4:]}"
+    return s
+
+
 def format_date_only(value) -> str:
     """Drop a trailing clock time so a date stored as a datetime
     ('2000-03-15 00:00:00') shows as just the date ('2000-03-15'). Leaves plain

@@ -115,7 +115,18 @@ class AddMemberWizard(QDialog):
         if self._current == 0:
             if not self._step_contact.validate(self._db_path):
                 return
+        if self._current == 1:
+            if not self._step_enrollment.validate():
+                QMessageBox.warning(self, "Validation",
+                    "Enter a valid Enrollment Start date (MM/DD/YYYY); "
+                    "leave End blank for ongoing.")
+                return
         if self._current == 2:
+            if not self._step_auths.validate():
+                QMessageBox.warning(self, "Validation",
+                    "Enter valid Auth Start and Auth End dates (MM/DD/YYYY), "
+                    "or uncheck all days to skip this step.")
+                return
             data = self._collect_all()
             self._step_review.populate(data)
         if self._current == 3:

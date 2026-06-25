@@ -11,7 +11,7 @@ from db.members import (
 )
 from gui.address_autocomplete import (
     set_active_inline_editor, clear_active_inline_editor, make_phone_validator,
-    PhoneLineEdit, set_widget_error,
+    PhoneLineEdit, set_widget_error, DateLineEdit,
 )
 
 
@@ -1726,23 +1726,30 @@ class MemberTabsWidget(QWidget):
         dlg = QDialog(self)
         dlg.setWindowTitle("Add Enrollment")
         form = QFormLayout(dlg)
-        start = QDateEdit(QDate.currentDate())
-        start.setCalendarPopup(True)
-        end = QDateEdit()
-        end.setCalendarPopup(True)
-        end.setMinimumDate(QDate(2000, 1, 1))
-        end.setSpecialValueText("Ongoing")
-        end.setDate(QDate(2000, 1, 1))
+        start = DateLineEdit()
+        start.set_pydate(date.today())
+        end = DateLineEdit()        # blank = ongoing
         form.addRow("Start Date:", start)
-        form.addRow("End Date (optional):", end)
+        form.addRow("End Date (blank = ongoing):", end)
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
                                 QDialogButtonBox.StandardButton.Cancel)
-        btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
         form.addRow(btns)
+
+        def on_accept():
+            ok = start.flag_validity(required=True)
+            ok = end.flag_validity() and ok
+            if not ok:
+                QMessageBox.warning(dlg, "Validation",
+                    "Enter a valid Start Date (MM/DD/YYYY); leave End blank for "
+                    "ongoing.")
+                return
+            dlg.accept()
+        btns.accepted.connect(on_accept)
+
         if dlg.exec():
-            s = start.date().toPyDate()
-            e = end.date().toPyDate() if end.date() != QDate(2000, 1, 1) else None
+            s = start.to_pydate()
+            e = end.to_pydate()         # None when blank (ongoing)
             # A member can have only one active enrollment at a time. Block adding
             # a second in-effect enrollment; the existing one must be terminated
             # first.
@@ -2053,17 +2060,16 @@ class MemberTabsWidget(QWidget):
         dlg.setWindowTitle("Edit Authorization" if existing else "Add Authorization")
         form = QFormLayout(dlg)
 
-        auth_start = QDateEdit()
-        auth_start.setCalendarPopup(True)
-        auth_end = QDateEdit()
-        auth_end.setCalendarPopup(True)
+        from datetime import date as _date
+        auth_start = DateLineEdit()
+        auth_end = DateLineEdit()
         if existing:
-            s, e = existing["auth_start"], existing["auth_end"]
-            auth_start.setDate(QDate(s.year, s.month, s.day))
-            auth_end.setDate(QDate(e.year, e.month, e.day))
+            auth_start.set_pydate(existing["auth_start"])
+            auth_end.set_pydate(existing["auth_end"])
         else:
-            auth_start.setDate(QDate.currentDate())
-            auth_end.setDate(QDate.currentDate().addYears(1))
+            today = _date.today()
+            auth_start.set_pydate(today)
+            auth_end.set_pydate(today.replace(year=today.year + 1))
 
         existing_days = (
             self.decode_auth_days_static(existing["auth_days"]) if existing else set()
@@ -2102,16 +2108,25 @@ class MemberTabsWidget(QWidget):
                                 QDialogButtonBox.StandardButton.Cancel)
         btns.rejected.connect(dlg.reject)
         form.addRow(btns)
-        btns.accepted.connect(
-            lambda: dlg.accept() if any(cb.isChecked() for cb in day_checks.values())
-            else QMessageBox.warning(dlg, "Validation", "Select at least one day.")
-        )
+
+        def on_accept():
+            ok = auth_start.flag_validity(required=True)
+            ok = auth_end.flag_validity(required=True) and ok
+            if not ok:
+                QMessageBox.warning(dlg, "Validation",
+                    "Enter valid Auth Start and Auth End dates (MM/DD/YYYY).")
+                return
+            if not any(cb.isChecked() for cb in day_checks.values()):
+                QMessageBox.warning(dlg, "Validation", "Select at least one day.")
+                return
+            dlg.accept()
+        btns.accepted.connect(on_accept)
 
         if not dlg.exec():
             return None
         return {
-            "auth_start": auth_start.date().toPyDate(),
-            "auth_end": auth_end.date().toPyDate(),
+            "auth_start": auth_start.to_pydate(),
+            "auth_end": auth_end.to_pydate(),
             "days": {n for n, cb in day_checks.items() if cb.isChecked()},
             "health_plan": plan_combo.currentText(),
             "member_id": member_id_edit.text().strip(),
@@ -2387,22 +2402,19 @@ class MemberTabsWidget(QWidget):
 
         form = QFormLayout()
         start_d = avail.get("effective_start_date") or _date.today()
-        eff_start = QDateEdit()
-        eff_start.setCalendarPopup(True)
-        eff_start.setDate(QDate(start_d.year, start_d.month, start_d.day))
+        eff_start = DateLineEdit()
+        eff_start.set_pydate(start_d)
         form.addRow("Effective From:", eff_start)
 
         end_row = QWidget()
         end_hl = QHBoxLayout(end_row)
         end_hl.setContentsMargins(0, 0, 0, 0)
-        eff_end = QDateEdit()
-        eff_end.setCalendarPopup(True)
+        eff_end = DateLineEdit()
         ongoing = QCheckBox("Ongoing (no end date)")
         end_d = avail.get("effective_end_date")
         if end_d:
-            eff_end.setDate(QDate(end_d.year, end_d.month, end_d.day))
+            eff_end.set_pydate(end_d)
         else:
-            eff_end.setDate(QDate(start_d.year, start_d.month, start_d.day))
             ongoing.setChecked(True)
         eff_end.setEnabled(not ongoing.isChecked())
         ongoing.toggled.connect(lambda on: eff_end.setEnabled(not on))
@@ -2416,8 +2428,16 @@ class MemberTabsWidget(QWidget):
         btns.rejected.connect(dlg.reject)
 
         def on_accept():
-            es = eff_start.date().toPyDate()
-            ee = None if ongoing.isChecked() else eff_end.date().toPyDate()
+            if not eff_start.flag_validity(required=True):
+                QMessageBox.warning(dlg, "Validation",
+                    "Enter a valid Effective From date (MM/DD/YYYY).")
+                return
+            es = eff_start.to_pydate()
+            if not ongoing.isChecked() and not eff_end.flag_validity(required=True):
+                QMessageBox.warning(dlg, "Validation",
+                    "Enter a valid Effective To date, or check Ongoing.")
+                return
+            ee = None if ongoing.isChecked() else eff_end.to_pydate()
             if ee is not None and ee < es:
                 QMessageBox.warning(dlg, "Validation",
                     "Effective To must be on or after Effective From.")
@@ -2432,8 +2452,8 @@ class MemberTabsWidget(QWidget):
                                               "Save this availability"):
             return
         ts, te = editor.start_hhmm(), editor.end_hhmm()
-        es = eff_start.date().toPyDate()
-        ee = None if ongoing.isChecked() else eff_end.date().toPyDate()
+        es = eff_start.to_pydate()
+        ee = None if ongoing.isChecked() else eff_end.to_pydate()
         try:
             update_availability(avail["id"], ts, te, es, ee, self._db_path)
             self._availability = get_availability(self._center_id, self._db_path)
@@ -2477,10 +2497,11 @@ class MemberTabsWidget(QWidget):
             hl.addWidget(period)
             return container, edit, period
 
+        from datetime import date
         start_row, start_edit, start_period = time_row("8:00", "AM")
         end_row, end_edit, end_period = time_row("4:00", "PM")
-        eff_start = QDateEdit(QDate.currentDate())
-        eff_start.setCalendarPopup(True)
+        eff_start = DateLineEdit()
+        eff_start.set_pydate(date.today())
 
         form.addRow("Day:", day_combo)
         form.addRow("Start Time:", start_row)
@@ -2499,6 +2520,10 @@ class MemberTabsWidget(QWidget):
                 QMessageBox.warning(dlg, "Validation",
                     "Enter times as h:mm with hour 1-12 and minute 00-59.")
                 return
+            if not eff_start.flag_validity(required=True):
+                QMessageBox.warning(dlg, "Validation",
+                    "Enter a valid Effective From date (MM/DD/YYYY).")
+                return
             dlg.accept()
 
         btns.accepted.connect(on_accept)
@@ -2511,7 +2536,7 @@ class MemberTabsWidget(QWidget):
             try:
                 insert_availability(
                     self._center_id, day, ts, te,
-                    eff_start.date().toPyDate(), None, self._db_path,
+                    eff_start.to_pydate(), None, self._db_path,
                 )
                 self._availability = get_availability(self._center_id, self._db_path)
                 self._refresh_tab(3, self._make_avail_tab())
@@ -2632,12 +2657,10 @@ class MemberTabsWidget(QWidget):
         """Dedicated 'schedule a change' form: weekday, new window, future
         effective date. Returns {day, ts, te, eff} or None. When editing, the
         weekday is fixed (matching how a row's day is immutable elsewhere)."""
-        from datetime import date
+        from datetime import date, timedelta
         from PyQt6.QtWidgets import (
-            QDialog, QFormLayout, QComboBox, QDateEdit, QDialogButtonBox, QLabel,
-            QAbstractSpinBox,
+            QDialog, QFormLayout, QComboBox, QDialogButtonBox, QLabel,
         )
-        from PyQt6.QtCore import QDate
         from gui.time_range_editor import TimeRangeEditor
 
         dlg = QDialog(self)
@@ -2650,14 +2673,8 @@ class MemberTabsWidget(QWidget):
                           (5, "Fri"), (6, "Sat"), (7, "Sun")]:
             day_combo.addItem(name, num)
         editor = TimeRangeEditor()
-        eff = QDateEdit()
-        eff.setCalendarPopup(True)
-        # No spin step buttons: with the calendar popup the only control needed is
-        # the drop-down, and the steppers' hit area was incrementing the field on
-        # a plain click.
-        eff.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-        tomorrow = QDate.currentDate().addDays(1)
-        eff.setMinimumDate(tomorrow)
+        tomorrow = date.today() + timedelta(days=1)
+        eff = DateLineEdit(minimum=tomorrow)
 
         if existing:
             idx = day_combo.findData(existing["day_of_week"])
@@ -2666,11 +2683,10 @@ class MemberTabsWidget(QWidget):
             day_combo.setEnabled(False)   # weekday is fixed when editing
             editor.set_window(existing.get("avail_start") or "08:00",
                               existing.get("avail_end") or "16:00")
-            d = existing["effective_start_date"]
-            eff.setDate(QDate(d.year, d.month, d.day))
+            eff.set_pydate(existing["effective_start_date"])
         else:
             editor.set_window("08:00", "16:00")
-            eff.setDate(tomorrow)
+            eff.set_pydate(tomorrow)
 
         form.addRow("Weekday:", day_combo)
         form.addRow("New Window:", editor)
@@ -2686,9 +2702,10 @@ class MemberTabsWidget(QWidget):
         btns.rejected.connect(dlg.reject)
 
         def on_accept():
-            if eff.date().toPyDate() <= date.today():
+            if not eff.flag_validity(required=True) or eff.to_pydate() <= date.today():
+                set_widget_error(eff, True)
                 QMessageBox.warning(dlg, "Validation",
-                    "A scheduled change must take effect on a future date.")
+                    "Enter a valid future Effective From date (MM/DD/YYYY).")
                 return
             dlg.accept()
         btns.accepted.connect(on_accept)
@@ -2698,7 +2715,7 @@ class MemberTabsWidget(QWidget):
             return None
         return {"day": day_combo.currentData(),
                 "ts": editor.start_hhmm(), "te": editor.end_hhmm(),
-                "eff": eff.date().toPyDate()}
+                "eff": eff.to_pydate()}
 
     def _add_scheduled_change(self):
         from datetime import timedelta
@@ -2864,21 +2881,19 @@ class MemberTabsWidget(QWidget):
                            else "Add Availability Override")
         form = QFormLayout(dlg)
 
-        date_edit = QDateEdit()
-        date_edit.setCalendarPopup(True)
+        from datetime import date as _date
+        date_edit = DateLineEdit()
         editor = TimeRangeEditor()
         notes_edit = QPlainTextEdit()
         notes_edit.setFixedHeight(60)
 
         if existing:
-            d = existing.get("date")
-            date_edit.setDate(QDate(d.year, d.month, d.day) if d
-                              else QDate.currentDate())
+            date_edit.set_pydate(existing.get("date") or _date.today())
             editor.set_window(existing.get("avail_start") or "09:00",
                               existing.get("avail_end") or "12:00")
             notes_edit.setPlainText(existing.get("notes", "") or "")
         else:
-            date_edit.setDate(QDate.currentDate())
+            date_edit.set_pydate(_date.today())
             editor.set_window("09:00", "12:00")
 
         form.addRow("Date:", date_edit)
@@ -2886,14 +2901,21 @@ class MemberTabsWidget(QWidget):
         form.addRow("Notes:", notes_edit)
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
                                 QDialogButtonBox.StandardButton.Cancel)
-        btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
         form.addRow(btns)
+
+        def on_accept():
+            if not date_edit.flag_validity(required=True):
+                QMessageBox.warning(dlg, "Validation",
+                    "Enter a valid Date (MM/DD/YYYY).")
+                return
+            dlg.accept()
+        btns.accepted.connect(on_accept)
 
         if not dlg.exec():
             return None
         return {
-            "date": date_edit.date().toPyDate(),
+            "date": date_edit.to_pydate(),
             "avail_start": editor.start_hhmm(),
             "avail_end": editor.end_hhmm(),
             "notes": notes_edit.toPlainText().strip(),
@@ -2986,9 +3008,9 @@ class MemberTabsWidget(QWidget):
 
     def _add_absence(self):
         from PyQt6.QtWidgets import (
-            QDialog, QFormLayout, QComboBox, QDateEdit, QDialogButtonBox,
+            QDialog, QFormLayout, QComboBox, QDialogButtonBox,
         )
-        from PyQt6.QtCore import QDate
+        from datetime import date
         from db.members import insert_absence, LEAVE_TYPES
         from monthly_schedule.db import get_absences
 
@@ -2998,24 +3020,37 @@ class MemberTabsWidget(QWidget):
 
         leave_combo = QComboBox()
         leave_combo.addItems(LEAVE_TYPES)
-        start = QDateEdit(QDate.currentDate())
-        start.setCalendarPopup(True)
-        end = QDateEdit(QDate.currentDate())
-        end.setCalendarPopup(True)
+        start = DateLineEdit()
+        start.set_pydate(date.today())
+        end = DateLineEdit()
+        end.set_pydate(date.today())
 
         form.addRow("Leave Type:", leave_combo)
         form.addRow("Start Date:", start)
         form.addRow("End Date:", end)
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
                                 QDialogButtonBox.StandardButton.Cancel)
-        btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
         form.addRow(btns)
 
+        def on_accept():
+            ok = start.flag_validity(required=True)
+            ok = end.flag_validity(required=True) and ok
+            if not ok:
+                QMessageBox.warning(dlg, "Validation",
+                    "Enter valid Start and End dates (MM/DD/YYYY).")
+                return
+            if end.to_pydate() < start.to_pydate():
+                QMessageBox.warning(dlg, "Validation",
+                    "End Date must be on or after Start Date.")
+                return
+            dlg.accept()
+        btns.accepted.connect(on_accept)
+
         if dlg.exec():
             lt = leave_combo.currentText()
-            s = start.date().toPyDate()
-            e = end.date().toPyDate()
+            s = start.to_pydate()
+            e = end.to_pydate()
             if not self._confirm_unauthorized_day(
                     weekdays_in_range(s, e), "Add this absence"):
                 return

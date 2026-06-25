@@ -1,5 +1,7 @@
-from PyQt6.QtWidgets import QWidget, QFormLayout, QDateEdit, QLabel, QVBoxLayout
-from PyQt6.QtCore import QDate
+from datetime import date
+
+from PyQt6.QtWidgets import QWidget, QFormLayout, QLabel, QVBoxLayout
+from gui.address_autocomplete import DateLineEdit
 
 
 class StepEnrollment(QWidget):
@@ -12,17 +14,13 @@ class StepEnrollment(QWidget):
         form = QFormLayout()
         form.setSpacing(12)
 
-        self.start_date = QDateEdit(QDate.currentDate())
-        self.start_date.setCalendarPopup(True)
+        self.start_date = DateLineEdit()
+        self.start_date.set_pydate(date.today())
 
-        self.end_date = QDateEdit()
-        self.end_date.setCalendarPopup(True)
-        self.end_date.setMinimumDate(QDate(2000, 1, 1))
-        self.end_date.setSpecialValueText("Ongoing (leave blank)")
-        self.end_date.setDate(QDate(2000, 1, 1))
+        self.end_date = DateLineEdit()   # blank = ongoing
 
         form.addRow("Enrollment Start *", self.start_date)
-        form.addRow("Enrollment End (optional)", self.end_date)
+        form.addRow("Enrollment End (blank = ongoing)", self.end_date)
 
         note = QLabel(
             "Enrollment begins on the start date. "
@@ -35,9 +33,14 @@ class StepEnrollment(QWidget):
         layout.addWidget(note)
         layout.addStretch()
 
+    def validate(self) -> bool:
+        """Start is required; End is optional (blank = ongoing)."""
+        ok = self.start_date.flag_validity(required=True)
+        ok = self.end_date.flag_validity() and ok
+        return ok
+
     def collect(self) -> dict:
-        end = self.end_date.date()
         return {
-            "enrollment_start": self.start_date.date().toPyDate(),
-            "enrollment_end": end.toPyDate() if end != QDate(2000, 1, 1) else None,
+            "enrollment_start": self.start_date.to_pydate(),
+            "enrollment_end": self.end_date.to_pydate(),   # None when blank
         }

@@ -96,6 +96,56 @@ class PhoneLineEdit(QLineEdit):
         super().focusOutEvent(e)
 
 
+class DateLineEdit(QLineEdit):
+    """A free-text date field (MM/DD/YYYY): the whole field can be cleared and
+    typed. Staff can type 8 bare digits (MMDDYYYY) and it auto-formats on
+    focus-out. Outlines red when a non-empty entry isn't a valid date (or is
+    before ``minimum``). Empty is allowed unless a caller validates with
+    ``required=True``. Replaces QDateEdit's sectioned, non-clearable editing."""
+
+    def __init__(self, parent=None, *, minimum=None):
+        super().__init__(parent)
+        from PyQt6.QtGui import QRegularExpressionValidator
+        from PyQt6.QtCore import QRegularExpression
+        self._minimum = minimum          # python date or None
+        self.setValidator(
+            QRegularExpressionValidator(QRegularExpression(r"[0-9/]*"), self))
+        self.setPlaceholderText("MM/DD/YYYY")
+        self.textEdited.connect(lambda: set_widget_error(self, False))
+
+    def set_pydate(self, d) -> None:
+        self.setText(d.strftime("%m/%d/%Y") if d else "")
+
+    def to_pydate(self):
+        """The entered date, or None when empty/invalid."""
+        from db.members import parse_mdy
+        return parse_mdy(self.text())
+
+    def is_valid(self, *, required: bool = False) -> bool:
+        from db.members import parse_mdy
+        t = self.text().strip()
+        if not t:
+            return not required
+        d = parse_mdy(t)
+        if d is None:
+            return False
+        return not (self._minimum is not None and d < self._minimum)
+
+    def flag_validity(self, *, required: bool = False) -> bool:
+        """Update the red outline and return whether the field is valid."""
+        ok = self.is_valid(required=required)
+        set_widget_error(self, not ok)
+        return ok
+
+    def focusOutEvent(self, e):
+        from db.members import format_mdy
+        t = self.text().strip()
+        if t and "/" not in t:
+            self.setText(format_mdy(t))      # auto-format on leaving the field
+        set_widget_error(self, self.text().strip() != "" and not self.is_valid())
+        super().focusOutEvent(e)
+
+
 def parse_place_location(details_json) -> str:
     """Extract 'lng,lat' from a Places API (New) Place Details response, or ''.
 
