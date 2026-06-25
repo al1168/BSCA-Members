@@ -8,6 +8,7 @@ from db.members import (
     get_member_context, format_phone, format_date_only,
     format_ssn, is_valid_ssn, format_medicaid, is_valid_medicaid,
     format_medicare, is_valid_medicare,
+    format_ssn_live, format_medicaid_live, format_medicare_live,
 )
 from gui.address_autocomplete import (
     set_active_inline_editor, clear_active_inline_editor, make_phone_validator,
@@ -522,12 +523,14 @@ class _ViewEditLineEdit(QLineEdit):
     """
 
     def __init__(self, value: str = "", editable: bool = True, parent=None,
-                 *, formatter=None, validator=None):
-        # formatter(text)->text reformats on commit (e.g. SSN -> xxx-xx-xxxx);
-        # validator(text)->bool flags an error outline when the value is invalid
-        # (empty is treated as valid since these fields are optional).
+                 *, formatter=None, validator=None, live_formatter=None):
+        # formatter(text)->text reformats on commit; live_formatter(text)->text
+        # reformats on every keystroke (e.g. insert dashes / uppercase as you
+        # type); validator(text)->bool flags an error outline when invalid (empty
+        # is valid since these fields are optional).
         self._formatter = formatter
         self._validator = validator
+        self._live_formatter = live_formatter
         value = formatter(value) if (formatter and value) else (value or "")
         super().__init__(value, parent)
         self._editable = editable
@@ -546,10 +549,20 @@ class _ViewEditLineEdit(QLineEdit):
             self._pencil.setVisible(False)
             self.editingFinished.connect(self._finish_edit)
             self.textChanged.connect(self._refresh_state)
-            if validator is not None:
-                # Clear the red outline as soon as the user starts retyping.
-                self.textEdited.connect(lambda: set_widget_error(self, False))
+            if validator is not None or live_formatter is not None:
+                self.textEdited.connect(self._on_edited)
         self._refresh_state()
+
+    def _on_edited(self):
+        # Reformat as the user types (setText fires textChanged, not textEdited,
+        # so no recursion), then clear any stale error outline.
+        if self._live_formatter is not None:
+            new = self._live_formatter(self.text())
+            if new != self.text():
+                self.setText(new)
+                self.setCursorPosition(len(new))
+        if self._validator is not None:
+            set_widget_error(self, False)
 
     def _repolish(self):
         self.style().unpolish(self)
@@ -1065,16 +1078,19 @@ class MemberTabsWidget(QWidget):
 
         self._info_plan = _ViewEditLineEdit(m.get("health_plan", "") or "",
                                             editable=False)
-        # Validated/auto-formatted fields (empty allowed):
+        # Validated fields that format as you type (empty allowed):
         self._info_medicaid = _ViewEditLineEdit(
             format_medicaid(m.get("medicaid", "") or ""),
-            formatter=format_medicaid, validator=is_valid_medicaid)
+            formatter=format_medicaid, validator=is_valid_medicaid,
+            live_formatter=format_medicaid_live)
         self._info_medicare = _ViewEditLineEdit(
             format_medicare(m.get("medicare", "") or ""),
-            formatter=format_medicare, validator=is_valid_medicare)
+            formatter=format_medicare, validator=is_valid_medicare,
+            live_formatter=format_medicare_live)
         self._info_ssn = _ViewEditLineEdit(
             format_ssn(m.get("ssn", "") or ""),
-            formatter=format_ssn, validator=is_valid_ssn)
+            formatter=format_ssn, validator=is_valid_ssn,
+            live_formatter=format_ssn_live)
         self._info_pcp      = field("pcp")
         self._info_hospital = field("hospital")
         self._info_hha      = field("hha")

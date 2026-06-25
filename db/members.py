@@ -103,6 +103,34 @@ def is_valid_medicare(value) -> bool:
     return s == "" or bool(_MEDICARE_RE.match(s))
 
 
+# ── Live (as-you-type) formatters: format the partial value on each keystroke ──
+def format_ssn_live(text) -> str:
+    """Digits only, dashed as you type: 1234 -> '123-4', etc. (xxx-xx-xxxx)."""
+    d = "".join(ch for ch in (text or "") if ch.isdigit())[:9]
+    if len(d) <= 3:
+        return d
+    if len(d) <= 5:
+        return f"{d[:3]}-{d[3:]}"
+    return f"{d[:3]}-{d[3:5]}-{d[5:]}"
+
+
+def format_medicare_live(text) -> str:
+    """Alphanumerics, uppercased and dashed as you type in 4-3-4 groups:
+    12345 -> '1234-5' (xxxx-xxx-xxxx)."""
+    c = "".join(ch for ch in (text or "") if ch.isalnum()).upper()[:11]
+    out = c[:4]
+    if len(c) > 4:
+        out += "-" + c[4:7]
+    if len(c) > 7:
+        out += "-" + c[7:11]
+    return out
+
+
+def format_medicaid_live(text) -> str:
+    """Alphanumerics, uppercased (AAdddddA, 8 chars, no separators)."""
+    return "".join(ch for ch in (text or "") if ch.isalnum()).upper()[:8]
+
+
 # Free-text date entry (MM/DD/YYYY) for the date fields.
 _MDY_RE = re.compile(r"^\d{1,2}/\d{1,2}/\d{4}$")
 
