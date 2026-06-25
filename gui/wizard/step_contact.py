@@ -38,17 +38,29 @@ class DobLineEdit(QLineEdit):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        # Digits (and the auto-inserted dashes) only — no letters.
         self.setValidator(
-            QRegularExpressionValidator(QRegularExpression(r"[0-9]*"), self))
+            QRegularExpressionValidator(QRegularExpression(r"[0-9\-]*"), self))
         self.setPlaceholderText("MM-DD-YYYY")
-        self.textEdited.connect(lambda: set_widget_error(self, False))
+        self.textEdited.connect(self._on_edited)
+
+    def _on_edited(self):
+        digits = "".join(ch for ch in self.text() if ch.isdigit())[:8]
+        if len(digits) <= 2:
+            new = digits
+        elif len(digits) <= 4:
+            new = f"{digits[:2]}-{digits[2:]}"
+        else:
+            new = f"{digits[:2]}-{digits[2:4]}-{digits[4:]}"
+        if new != self.text():
+            self.setText(new)                    # format as you type
+            self.setCursorPosition(len(new))
+        set_widget_error(self, False)
 
     def focusOutEvent(self, e):
-        text = self.text().strip()
-        if "-" not in text:
-            digits = "".join(ch for ch in text if ch.isdigit())
-            if len(digits) == 8:
-                self.setText(f"{digits[:2]}-{digits[2:4]}-{digits[4:]}")
+        digits = "".join(ch for ch in self.text() if ch.isdigit())
+        if len(digits) == 8 and "-" not in self.text():
+            self.setText(f"{digits[:2]}-{digits[2:4]}-{digits[4:]}")
         value = self.text().strip()
         set_widget_error(self, bool(value) and parse_dob(value) is None)
         super().focusOutEvent(e)

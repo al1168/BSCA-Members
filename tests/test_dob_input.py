@@ -27,6 +27,17 @@ def test_dob_autoformats_8_digits_on_blur(qapp):
     assert d.property("error") in (False, None)
 
 
+def test_dob_formats_as_you_type(qapp):
+    from gui.wizard.step_contact import DobLineEdit
+    d = DobLineEdit()
+    d.setText("0101")
+    d._on_edited()                     # simulate a keystroke
+    assert d.text() == "01-01"
+    d.setText("01-012000")
+    d._on_edited()
+    assert d.text() == "01-01-2000"
+
+
 def test_dob_input_is_numbers_only(qapp):
     from gui.wizard.step_contact import DobLineEdit
     d = DobLineEdit()

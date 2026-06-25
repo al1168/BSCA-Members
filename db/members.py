@@ -49,6 +49,19 @@ def format_phone(value) -> str:
     return s
 
 
+def format_phone_live(text) -> str:
+    """Phone formatted as you type: 2125 -> '(212)-5', building toward
+    (xxx)-xxx-xxxx. Digits only, capped at 10."""
+    d = "".join(ch for ch in (text or "") if ch.isdigit())[:10]
+    if not d:
+        return ""
+    if len(d) <= 3:
+        return f"({d}"
+    if len(d) <= 6:
+        return f"({d[:3]})-{d[3:]}"
+    return f"({d[:3]})-{d[3:6]}-{d[6:]}"
+
+
 # ── SSN / Medicaid / Medicare validation (optional fields: empty == valid) ──
 _SSN_RE = re.compile(r"^\d{3}-\d{2}-\d{4}$")
 _MEDICAID_RE = re.compile(r"^[A-Za-z]{2}\d{5}[A-Za-z]$")

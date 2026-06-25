@@ -18,6 +18,27 @@ def _focus_out(widget):
     widget.focusOutEvent(QFocusEvent(QEvent.Type.FocusOut))
 
 
+def test_format_phone_live():
+    from db.members import format_phone_live
+    assert format_phone_live("") == ""
+    assert format_phone_live("212") == "(212"
+    assert format_phone_live("2125") == "(212)-5"
+    assert format_phone_live("212555") == "(212)-555"
+    assert format_phone_live("2125550100") == "(212)-555-0100"
+    assert format_phone_live("2125550100999") == "(212)-555-0100"   # capped at 10
+
+
+def test_phone_formats_as_you_type(qapp):
+    from gui.address_autocomplete import PhoneLineEdit
+    pe = PhoneLineEdit()
+    pe.setText("2125")
+    pe._on_edited()                   # simulate a keystroke
+    assert pe.text() == "(212)-5"
+    pe.setText("(212)-5550100")
+    pe._on_edited()
+    assert pe.text() == "(212)-555-0100"
+
+
 def test_phone_autoformats_digits_on_focus_out(qapp):
     from gui.address_autocomplete import PhoneLineEdit
     pe = PhoneLineEdit()

@@ -79,7 +79,15 @@ class PhoneLineEdit(QLineEdit):
         super().__init__(parent)
         self.setValidator(make_phone_validator(self))
         self.setPlaceholderText("e.g. 2125550100")
-        self.textEdited.connect(lambda: set_widget_error(self, False))
+        self.textEdited.connect(self._on_edited)
+
+    def _on_edited(self):
+        from db.members import format_phone_live
+        new = format_phone_live(self.text())
+        if new != self.text():
+            self.setText(new)                    # format as you type
+            self.setCursorPosition(len(new))
+        set_widget_error(self, False)
 
     def digits(self) -> str:
         return "".join(ch for ch in self.text() if ch.isdigit())
@@ -91,7 +99,7 @@ class PhoneLineEdit(QLineEdit):
         from db.members import format_phone
         digits = self.digits()
         if len(digits) == 10:
-            self.setText(format_phone(digits))   # auto-format on leaving the field
+            self.setText(format_phone(digits))   # final format on leaving the field
         set_widget_error(self, not self.is_valid())
         super().focusOutEvent(e)
 
