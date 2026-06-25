@@ -52,9 +52,12 @@ class EventsTableWidget(QWidget):
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
-        self._table.horizontalHeader().setSectionResizeMode(
-            3, QHeaderView.ResizeMode.Stretch
-        )
+        hdr = self._table.horizontalHeader()
+        # Time / Type / Member hug their content (so the full timestamp shows);
+        # Description takes the remaining width.
+        for col in (0, 1, 2):
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self._table)
 
     def _load(self):
