@@ -94,7 +94,7 @@ class MainWindow(QMainWindow):
         self._settings_path = settings_path
         self._last_center_id = None
         self._terminated_ids = set()
-        self.setWindowTitle("BSCA Member Manager")
+        self.setWindowTitle("Bowery Care Manager")
         self.resize(1240, 800)
         self._build_ui()
         self._load_members()
