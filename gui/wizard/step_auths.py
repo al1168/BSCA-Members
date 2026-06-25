@@ -130,16 +130,20 @@ class StepAuths(QWidget):
         return ok
 
     def collect(self) -> dict:
-        if self.is_skipped():
-            return {"authorization": None, "availability_rows": []}
+        from db.members import merge_default_availability
 
-        selected_days = {n for n, cb in self._day_checks.items() if cb.isChecked()}
-        auth = {
-            "auth_start": self.auth_start.to_pydate(),
-            "auth_end": self.auth_end.to_pydate(),
-            "auth_days": selected_days,
-        }
-        avail = [
+        # Authorization is optional (gated by the day checkboxes).
+        auth = None
+        if not self.is_skipped():
+            auth = {
+                "auth_start": self.auth_start.to_pydate(),
+                "auth_end": self.auth_end.to_pydate(),
+                "auth_days": {n for n, cb in self._day_checks.items()
+                              if cb.isChecked()},
+            }
+        # Availability: default Mon–Sun 8a–4p, with any added rows substituting
+        # their weekday's default.
+        added = [
             {
                 "day_of_week": r["combo"].currentData(),
                 "avail_start": r["t_start"].time().toString("HH:mm"),
@@ -149,4 +153,5 @@ class StepAuths(QWidget):
             }
             for r in self._avail_rows
         ]
+        avail = merge_default_availability(added, date.today())
         return {"authorization": auth, "availability_rows": avail}

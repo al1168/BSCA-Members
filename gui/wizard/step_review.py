@@ -48,7 +48,8 @@ class StepReview(QWidget):
                 f"Days: {encode_auth_days(auth['auth_days'])}",
             ]
         if avail:
-            day_names = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri"}
+            day_names = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri",
+                         6: "Sat", 7: "Sun"}
             lines += ["", "<b>Availability</b>"]
             for row in avail:
                 lines.append(

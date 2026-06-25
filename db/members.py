@@ -131,6 +131,27 @@ def format_medicaid_live(text) -> str:
     return "".join(ch for ch in (text or "") if ch.isalnum()).upper()[:8]
 
 
+def merge_default_availability(added_rows, effective_start,
+                              start="08:00", end="16:00"):
+    """Give a new member a default availability of `start`–`end` on every weekday
+    (Mon–Sun). Any rows the user added substitute their weekday's default (so a
+    user-added Monday window replaces only Monday). Returns a list of availability
+    row dicts ordered Mon→Sun, added rows first within a day."""
+    added_days = {r["day_of_week"] for r in added_rows}
+    rows = list(added_rows)
+    for day in range(1, 8):
+        if day not in added_days:
+            rows.append({
+                "day_of_week": day,
+                "avail_start": start,
+                "avail_end": end,
+                "effective_start_date": effective_start,
+                "effective_end_date": None,
+            })
+    rows.sort(key=lambda r: r["day_of_week"])
+    return rows
+
+
 # Free-text date entry (MM/DD/YYYY) for the date fields.
 _MDY_RE = re.compile(r"^\d{1,2}/\d{1,2}/\d{4}$")
 
