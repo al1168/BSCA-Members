@@ -1,10 +1,18 @@
 import sys
 import os
 from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtGui import QIcon
 from gui.main_window import MainWindow
 from gui.theme import apply_theme
 from settings import load_settings, save_settings
 import crash_log
+
+
+def _resource_path(name: str) -> str:
+    """Path to a bundled resource, working both in dev and when frozen by
+    PyInstaller (which extracts datas to sys._MEIPASS)."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, name)
 
 
 def _app_data_dir() -> str:
@@ -50,6 +58,7 @@ SETTINGS_PATH = _settings_path()
 
 def main():
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(_resource_path("bowery-emblem.ico")))
     crash_log.install()
     settings = load_settings(SETTINGS_PATH)
     if ensure_events_path(settings):
