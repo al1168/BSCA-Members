@@ -97,7 +97,9 @@ class StepAuths(QWidget):
         for num, name in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"),
                           (5, "Fri"), (6, "Sat"), (7, "Sun")]:
             day_combo.addItem(name, num)
-        day_combo.setFixedWidth(60)
+        # Wide enough for the day name plus the dropdown arrow + input padding
+        # (60px clipped the last letter, e.g. "Mon" -> "Mor").
+        day_combo.setMinimumWidth(90)
 
         t_start = QTimeEdit(QTime(8, 0))
         t_end = QTimeEdit(QTime(16, 0))
