@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Build: .venv\Scripts\pyinstaller MemberManager.spec
+# Build: .venv\Scripts\pyinstaller CareManager.spec
 # Output: dist\Care Manager.exe
 
 a = Analysis(
