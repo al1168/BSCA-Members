@@ -16,7 +16,10 @@ from monthly_schedule.db import (
     map_absence_row,
 )
 
-HEALTH_PLANS = ("AE", "Aetna", "Anthem", "BCBS", "ES", "HC", "HF", "HOF", "VCM")
+# Selectable health plans. "Aetna" (== AE) and "Anthem" (== BCBS) are dropped as
+# duplicates; their colors remain in PLAN_COLORS so any not-yet-migrated rows
+# still render a badge.
+HEALTH_PLANS = ("AE", "BCBS", "ES", "HC", "HF", "HOF", "VCM")
 
 LEAVE_TYPES = (
     "Vacation", "Medical", "Hospitalization",
