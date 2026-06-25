@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from db.members import get_member_context, format_phone, format_date_only
 from gui.address_autocomplete import (
     set_active_inline_editor, clear_active_inline_editor, make_phone_validator,
+    PhoneLineEdit, set_widget_error,
 )
 
 
@@ -1247,8 +1248,10 @@ class MemberTabsWidget(QWidget):
                            else "Add Emergency Contact")
         form = QFormLayout(dlg)
         name_edit = QLineEdit(e.get("full_name", ""))
-        phone_edit = QLineEdit(format_phone(e.get("phone", "")))
-        phone_edit.setValidator(make_phone_validator(phone_edit))
+        # Same phone behavior as Add Member: type digits, auto-format on blur,
+        # red outline when the entry isn't a valid 10-digit number.
+        phone_edit = PhoneLineEdit()
+        phone_edit.setText(format_phone(e.get("phone", "")))
         rel_edit = QLineEdit(e.get("relationship", ""))
         form.addRow("Full Name:", name_edit)
         form.addRow("Phone Number:", phone_edit)
@@ -1261,6 +1264,11 @@ class MemberTabsWidget(QWidget):
         def on_accept():
             if not name_edit.text().strip():
                 QMessageBox.warning(dlg, "Validation", "Full Name is required.")
+                return
+            if phone_edit.text().strip() and not phone_edit.is_valid():
+                set_widget_error(phone_edit, True)
+                QMessageBox.warning(dlg, "Validation",
+                                    "Phone number must be 10 digits.")
                 return
             dlg.accept()
 
