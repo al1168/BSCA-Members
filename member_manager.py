@@ -76,7 +76,7 @@ SETTINGS_PATH = _settings_path()
 
 def main():
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon(_resource_path("bowery-emblem.ico")))
+    app.setWindowIcon(QIcon(_resource_path("bowery-logo-lockup.ico")))
     # Disable up/down steppers on every date/time edit (prevents click-to-increment).
     app._no_step_filter = _NoStepButtonsFilter(app)
     app.installEventFilter(app._no_step_filter)

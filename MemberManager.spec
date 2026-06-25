@@ -6,7 +6,7 @@ a = Analysis(
     ['member_manager.py'],
     pathex=[],
     binaries=[],
-    datas=[('bowery-emblem.ico', '.')],
+    datas=[('bowery-logo-lockup.ico', '.')],
     hiddenimports=[
         'pyodbc',
         'monthly_schedule',
@@ -41,5 +41,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='bowery-emblem.ico',
+    icon='bowery-logo-lockup.ico',
 )
