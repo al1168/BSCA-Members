@@ -1355,7 +1355,10 @@ class MemberTabsWidget(QWidget):
         if reply == QMessageBox.StandardButton.Discard:
             self._discard_info()
 
-    def _discard_info(self):
+    def _populate_info_fields(self):
+        """(Re)display every Info field from self._member, applying display
+        formatting (phone -> (xxx)-xxx-xxxx, DOB -> date only). Used on discard
+        and after a save so the shown values match what was stored."""
         m = self._member
         self._info_first.setText(m.get("first_name", "") or "")
         self._info_last.setText(m.get("last_name", "") or "")
@@ -1376,6 +1379,9 @@ class MemberTabsWidget(QWidget):
         self._info_emergency.setText(m.get("emergency", "") or "")
         self._info_case_manager.setText(m.get("case_manager", "") or "")
         self._info_notes.setPlainText(m.get("notes", "") or "")
+
+    def _discard_info(self):
+        self._populate_info_fields()
         self._set_dirty(False)
 
     def _save_info(self):
@@ -1453,9 +1459,12 @@ class MemberTabsWidget(QWidget):
                 db_path=self._db_path,
             )
             self._member.update(fields)
-            self._set_dirty(False)
+            # Refresh the shown values from what was saved so formatting (phone,
+            # DOB) appears immediately, without revisiting the profile.
+            self._populate_info_fields()
             for w in self.findChildren(_ViewEditLineEdit):
                 w.set_baseline()                 # saved values -> clear highlight
+            self._set_dirty(False)
             new_long_lat = self._info_address.long_lat()
             if new_long_lat:
                 from db.members import set_member_long_lat
