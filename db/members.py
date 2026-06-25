@@ -5,6 +5,7 @@ Write operations open their own connection with autocommit=False
 so multiple INSERTs can be wrapped in a single transaction.
 """
 import os
+import re
 from datetime import date, datetime
 
 from monthly_schedule.db import (
@@ -46,6 +47,60 @@ def format_phone(value) -> str:
     if len(digits) == 10:
         return f"({digits[:3]})-{digits[3:6]}-{digits[6:]}"
     return s
+
+
+# ── SSN / Medicaid / Medicare validation (optional fields: empty == valid) ──
+_SSN_RE = re.compile(r"^\d{3}-\d{2}-\d{4}$")
+_MEDICAID_RE = re.compile(r"^[A-Za-z]{2}\d{5}[A-Za-z]$")
+# Medicare Beneficiary Identifier (MBI), dashes optional. Anchored full-field
+# version of the standard MBI character pattern.
+_MEDICARE_RE = re.compile(
+    r"^[1-9]"
+    r"[AC-HJKMNP-RT-Yac-hjkmnp-rt-y]"
+    r"[AC-HJKMNP-RT-Yac-hjkmnp-rt-y0-9]"
+    r"[0-9]-?"
+    r"[AC-HJKMNP-RT-Yac-hjkmnp-rt-y]"
+    r"[AC-HJKMNP-RT-Yac-hjkmnp-rt-y0-9]"
+    r"[0-9]-?"
+    r"[AC-HJKMNP-RT-Yac-hjkmnp-rt-y]{2}\d{2}$"
+)
+
+
+def format_ssn(value) -> str:
+    """Render an SSN as xxx-xx-xxxx when it has exactly 9 digits; otherwise the
+    trimmed input. Idempotent; never raises."""
+    s = "" if value is None else str(value).strip()
+    digits = "".join(ch for ch in s if ch.isdigit())
+    if len(digits) == 9:
+        return f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
+    return s
+
+
+def is_valid_ssn(value) -> bool:
+    s = "" if value is None else str(value).strip()
+    return s == "" or bool(_SSN_RE.match(s))
+
+
+def format_medicaid(value) -> str:
+    """Medicaid ids are AAdddddA — normalize letters to uppercase."""
+    s = "" if value is None else str(value).strip()
+    return s.upper()
+
+
+def is_valid_medicaid(value) -> bool:
+    s = "" if value is None else str(value).strip()
+    return s == "" or bool(_MEDICAID_RE.match(s))
+
+
+def format_medicare(value) -> str:
+    """Normalize a Medicare (MBI) id to uppercase."""
+    s = "" if value is None else str(value).strip()
+    return s.upper()
+
+
+def is_valid_medicare(value) -> bool:
+    s = "" if value is None else str(value).strip()
+    return s == "" or bool(_MEDICARE_RE.match(s))
 
 
 def format_date_only(value) -> str:

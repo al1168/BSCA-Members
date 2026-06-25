@@ -243,6 +243,12 @@ QLineEdit#info_field[editing="true"] {{
     border-radius: 4px;
     padding: 3px 6px;
 }}
+/* Invalid value (failed validation) on an inline Info field. */
+QLineEdit#info_field[error="true"] {{
+    border: 1px solid {t['error']};
+    border-radius: 4px;
+    padding: 3px 6px;
+}}
 QComboBox::drop-down {{
     border: none;
     padding-right: 8px;

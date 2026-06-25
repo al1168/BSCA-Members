@@ -4,7 +4,11 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from db.members import get_member_context, format_phone, format_date_only
+from db.members import (
+    get_member_context, format_phone, format_date_only,
+    format_ssn, is_valid_ssn, format_medicaid, is_valid_medicaid,
+    format_medicare, is_valid_medicare,
+)
 from gui.address_autocomplete import (
     set_active_inline_editor, clear_active_inline_editor, make_phone_validator,
     PhoneLineEdit, set_widget_error,
@@ -517,11 +521,18 @@ class _ViewEditLineEdit(QLineEdit):
     a plain flat read-only field (no pencil) for values like Center ID.
     """
 
-    def __init__(self, value: str = "", editable: bool = True, parent=None):
-        super().__init__(value or "", parent)
+    def __init__(self, value: str = "", editable: bool = True, parent=None,
+                 *, formatter=None, validator=None):
+        # formatter(text)->text reformats on commit (e.g. SSN -> xxx-xx-xxxx);
+        # validator(text)->bool flags an error outline when the value is invalid
+        # (empty is treated as valid since these fields are optional).
+        self._formatter = formatter
+        self._validator = validator
+        value = formatter(value) if (formatter and value) else (value or "")
+        super().__init__(value, parent)
         self._editable = editable
-        self._baseline = value or ""
-        self._edit_start = value or ""
+        self._baseline = value
+        self._edit_start = value
         self._hover = False
         self.setObjectName("info_field")
         self.setReadOnly(True)
@@ -535,6 +546,9 @@ class _ViewEditLineEdit(QLineEdit):
             self._pencil.setVisible(False)
             self.editingFinished.connect(self._finish_edit)
             self.textChanged.connect(self._refresh_state)
+            if validator is not None:
+                # Clear the red outline as soon as the user starts retyping.
+                self.textEdited.connect(lambda: set_widget_error(self, False))
         self._refresh_state()
 
     def _repolish(self):
@@ -585,10 +599,16 @@ class _ViewEditLineEdit(QLineEdit):
     def _finish_edit(self):
         if self.isReadOnly():
             return
+        if self._formatter:
+            formatted = self._formatter(self.text())
+            if formatted != self.text():
+                self.setText(formatted)        # auto-format on commit (blur)
         self.setReadOnly(True)
         self.setProperty("editing", False)
         self._repolish()
         self._update_pencil()
+        if self._validator is not None:
+            set_widget_error(self, not self._validator(self.text()))
         clear_active_inline_editor(self)
 
     def keyPressEvent(self, e):
@@ -1045,9 +1065,16 @@ class MemberTabsWidget(QWidget):
 
         self._info_plan = _ViewEditLineEdit(m.get("health_plan", "") or "",
                                             editable=False)
-        self._info_medicaid = field("medicaid")
-        self._info_medicare = field("medicare")
-        self._info_ssn      = field("ssn")
+        # Validated/auto-formatted fields (empty allowed):
+        self._info_medicaid = _ViewEditLineEdit(
+            format_medicaid(m.get("medicaid", "") or ""),
+            formatter=format_medicaid, validator=is_valid_medicaid)
+        self._info_medicare = _ViewEditLineEdit(
+            format_medicare(m.get("medicare", "") or ""),
+            formatter=format_medicare, validator=is_valid_medicare)
+        self._info_ssn = _ViewEditLineEdit(
+            format_ssn(m.get("ssn", "") or ""),
+            formatter=format_ssn, validator=is_valid_ssn)
         self._info_pcp      = field("pcp")
         self._info_hospital = field("hospital")
         self._info_hha      = field("hha")
@@ -1390,9 +1417,9 @@ class MemberTabsWidget(QWidget):
         self._info_gender.setText(m.get("gender", "") or "")
         self._info_dob.setText(format_date_only(m.get("dob", "") or ""))
         self._info_member_id.setText(m.get("member_id", "") or "")
-        self._info_medicaid.setText(m.get("medicaid", "") or "")
-        self._info_medicare.setText(m.get("medicare", "") or "")
-        self._info_ssn.setText(m.get("ssn", "") or "")
+        self._info_medicaid.setText(format_medicaid(m.get("medicaid", "") or ""))
+        self._info_medicare.setText(format_medicare(m.get("medicare", "") or ""))
+        self._info_ssn.setText(format_ssn(m.get("ssn", "") or ""))
         self._info_pcp.setText(m.get("pcp", "") or "")
         self._info_hospital.setText(m.get("hospital", "") or "")
         self._info_hha.setText(m.get("hha", "") or "")
@@ -1411,6 +1438,22 @@ class MemberTabsWidget(QWidget):
     def _save_info(self):
         from db.members import update_contact
 
+        # Block save on invalid (non-empty) SSN / Medicaid / Medicare, flagging
+        # the offending field(s) — same idea as the Add Member phone validation.
+        bad = []
+        for w, valid_fn, label, hint in (
+            (self._info_ssn, is_valid_ssn, "SSN", "xxx-xx-xxxx"),
+            (self._info_medicaid, is_valid_medicaid, "Medicaid", "AA12345B"),
+            (self._info_medicare, is_valid_medicare, "Medicare", "MBI format"),
+        ):
+            if w.text().strip() and not valid_fn(w.text().strip()):
+                set_widget_error(w, True)
+                bad.append(f"{label} ({hint})")
+        if bad:
+            QMessageBox.warning(self, "Validation",
+                                "Please fix these fields:\n  • " + "\n  • ".join(bad))
+            return
+
         old = self._member
         fields = {
             "last_name":      self._info_last.text().strip(),
@@ -1420,9 +1463,9 @@ class MemberTabsWidget(QWidget):
             "dob":            format_date_only(self._info_dob.text().strip()),
             "member_id":      self._info_member_id.text().strip(),
             "health_plan":    self._member.get("health_plan", "") or "",
-            "medicaid":       self._info_medicaid.text().strip(),
-            "medicare":       self._info_medicare.text().strip(),
-            "ssn":            self._info_ssn.text().strip(),
+            "medicaid":       format_medicaid(self._info_medicaid.text().strip()),
+            "medicare":       format_medicare(self._info_medicare.text().strip()),
+            "ssn":            format_ssn(self._info_ssn.text().strip()),
             "language":       self._info_language.text().strip(),
             "case_manager":   self._info_case_manager.text().strip(),
             "home_tell":      format_phone(self._info_home_tell.text().strip()),
