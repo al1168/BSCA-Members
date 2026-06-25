@@ -152,6 +152,30 @@ def authorized_weekdays(authorizations: list[dict], today=None) -> set[int]:
     return decode_auth_days(current.get("auth_days") or "")
 
 
+def weekdays_in_range(start, end) -> set[int]:
+    """The set of ISO weekdays (1=Mon … 7=Sun) a [start, end] date range spans
+    (capped at all 7). Empty for a missing/invalid range."""
+    from datetime import timedelta
+    start, end = _as_date(start), _as_date(end)
+    if start is None or end is None or end < start:
+        return set()
+    days, d = set(), start
+    while d <= end and len(days) < 7:
+        days.add(d.isoweekday())
+        d += timedelta(days=1)
+    return days
+
+
+def needs_unauthorized_warning(authorizations: list[dict], weekdays, today=None) -> bool:
+    """Whether a change touching `weekdays` should be confirmed: True when none of
+    those weekdays are authorized under the current authorization (i.e. the change
+    is entirely on non-authorized days, or the member has no current auth)."""
+    weekdays = set(weekdays)
+    if not weekdays:
+        return False
+    return weekdays.isdisjoint(authorized_weekdays(authorizations, today))
+
+
 def auth_warning(authorizations: list, today) -> str | None:
     """Warning label for a member's authorization state, or None.
 
@@ -1575,6 +1599,23 @@ class MemberTabsWidget(QWidget):
         bar.addWidget(btn_add)
         return bar
 
+    def _confirm_unauthorized_day(self, weekdays, action: str) -> bool:
+        """If a scheduling change touches weekday(s) the member isn't currently
+        authorized for, ask the user to confirm. Returns True to proceed."""
+        from datetime import date
+        today = date.today()
+        if not needs_unauthorized_warning(self._authorizations, weekdays, today):
+            return True
+        if authorized_weekdays(self._authorizations, today):
+            names = ", ".join(WEEKDAY_NAMES.get(d, str(d))
+                              for d in sorted(set(weekdays)))
+            text = (f"The member isn't currently authorized for {names}.\n\n"
+                    f"{action} anyway?")
+        else:
+            text = f"The member has no current authorization.\n\n{action} anyway?"
+        return QMessageBox.question(self, "Day not authorized", text) \
+            == QMessageBox.StandardButton.Yes
+
     # ── Enrollments tab ────────────────────────────────────────────────────
 
     def _make_enrollments_tab(self) -> QWidget:
@@ -2344,6 +2385,9 @@ class MemberTabsWidget(QWidget):
 
         if not dlg.exec():
             return
+        if not self._confirm_unauthorized_day({avail["day_of_week"]},
+                                              "Save this availability"):
+            return
         ts, te = editor.start_hhmm(), editor.end_hhmm()
         es = eff_start.date().toPyDate()
         ee = None if ongoing.isChecked() else eff_end.date().toPyDate()
@@ -2548,6 +2592,7 @@ class MemberTabsWidget(QWidget):
         from datetime import date
         from PyQt6.QtWidgets import (
             QDialog, QFormLayout, QComboBox, QDateEdit, QDialogButtonBox, QLabel,
+            QAbstractSpinBox,
         )
         from PyQt6.QtCore import QDate
         from gui.time_range_editor import TimeRangeEditor
@@ -2564,6 +2609,10 @@ class MemberTabsWidget(QWidget):
         editor = TimeRangeEditor()
         eff = QDateEdit()
         eff.setCalendarPopup(True)
+        # No spin step buttons: with the calendar popup the only control needed is
+        # the drop-down, and the steppers' hit area was incrementing the field on
+        # a plain click.
+        eff.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         tomorrow = QDate.currentDate().addDays(1)
         eff.setMinimumDate(tomorrow)
 
@@ -2617,6 +2666,8 @@ class MemberTabsWidget(QWidget):
         if not result:
             return
         day, ts, te, eff = result["day"], result["ts"], result["te"], result["eff"]
+        if not self._confirm_unauthorized_day({day}, "Schedule this change"):
+            return
         try:
             # Cap the current window for that weekday so it ends the day before
             # the change starts (the change becomes the new ongoing window).
@@ -2645,6 +2696,8 @@ class MemberTabsWidget(QWidget):
         if not result:
             return
         day, ts, te, eff = result["day"], result["ts"], result["te"], result["eff"]
+        if not self._confirm_unauthorized_day({day}, "Save this change"):
+            return
         try:
             # Re-extend the predecessor capped for the old date, then re-cap for
             # the new date — so moving the change date keeps the hand-off clean.
@@ -2810,6 +2863,9 @@ class MemberTabsWidget(QWidget):
         result = self._open_one_off_dialog()
         if not result:
             return
+        if not self._confirm_unauthorized_day(
+                {result["date"].isoweekday()}, "Add this override"):
+            return
         try:
             insert_one_off_availability(
                 self._center_id, result["date"], result["avail_start"],
@@ -2830,6 +2886,9 @@ class MemberTabsWidget(QWidget):
         )
         result = self._open_one_off_dialog(existing=entry)
         if not result:
+            return
+        if not self._confirm_unauthorized_day(
+                {result["date"].isoweekday()}, "Save this override"):
             return
         try:
             update_one_off_availability(
@@ -2914,6 +2973,9 @@ class MemberTabsWidget(QWidget):
             lt = leave_combo.currentText()
             s = start.date().toPyDate()
             e = end.date().toPyDate()
+            if not self._confirm_unauthorized_day(
+                    weekdays_in_range(s, e), "Add this absence"):
+                return
             try:
                 insert_absence(self._center_id, lt, s, e, self._db_path)
                 self._absences = get_absences(self._center_id, self._db_path)
