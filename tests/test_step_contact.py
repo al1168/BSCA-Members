@@ -17,23 +17,23 @@ def qapp():
 def test_parse_dob_accepts_1_or_2_digit_month_and_day():
     from datetime import date
     from gui.wizard.step_contact import parse_dob
-    assert parse_dob("5/4/1950") == date(1950, 5, 4)      # m/d/yyyy
-    assert parse_dob("05/04/1950") == date(1950, 5, 4)    # mm/dd/yyyy
-    assert parse_dob("5/14/1948") == date(1948, 5, 14)    # m/dd/yyyy
-    assert parse_dob("12/9/1948") == date(1948, 12, 9)    # mm/d/yyyy
+    assert parse_dob("5-4-1950") == date(1950, 5, 4)      # m-d-yyyy
+    assert parse_dob("05-04-1950") == date(1950, 5, 4)    # mm-dd-yyyy
+    assert parse_dob("5-14-1948") == date(1948, 5, 14)    # m-dd-yyyy
+    assert parse_dob("12-9-1948") == date(1948, 12, 9)    # mm-d-yyyy
 
 
-def test_parse_dob_requires_slashes_and_4_digit_year():
+def test_parse_dob_requires_dashes_and_4_digit_year():
     from gui.wizard.step_contact import parse_dob
-    assert parse_dob("5-14-1948") is None    # dashes not allowed
-    assert parse_dob("5/14/48") is None      # 2-digit year not allowed
-    assert parse_dob("1948/5/14") is None    # wrong order
+    assert parse_dob("5/14/1948") is None    # slashes not allowed
+    assert parse_dob("5-14-48") is None      # 2-digit year not allowed
+    assert parse_dob("1948-5-14") is None    # wrong order
 
 
 def test_parse_dob_rejects_garbage_and_empty():
     from gui.wizard.step_contact import parse_dob
     assert parse_dob("not a date") is None
-    assert parse_dob("13/40/2020") is None   # impossible month/day
+    assert parse_dob("13-40-2020") is None   # impossible month/day
     assert parse_dob("") is None
     assert parse_dob("   ") is None
 
@@ -46,7 +46,7 @@ def _make_filled():
     w.last_name.setText("Doe")
     w.center_id.setText("999001")
     w.member_id.setText("M12345")
-    w.dob.setText("6/15/1950")
+    w.dob.setText("6-15-1950")
     w.health_plan.setCurrentText("HF")
     w.home_tell.setText("212-555-0100")
     w.cell.setText("")
@@ -124,7 +124,7 @@ def test_validate_rejects_future_dob(qapp):
     from datetime import date, timedelta
     w = _make_filled()
     future = date.today() + timedelta(days=1)
-    w.dob.setText(f"{future.month}/{future.day}/{future.year}")
+    w.dob.setText(f"{future.month}-{future.day}-{future.year}")
     assert w.validate("dummy.accdb") is False
     assert "future" in w._error_label.text().lower()
 
@@ -135,7 +135,7 @@ def test_dob_is_a_typeable_field_with_placeholder(qapp):
     w = StepContact()
     assert isinstance(w.dob, QLineEdit)          # typeable, not a dropdown
     assert not w.dob.text()                       # empty by default
-    assert "mm/dd/yyyy" in w.dob.placeholderText().lower()  # format hint
+    assert "mm-dd-yyyy" in w.dob.placeholderText().lower()  # format hint
 
 
 def test_collect_returns_dob_as_date(qapp):

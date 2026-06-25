@@ -23,23 +23,25 @@ def test_dob_autoformats_8_digits_on_blur(qapp):
     d = DobLineEdit()
     d.setText("01012000")              # just digits
     _focus_out(d)
-    assert d.text() == "01/01/2000"
+    assert d.text() == "01-01-2000"
     assert d.property("error") in (False, None)
 
 
-def test_dob_keeps_slashed_input(qapp):
+def test_dob_input_is_numbers_only(qapp):
     from gui.wizard.step_contact import DobLineEdit
     d = DobLineEdit()
-    d.setText("1/1/2000")              # already slashed -> left as typed
-    _focus_out(d)
-    assert d.text() == "1/1/2000"
-    assert d.property("error") in (False, None)
+    val = d.validator()
+    from PyQt6.QtGui import QValidator
+    # letters and slashes are rejected by the validator; digits pass
+    assert val.validate("12/34", 0)[0] == QValidator.State.Invalid
+    assert val.validate("ab", 0)[0] == QValidator.State.Invalid
+    assert val.validate("01012000", 0)[0] == QValidator.State.Acceptable
 
 
 def test_dob_flags_invalid_on_blur(qapp):
     from gui.wizard.step_contact import DobLineEdit
     d = DobLineEdit()
-    d.setText("99999999")              # formats to 99/99/9999 -> not a real date
+    d.setText("99999999")              # formats to 99-99-9999 -> not a real date
     _focus_out(d)
     assert d.property("error") is True
 

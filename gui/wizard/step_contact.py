@@ -12,44 +12,43 @@ from gui.address_autocomplete import (
 )
 
 # DOB is a free-text field (so staff can type it) with a gray placeholder, not a
-# date-picker dropdown. The format is enforced: slash-separated, a 1-or-2-digit
-# month and day, and a 4-digit year (MM/DD/YYYY or M/DD/YYYY, etc.). Output is a
-# datetime.date for the Access Date/Time [DOB] column.
-_DOB_RE = re.compile(r"^\d{1,2}/\d{1,2}/\d{4}$")
+# date-picker dropdown. Input is numbers only; the value is dash-separated
+# (MM-DD-YYYY, 1-or-2-digit month/day, 4-digit year). Output is a datetime.date
+# for the Access Date/Time [DOB] column.
+_DOB_RE = re.compile(r"^\d{1,2}-\d{1,2}-\d{4}$")
 
 
 def parse_dob(text: str):
     """Parse a typed date of birth to a datetime.date, or None if it doesn't
-    match M/D/YYYY (1-2 digit month & day, slashes, 4-digit year) or isn't a
-    real calendar date. Dashes, 2-digit years and out-of-range values are
-    rejected."""
+    match M-D-YYYY (1-2 digit month & day, dashes, 4-digit year) or isn't a real
+    calendar date. Slashes, 2-digit years and out-of-range values are rejected."""
     text = (text or "").strip()
     if not _DOB_RE.match(text):
         return None
     try:
-        return datetime.strptime(text, "%m/%d/%Y").date()
+        return datetime.strptime(text, "%m-%d-%Y").date()
     except ValueError:
         return None
 
 
 class DobLineEdit(QLineEdit):
-    """Date-of-birth field: staff can type just 8 digits (MMDDYYYY) and it
-    auto-formats to MM/DD/YYYY on focus-out. Outlines red when a non-empty entry
-    isn't a valid date. Slash-separated input (e.g. 1/1/2000) is left as typed."""
+    """Date-of-birth field: numbers-only input. Staff type 8 digits (MMDDYYYY)
+    and it auto-formats to MM-DD-YYYY on focus-out. Outlines red when a non-empty
+    entry isn't a valid date."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setValidator(
-            QRegularExpressionValidator(QRegularExpression(r"[0-9/]*"), self))
-        self.setPlaceholderText("MM/DD/YYYY (or type 8 digits)")
+            QRegularExpressionValidator(QRegularExpression(r"[0-9]*"), self))
+        self.setPlaceholderText("MM-DD-YYYY")
         self.textEdited.connect(lambda: set_widget_error(self, False))
 
     def focusOutEvent(self, e):
         text = self.text().strip()
-        if "/" not in text:
+        if "-" not in text:
             digits = "".join(ch for ch in text if ch.isdigit())
             if len(digits) == 8:
-                self.setText(f"{digits[:2]}/{digits[2:4]}/{digits[4:]}")
+                self.setText(f"{digits[:2]}-{digits[2:4]}-{digits[4:]}")
         value = self.text().strip()
         set_widget_error(self, bool(value) and parse_dob(value) is None)
         super().focusOutEvent(e)
@@ -169,7 +168,7 @@ class StepContact(QWidget):
         dob = parse_dob(dob_text)
         if dob is None:
             return self._fail(
-                "Date of Birth must be a valid date (MM/DD/YYYY).", self.dob)
+                "Date of Birth must be a valid date (MM-DD-YYYY).", self.dob)
         if dob > date.today():
             return self._fail("Date of Birth can't be in the future.", self.dob)
         if not plan:

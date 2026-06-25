@@ -57,7 +57,7 @@ def test_wizard_highlights_invalid_phone(qapp):
     s.last_name.setText("Lee")
     s.center_id.setText("12345")
     s.member_id.setText("M-1")
-    s.dob.setText("01/01/2000")
+    s.dob.setText("01-01-2000")
     s.health_plan.setCurrentIndex(1)   # a real plan (index 0 is blank)
     s.home_tell.setText("12345")       # only 5 digits -> invalid
     # center_id_exists is not reached (phone check fails first), so db_path is unused.
