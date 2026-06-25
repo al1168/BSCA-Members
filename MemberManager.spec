@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 # Build: .venv\Scripts\pyinstaller MemberManager.spec
-# Output: dist\MemberManager.exe
+# Output: dist\Care Manager.exe
 
 a = Analysis(
     ['member_manager.py'],
@@ -28,7 +28,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='MemberManager',
+    name='Care Manager',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
