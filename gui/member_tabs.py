@@ -1211,7 +1211,7 @@ class MemberTabsWidget(QWidget):
         box.addWidget(table)
 
         btn_row = QHBoxLayout()
-        btn_add = QPushButton("+ Add")
+        btn_add = QPushButton("+ Add Contact")
         btn_add.clicked.connect(self._add_emergency)
         btn_del = QPushButton("Delete Selected")
         btn_del.clicked.connect(lambda: self._delete_emergency(table))
