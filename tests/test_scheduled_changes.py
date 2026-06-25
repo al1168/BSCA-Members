@@ -102,3 +102,19 @@ def test_avail_tab_marks_future_row_upcoming(qapp):
                 chips.add(lbl.objectName())
     assert "upcoming_chip" in chips      # the future change reads as Upcoming
     assert "active_chip" in chips        # the current window reads as Active
+
+
+def test_avail_tab_uses_scheduled_changes_as_add(qapp):
+    from PyQt6.QtWidgets import QPushButton
+    import gui.member_tabs as mt
+    w = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
+    w._availability = []
+    w._authorizations = []
+    w._center_id = 1
+    w._db_path = "x"
+    tab = w._make_avail_tab()
+    buttons = tab.findChildren(QPushButton)
+    assert not any(b.text() == "+ Add" for b in buttons)   # raw Add is hidden
+    sched = [b for b in buttons if "Scheduled Changes" in b.text()]
+    assert sched, "expected a Scheduled Changes button"
+    assert sched[0].objectName() == "btn_row_add"          # styled as the add action
