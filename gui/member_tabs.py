@@ -501,16 +501,23 @@ class _PhotoLabel(QLabel):
         super().mousePressEvent(e)
 
 
+_PENCIL_ICON = None
+
+
 def _pencil_icon():
-    """A small pencil glyph as a QIcon for the inline 'edit' affordance."""
-    from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
-    pm = QPixmap(16, 16)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    p.setPen(QColor("#5b7cf4"))  # accent blue — clearly the edit affordance
-    p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "✎")
-    p.end()
-    return QIcon(pm)
+    """A small pencil glyph as a QIcon for the inline 'edit' affordance. Rendered
+    once and reused (every editable Info field shares it)."""
+    global _PENCIL_ICON
+    if _PENCIL_ICON is None:
+        from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
+        pm = QPixmap(16, 16)
+        pm.fill(Qt.GlobalColor.transparent)
+        p = QPainter(pm)
+        p.setPen(QColor("#5b7cf4"))  # accent blue — clearly the edit affordance
+        p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "✎")
+        p.end()
+        _PENCIL_ICON = QIcon(pm)
+    return _PENCIL_ICON
 
 
 class _ViewEditLineEdit(QLineEdit):
@@ -653,6 +660,28 @@ MAX_DOC_WARN_MB = 10
 # and decoding the JPEG is the slowest part of opening a member after the DB
 # read, so cache it across opens. Invalidated when a photo is changed in-app.
 _PHOTO_CACHE: dict = {}
+_PLACEHOLDER_PIX = None
+
+
+def _placeholder_photo():
+    """The generic 80×80 avatar placeholder, drawn once and shared by all
+    members (it's identical for everyone)."""
+    global _PLACEHOLDER_PIX
+    if _PLACEHOLDER_PIX is None:
+        from PyQt6.QtGui import QPixmap, QPainter, QColor, QBrush
+        pix = QPixmap(80, 80)
+        pix.fill(Qt.GlobalColor.transparent)
+        p = QPainter(pix)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setBrush(QBrush(QColor("#3a3a3a")))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawEllipse(0, 0, 80, 80)
+        p.setBrush(QBrush(QColor("#888888")))
+        p.drawEllipse(28, 12, 24, 24)
+        p.drawEllipse(12, 46, 56, 40)
+        p.end()
+        _PLACEHOLDER_PIX = pix
+    return _PLACEHOLDER_PIX
 
 
 class MemberTabsWidget(QWidget):
@@ -780,13 +809,29 @@ class MemberTabsWidget(QWidget):
             pix, self._has_photo = cached
             self._photo_label.setPixmap(pix)
         else:
-            self._set_photo_pixmap(get_member_photo(self._center_id, self._db_path))
+            # Show the placeholder immediately (cheap) and load the real photo —
+            # the slow part (DAO read + JPEG decode) — just after the member opens,
+            # so the click isn't blocked on it.
+            self._has_photo = False
+            self._photo_label.setPixmap(_placeholder_photo())
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, self._load_photo_async)
         return self._photo_label
+
+    def _load_photo_async(self):
+        from db.members import get_member_photo
+        try:
+            data = get_member_photo(self._center_id, self._db_path)
+            self._set_photo_pixmap(data)
+        except RuntimeError:
+            pass        # the member view was closed before the photo arrived
+        except Exception:
+            pass
 
     def _set_photo_pixmap(self, photo_bytes):
         """Paint the member photo (or the placeholder) onto self._photo_label and
-        record whether a photo exists."""
-        from PyQt6.QtGui import QPixmap, QPainter, QColor, QBrush
+        record whether a photo exists; cache the result for fast reopen."""
+        from PyQt6.QtGui import QPixmap
         from PyQt6.QtCore import Qt as QtCore
         self._has_photo = bool(photo_bytes)
         if photo_bytes:
@@ -798,20 +843,9 @@ class MemberTabsWidget(QWidget):
                 x = (pix.width() - 80) // 2
                 y = (pix.height() - 80) // 2
                 pix = pix.copy(x, y, 80, 80)
-            self._photo_label.setPixmap(pix)
         else:
-            pix = QPixmap(80, 80)
-            pix.fill(QtCore.GlobalColor.transparent)
-            painter = QPainter(pix)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setBrush(QBrush(QColor("#3a3a3a")))
-            painter.setPen(QtCore.PenStyle.NoPen)
-            painter.drawEllipse(0, 0, 80, 80)
-            painter.setBrush(QBrush(QColor("#888888")))
-            painter.drawEllipse(28, 12, 24, 24)
-            painter.drawEllipse(12, 46, 56, 40)
-            painter.end()
-            self._photo_label.setPixmap(pix)
+            pix = _placeholder_photo()
+        self._photo_label.setPixmap(pix)
         _PHOTO_CACHE[self._center_id] = (pix, self._has_photo)
 
     def _change_photo(self):
