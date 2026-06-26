@@ -102,7 +102,8 @@ def test_insert_authorization_includes_health_plan_created_at_member_id():
     assert "[Health Plan]" in INSERT_AUTHORIZATION
     assert "[created_at]" in INSERT_AUTHORIZATION
     assert "[Member ID]" in INSERT_AUTHORIZATION
-    assert INSERT_AUTHORIZATION.count("?") == 9
+    assert "[auth_number]" in INSERT_AUTHORIZATION
+    assert INSERT_AUTHORIZATION.count("?") == 10
 
 
 def test_latest_authorization_picks_latest_start_then_id():

@@ -225,21 +225,21 @@ UPDATE_ENROLLMENT_END = "UPDATE [Enrollment] SET [end_date]=? WHERE [ID]=?"
 INSERT_AUTHORIZATION = (
     "INSERT INTO [Authorization] ([Center ID], [auth_start], [auth_end], "
     "[effective_start], [effective_end], [auth_days], [Health Plan], [created_at], "
-    "[Member ID]) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "[Member ID], [auth_number]) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 
 DELETE_AUTHORIZATION = "DELETE FROM [Authorization] WHERE [ID]=?"
 
 UPDATE_AUTHORIZATION = (
     "UPDATE [Authorization] SET [auth_start]=?, [auth_end]=?, "
-    "[auth_days]=?, [Health Plan]=?, [Member ID]=? WHERE [ID]=?"
+    "[auth_days]=?, [Health Plan]=?, [Member ID]=?, [auth_number]=? WHERE [ID]=?"
 )
 
 AUTHORIZATION_SELECT = (
     "SELECT [ID],[Center ID],[auth_start],[auth_end],"
     "[effective_start],[effective_end],[auth_days],[Health Plan],[created_at],"
-    "[Member ID] "
+    "[Member ID],[auth_number] "
     "FROM [Authorization] WHERE [Center ID]=?"
 )
 
@@ -773,6 +773,7 @@ def _map_auth_row(row) -> dict:
     d["health_plan"] = row[7] or ""
     d["created_at"] = row[8]
     d["member_id"] = row[9]
+    d["auth_number"] = row[10]
     return d
 
 
@@ -1002,6 +1003,7 @@ def insert_member(
                     auth_plan,
                     datetime.now(),
                     member_id,   # seed the auth's Member ID from the member's
+                    authorization.get("auth_number", "") or "",
                 ),
             )
         for row in availability_rows:
@@ -1193,13 +1195,15 @@ def insert_authorization(
     health_plan: str,
     db_path: str,
     member_id: str = "",
+    auth_number: str = "",
 ) -> None:
     conn = _connect(db_path)
     try:
         conn.cursor().execute(
             INSERT_AUTHORIZATION,
             (center_id, auth_start, auth_end, effective_start, effective_end,
-             encode_auth_days(auth_days), health_plan, datetime.now(), member_id),
+             encode_auth_days(auth_days), health_plan, datetime.now(), member_id,
+             auth_number),
         )
         conn.commit()
     except Exception:
@@ -1217,14 +1221,16 @@ def update_authorization(
     health_plan: str,
     db_path: str,
     member_id: str = "",
+    auth_number: str = "",
 ) -> None:
-    """Update an existing authorization's dates, days, plan, and member id."""
+    """Update an existing authorization's dates, days, plan, member id, and
+    auth number."""
     conn = _connect(db_path)
     try:
         conn.cursor().execute(
             UPDATE_AUTHORIZATION,
             (auth_start, auth_end, encode_auth_days(auth_days), health_plan,
-             member_id, record_id),
+             member_id, auth_number, record_id),
         )
         conn.commit()
     except Exception:

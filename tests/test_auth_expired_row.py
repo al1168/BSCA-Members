@@ -113,7 +113,7 @@ def test_expired_row_text_is_grayed(qapp, monkeypatch):
 
 def _status_chip_name(table, row):
     from PyQt6.QtWidgets import QLabel
-    cell = table.cellWidget(row, 7)        # the dedicated Status column
+    cell = table.cellWidget(row, 8)        # the dedicated Status column
     if cell is None:
         return None
     for lbl in cell.findChildren(QLabel):
@@ -130,3 +130,20 @@ def test_expired_row_has_expired_chip(qapp, monkeypatch):
 def test_current_row_has_active_chip(qapp, monkeypatch):
     mt, table, _tab = _build_tab(monkeypatch)
     assert _status_chip_name(table, _row_for_id(table, 1)) == "active_chip"
+
+
+def test_auth_number_column_shows_value(qapp, monkeypatch):
+    import db.members as dbm
+    monkeypatch.setattr(dbm, "get_auth_ids_with_documents", lambda cid, path: set())
+    import gui.member_tabs as mt
+    w = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
+    w._authorizations = [
+        {"id": 5, "auth_start": date(2026, 1, 1), "auth_end": date(2026, 12, 31),
+         "auth_days": "12", "health_plan": "HF", "created_at": None,
+         "member_id": "M1", "auth_number": "AUTH-123"},
+    ]
+    w._center_id = 1
+    w._db_path = "x"
+    tab = w._make_auths_tab()           # keep ref so the table isn't GC'd
+    t = w._auth_table
+    assert t.item(0, 6).text() == "AUTH-123"   # Auth Number column

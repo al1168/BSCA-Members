@@ -1884,7 +1884,8 @@ class MemberTabsWidget(QWidget):
         layout.setContentsMargins(0, 12, 0, 0)
 
         columns = ["ID", "Auth Start", "Auth End", "Days", "Health Plan",
-                   "Member ID", "Created", "Status", "Document", "Action"]
+                   "Member ID", "Auth Number", "Created", "Status", "Document",
+                   "Action"]
         table = QTableWidget(len(self._authorizations), len(columns))
         table.setHorizontalHeaderLabels(columns)
         table.horizontalHeaderItem(3).setToolTip("1=Mon  2=Tue  3=Wed  4=Thu  5=Fri")
@@ -1941,9 +1942,12 @@ class MemberTabsWidget(QWidget):
             # Member ID (per-authorization); blank when unset.
             table.setItem(r, 5, QTableWidgetItem(a.get("member_id") or ""))
 
+            # Authorization number; blank when unset / predating the column.
+            table.setItem(r, 6, QTableWidgetItem(a.get("auth_number") or ""))
+
             # When the row was created (auto-stamped on insert); blank for rows
             # that predate the column.
-            table.setItem(r, 6, QTableWidgetItem(format_created_at(a.get("created_at"))))
+            table.setItem(r, 7, QTableWidgetItem(format_created_at(a.get("created_at"))))
 
             has_doc = a["id"] in doc_ids
             doc_btn = QPushButton("Open" if has_doc else "Attach")
@@ -1954,13 +1958,13 @@ class MemberTabsWidget(QWidget):
             else:
                 doc_btn.clicked.connect(
                     lambda _=False, auth=a: self._attach_auth_document(auth))
-            table.setCellWidget(r, 8, doc_btn)
+            table.setCellWidget(r, 9, doc_btn)
 
             # Every authorization is editable (older ones included).
             btn = QPushButton("Edit")
             btn.setObjectName("btn_edit")
             btn.clicked.connect(lambda _=False, auth=a: self._edit_auth(auth))
-            table.setCellWidget(r, 9, btn)
+            table.setCellWidget(r, 10, btn)
 
             # Status pill: green Active / amber Upcoming / red Expired, centered.
             _label = {"active": "Active", "upcoming": "Upcoming",
@@ -1970,13 +1974,13 @@ class MemberTabsWidget(QWidget):
             chip = QLabel(_label)
             chip.setObjectName(_chip_obj)
             status_chips.append(chip)
-            table.setCellWidget(r, 7, _centered_cell(chip))
+            table.setCellWidget(r, 8, _centered_cell(chip))
 
             if status != "expired":
                 continue
 
             # Expired rows are dimmed so the in-effect ones stand out.
-            for col in (0, 1, 2, 4, 5, 6):
+            for col in (0, 1, 2, 4, 5, 6, 7):
                 item = table.item(r, col)
                 if item is not None:
                     item.setForeground(QColor(EXPIRED_FG))
@@ -1988,7 +1992,7 @@ class MemberTabsWidget(QWidget):
 
         # Size the pill columns to fit their widest pill so nothing clips.
         _fit_pill_column(table, 4, plan_badges, floor=96)
-        _fit_pill_column(table, 7, status_chips, floor=96)
+        _fit_pill_column(table, 8, status_chips, floor=96)
 
         self._auth_table = table
         btn_add = QPushButton("+ Add")
@@ -2149,11 +2153,16 @@ class MemberTabsWidget(QWidget):
             or "")
         member_id_edit.setPlaceholderText("Health plan member / insurance ID")
 
+        auth_number_edit = QLineEdit(
+            (existing.get("auth_number") if existing else "") or "")
+        auth_number_edit.setPlaceholderText("Authorization number")
+
         form.addRow("Auth Start:", auth_start)
         form.addRow("Auth End:", auth_end)
         form.addRow("Days:", days_widget)
         form.addRow("Health Plan:", plan_combo)
         form.addRow("Member ID:", member_id_edit)
+        form.addRow("Auth Number:", auth_number_edit)
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
                                 QDialogButtonBox.StandardButton.Cancel)
         btns.rejected.connect(dlg.reject)
@@ -2180,6 +2189,7 @@ class MemberTabsWidget(QWidget):
             "days": {n for n, cb in day_checks.items() if cb.isChecked()},
             "health_plan": plan_combo.currentText(),
             "member_id": member_id_edit.text().strip(),
+            "auth_number": auth_number_edit.text().strip(),
         }
 
     def _confirm_overlap(self, start, end, exclude_id=None) -> bool:
@@ -2212,6 +2222,7 @@ class MemberTabsWidget(QWidget):
                 self._center_id, result["auth_start"], result["auth_end"],
                 result["days"], None, None, result["health_plan"], self._db_path,
                 member_id=result["member_id"],
+                auth_number=result["auth_number"],
             )
             self._after_auth_change(
                 f"Auth added: {result['auth_start']} – {result['auth_end']} · "
@@ -2234,6 +2245,7 @@ class MemberTabsWidget(QWidget):
                 auth["id"], result["auth_start"], result["auth_end"],
                 result["days"], result["health_plan"], self._db_path,
                 member_id=result["member_id"],
+                auth_number=result["auth_number"],
             )
             self._after_auth_change(
                 f"Auth edited: {result['auth_start']} – {result['auth_end']} · "
