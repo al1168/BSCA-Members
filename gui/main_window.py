@@ -24,14 +24,37 @@ def active_first(members: list[dict], terminated_ids: set) -> list[dict]:
     return sorted(members, key=lambda m: m["center_id"] in terminated_ids)
 
 
+def _dob_matches(dob, query: str) -> bool:
+    """Whether a member's `dob` (a date or None) matches a date `query` that uses
+    '/' separators. The query is a prefix of MM/DD/YYYY: month/day are zero-padded
+    to two digits so '1/1' matches Jan 1, and a partial year prefix works too
+    ('1/1/20' matches 2001-? no — matches 2000s). Non-numeric segments never match."""
+    if dob is None:
+        return False
+    if not any(ch.isdigit() for ch in query):
+        return False                     # just '/', nothing to match yet
+    target = f"{dob.month:02d}/{dob.day:02d}/{dob.year:04d}"
+    parts = []
+    for i, seg in enumerate(query.split("/")):
+        seg = seg.strip()
+        if seg == "":
+            parts.append("")
+        elif seg.isdigit():
+            parts.append(f"{int(seg):02d}" if i < 2 else seg)
+        else:
+            return False
+    return target.startswith("/".join(parts))
+
+
 def matches_search(member: dict, text: str) -> bool:
     """Whether `member` matches the search box `text`.
 
     A comma is the trigger for last-name mode ('Last, Firstprefix'): the text
     before the first comma is an exact, case-insensitive last-name match, and
-    the text after it is a first-name prefix (empty -> last-name only). Spaces
-    around the comma are ignored. Without a comma, fall back to a substring
-    match over last name, first name, and center id.
+    the text after it is a first-name prefix (empty -> last-name only). A slash
+    is the trigger for date-of-birth mode (e.g. '1/1/2000' or a prefix like
+    '1/1'). Otherwise, a substring match over last name, first name, and center
+    id.
     """
     q = text.strip()
     if "," in q:
@@ -43,6 +66,8 @@ def matches_search(member: dict, text: str) -> bool:
         if first:
             return (member.get("first_name") or "").strip().lower().startswith(first)
         return True
+    if "/" in q:
+        return _dob_matches(member.get("dob"), q)
     ql = q.lower()
     return (ql in (member.get("last_name") or "").lower()
             or ql in (member.get("first_name") or "").lower()

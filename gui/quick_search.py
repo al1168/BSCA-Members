@@ -47,7 +47,8 @@ class QuickSearchDialog(QDialog):
 
         self._search = QLineEdit()
         self._search.setObjectName("quick_search_input")
-        self._search.setPlaceholderText("Search members…   (try \"Last, First\")")
+        self._search.setPlaceholderText(
+            "Search members…   (Last, First  ·  or DOB like 1/1/2000)")
         self._search.textChanged.connect(self._refresh)
         self._search.returnPressed.connect(self._choose_current)
         self._search.installEventFilter(self)

@@ -62,7 +62,8 @@ def test_get_all_members_required_keys():
     from db.members import get_all_members
     members = get_all_members(TEST_DB)
     for m in members:
-        assert set(m.keys()) == {"center_id", "last_name", "first_name", "health_plan"}
+        assert set(m.keys()) == {"center_id", "last_name", "first_name",
+                                 "health_plan", "dob"}
 
 
 # ── center_id_exists ───────────────────────────────────────────────────

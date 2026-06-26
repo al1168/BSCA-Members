@@ -56,3 +56,35 @@ def test_spaces_around_comma(qapp):
     assert matches_search(_m("Lee", "Bob"), "Lee,   B")
     assert matches_search(_m("Lee", "Bob"), "  Lee , b ")
     assert not matches_search(_m("Leese", "Bob"), "Lee ,")
+
+
+# ── slash: date-of-birth search ────────────────────────────────────────────
+def _md(dob):
+    from datetime import date
+    return {"last_name": "Smith", "first_name": "Ann", "center_id": 1, "dob": dob}
+
+
+def test_dob_search_full_and_unpadded(qapp):
+    from datetime import date
+    from gui.main_window import matches_search
+    m = _md(date(2000, 1, 5))
+    assert matches_search(m, "01/05/2000")
+    assert matches_search(m, "1/5/2000")        # leading zeros optional
+    assert not matches_search(m, "2/5/2000")    # wrong month
+
+
+def test_dob_search_prefix(qapp):
+    from datetime import date
+    from gui.main_window import matches_search
+    m = _md(date(2000, 1, 5))
+    assert matches_search(m, "1/5")             # Jan 5, any year
+    assert matches_search(m, "01/")             # month 01
+    assert matches_search(m, "1/5/20")          # partial year prefix
+    assert not matches_search(m, "1/6")         # wrong day
+
+
+def test_dob_search_edge_cases(qapp):
+    from datetime import date
+    from gui.main_window import matches_search
+    assert not matches_search(_md(None), "1/5/2000")     # member has no DOB
+    assert not matches_search(_md(date(2000, 1, 5)), "/")  # slash only, no digits

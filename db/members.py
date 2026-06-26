@@ -28,7 +28,7 @@ LEAVE_TYPES = (
 )
 
 ALL_MEMBERS_QUERY = (
-    "SELECT [Center ID], [Last Name], [First Name], [Health Plan] "
+    "SELECT [Center ID], [Last Name], [First Name], [Health Plan], [DOB] "
     "FROM [Contacts] ORDER BY [Last Name], [First Name]"
 )
 
@@ -494,6 +494,7 @@ def get_all_members(db_path: str) -> list[dict]:
                 "last_name": row[1] or "",
                 "first_name": row[2] or "",
                 "health_plan": row[3] or "",
+                "dob": _access_date(row[4]),
             }
             for row in cursor.fetchall()
             if row[0] is not None  # skip Contacts rows with NULL Center ID
