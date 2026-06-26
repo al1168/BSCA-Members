@@ -159,7 +159,7 @@ def build_profile_html(
     return (
         f'<html><body>'
         f'<p style="margin:0 0 6px 0; color:{_ACCENT}; font-size:13pt;">'
-        f'<b>BSCA &nbsp;·&nbsp; MEMBER PROFILE</b></p>'
+        f'<b>MEMBER PROFILE</b></p>'
         f'{"".join(sections)}'
         f'</body></html>'
     )
