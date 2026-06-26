@@ -120,9 +120,25 @@ class MainWindow(QMainWindow):
         self._last_center_id = None
         self._terminated_ids = set()
         self.setWindowTitle("Bowery Care Manager")
-        self.resize(1240, 800)
+        self._apply_default_geometry()
         self._build_ui()
         self._load_members()
+
+    def _apply_default_geometry(self):
+        """Open wide enough to show the widest tab (the Authorizations table
+        needs ~1780px with the sidebar), but never larger than the screen, and
+        centered on it."""
+        desired_w, desired_h = 1800, 920
+        screen = QApplication.primaryScreen()
+        avail = screen.availableGeometry() if screen else None
+        if avail is not None:
+            w = min(desired_w, avail.width())
+            h = min(desired_h, avail.height())
+            self.resize(w, h)
+            self.move(avail.x() + (avail.width() - w) // 2,
+                      avail.y() + (avail.height() - h) // 2)
+        else:
+            self.resize(desired_w, desired_h)
 
     def _build_ui(self):
         central = QWidget()
