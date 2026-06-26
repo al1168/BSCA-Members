@@ -13,17 +13,11 @@ def qapp():
     yield app
 
 
-def test_end_date_blank_is_ongoing(qapp):
-    # End is a free-text DateLineEdit; blank means ongoing.
+def test_no_end_date_field_and_enrollment_is_ongoing(qapp):
+    # The Add Member flow has no enrollment end date; it's always ongoing.
     from gui.wizard.step_enrollment import StepEnrollment
     w = StepEnrollment()
-    assert w.end_date.text() == ""
-    assert w.collect()["enrollment_end"] is None
-
-
-def test_collect_end_none_by_default(qapp):
-    from gui.wizard.step_enrollment import StepEnrollment
-    w = StepEnrollment()
+    assert not hasattr(w, "end_date")
     assert w.collect()["enrollment_end"] is None
 
 

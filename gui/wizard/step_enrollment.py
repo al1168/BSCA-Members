@@ -17,14 +17,11 @@ class StepEnrollment(QWidget):
         self.start_date = DateLineEdit()
         self.start_date.set_pydate(date.today())
 
-        self.end_date = DateLineEdit()   # blank = ongoing
-
         form.addRow("Enrollment Start *", self.start_date)
-        form.addRow("Enrollment End (blank = ongoing)", self.end_date)
 
         note = QLabel(
-            "Enrollment begins on the start date. "
-            "Leave End blank for ongoing enrollment."
+            "Enrollment begins on the start date and is ongoing. "
+            "You can set an end date later from the Enrollments tab."
         )
         note.setWordWrap(True)
         note.setStyleSheet("color: gray; font-size: 11px;")
@@ -34,13 +31,11 @@ class StepEnrollment(QWidget):
         layout.addStretch()
 
     def validate(self) -> bool:
-        """Start is required; End is optional (blank = ongoing)."""
-        ok = self.start_date.flag_validity(required=True)
-        ok = self.end_date.flag_validity() and ok
-        return ok
+        """Start is required; enrollment is created ongoing (no end date)."""
+        return self.start_date.flag_validity(required=True)
 
     def collect(self) -> dict:
         return {
             "enrollment_start": self.start_date.to_pydate(),
-            "enrollment_end": self.end_date.to_pydate(),   # None when blank
+            "enrollment_end": None,   # ongoing; an end date is set later if needed
         }
