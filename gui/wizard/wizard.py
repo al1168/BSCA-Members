@@ -174,6 +174,7 @@ class AddMemberWizard(QDialog):
                 cell=c.get("cell", ""),
                 dob=c.get("dob"),
                 gender=c.get("gender", ""),
+                transport_authorization=data.get("transport_authorization"),
                 db_path=self._db_path,
             )
             if self._events_path:

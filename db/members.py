@@ -1104,9 +1104,15 @@ def insert_member(
     cell: str = "",
     dob: date | None = None,
     gender: str = "",
+    transport_authorization: dict | None = None,
     db_path: str = "",
 ) -> None:
-    """Insert a new member and all related records in one transaction."""
+    """Insert a new member and all related records in one transaction.
+
+    When a transport_authorization (e.g. {"auth_number": "..."}) is given along
+    with an authorization, a transportation auth mirroring the care auth's
+    dates/days/plan is inserted and linked to it via [AuthEdge].
+    """
     conn = _connect(db_path)
     try:
         c = conn.cursor()
@@ -1134,6 +1140,28 @@ def insert_member(
                     authorization.get("auth_number", "") or "",
                 ),
             )
+            # Optional transportation auth: mirrors the care auth's dates/days,
+            # carries its own number, and is linked via [AuthEdge].
+            if transport_authorization:
+                c.execute("SELECT @@IDENTITY")
+                care_id = int(c.fetchone()[0])
+                c.execute(
+                    INSERT_TRANSPORT_AUTH,
+                    (
+                        center_id,
+                        authorization["auth_start"],
+                        authorization["auth_end"],
+                        None, None,
+                        encode_auth_days(authorization["auth_days"]),
+                        auth_plan,
+                        datetime.now(),
+                        member_id,
+                        transport_authorization.get("auth_number", "") or "",
+                    ),
+                )
+                c.execute("SELECT @@IDENTITY")
+                transport_id = int(c.fetchone()[0])
+                c.execute(INSERT_AUTH_EDGE, (care_id, transport_id))
         for row in availability_rows:
             c.execute(
                 INSERT_AVAILABILITY,

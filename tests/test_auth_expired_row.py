@@ -56,6 +56,7 @@ def test_overlapping_auths_show_conflict_tooltip(qapp, monkeypatch):
                 "created_at": None, "member_id": ""}
 
     w = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
+    w._transport_auths = []
     w._authorizations = [
         a(1, date(2026, 1, 1), date(2026, 6, 30)),
         a(2, date(2026, 6, 1), date(2026, 12, 31)),   # overlaps 1
@@ -83,6 +84,7 @@ def _build_tab(monkeypatch):
     monkeypatch.setattr(dbm, "get_auth_ids_with_documents", lambda cid, path: set())
     import gui.member_tabs as mt
     w = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
+    w._transport_auths = []
     w._authorizations = [
         {"id": 1, "auth_start": date(2025, 1, 1), "auth_end": date(2999, 12, 31),
          "auth_days": "12345", "health_plan": "HOF", "created_at": None},
@@ -137,6 +139,7 @@ def test_auth_number_column_shows_value(qapp, monkeypatch):
     monkeypatch.setattr(dbm, "get_auth_ids_with_documents", lambda cid, path: set())
     import gui.member_tabs as mt
     w = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
+    w._transport_auths = []
     w._authorizations = [
         {"id": 5, "auth_start": date(2026, 1, 1), "auth_end": date(2026, 12, 31),
          "auth_days": "12", "health_plan": "HF", "created_at": None,

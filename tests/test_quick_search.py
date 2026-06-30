@@ -64,3 +64,19 @@ def test_arrow_navigation_moves_selection(qapp):
     assert dlg._list.currentRow() == 0
     dlg._move(-1)                            # clamps at top
     assert dlg._list.currentRow() == 0
+
+
+def test_dialog_is_non_modal(qapp):
+    # Non-modal so clicking the background window closes it and focuses that window.
+    dlg = _dialog(qapp)
+    assert dlg.isModal() is False
+
+
+def test_choose_emits_chosen_signal(qapp):
+    dlg = _dialog(qapp)
+    dlg._search.setText("Jones")
+    received = []
+    dlg.chosen.connect(received.append)
+    dlg._choose_current()                    # single click / Enter both call this
+    assert received == [2]
+    assert dlg._chosen_done is True          # suppresses close-on-deactivate

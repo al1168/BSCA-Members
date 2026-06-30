@@ -88,6 +88,24 @@ def test_linked_auth_shows_care_auth_number(qapp, monkeypatch):
     assert table.item(r, _col(table, "Linked Auth")).text() == "CARE-1"
 
 
+def test_linked_auth_cell_stores_care_id_for_navigation(qapp, monkeypatch):
+    from PyQt6.QtCore import Qt
+    care = {"id": 99, "auth_start": date(2026, 1, 1), "auth_end": date(2026, 12, 31),
+            "auth_days": "12", "health_plan": "HF", "created_at": None,
+            "member_id": "", "auth_number": "CARE-1"}
+    mt, table, _tab = _build(
+        monkeypatch,
+        auths=[care],
+        transports=[_t(5, date(2026, 1, 1), date(2026, 12, 31), "T-123")],
+        edges=[{"id": 1, "authorization_id": 99,
+                "transport_authorization_id": 5}],
+    )
+    r = _row_for_id(table, 5)
+    item = table.item(r, _col(table, "Linked Auth"))
+    # Care id is stashed in UserRole so clicking the cell can jump to that auth.
+    assert item.data(Qt.ItemDataRole.UserRole) == 99
+
+
 def test_unlinked_transport_has_blank_linked_cell(qapp, monkeypatch):
     mt, table, _tab = _build(
         monkeypatch,

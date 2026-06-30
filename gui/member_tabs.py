@@ -262,6 +262,10 @@ def sort_auths_latest_first(auths: list[dict]) -> list[dict]:
 # clearly dimmed against both the dark and light backgrounds.
 EXPIRED_FG = "#7d8198"
 
+# Accent used for clickable cross-references (e.g. the Linked Auth cell that
+# jumps to the Authorizations tab); matches the app accent.
+LINK_FG = "#5b7cf4"
+
 
 def _as_date(value):
     """Normalize a temporal value to a datetime.date for comparison: a datetime
@@ -1893,11 +1897,15 @@ class MemberTabsWidget(QWidget):
         layout.setContentsMargins(0, 12, 0, 0)
 
         columns = ["ID", "Auth Start", "Auth End", "Days", "Health Plan",
-                   "Member ID", "Auth Number", "Created", "Status", "Document",
-                   "Action"]
+                   "Member ID", "Auth Number", "Created", "Status", "Transport",
+                   "Document", "Action"]
+        ci = {name: i for i, name in enumerate(columns)}
         table = QTableWidget(len(self._authorizations), len(columns))
         table.setHorizontalHeaderLabels(columns)
-        table.horizontalHeaderItem(3).setToolTip("1=Mon  2=Tue  3=Wed  4=Thu  5=Fri")
+        table.horizontalHeaderItem(ci["Days"]).setToolTip(
+            "1=Mon  2=Tue  3=Wed  4=Thu  5=Fri")
+        table.horizontalHeaderItem(ci["Transport"]).setToolTip(
+            "Linked transportation authorizations")
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         hdr = table.horizontalHeader()
@@ -1908,8 +1916,16 @@ class MemberTabsWidget(QWidget):
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(40)  # roomier rows; pills uncramped
 
-        from db.members import get_auth_ids_with_documents
+        from db.members import get_auth_ids_with_documents, get_auth_edges
         doc_ids = get_auth_ids_with_documents(self._center_id, self._db_path)
+
+        # Linked transport auths per care auth (via the [AuthEdge] junction).
+        t_by_id = {t["id"]: t for t in self._transport_auths}
+        transports_by_care: dict = {}
+        for e in get_auth_edges(self._db_path):
+            tr = t_by_id.get(e["transport_authorization_id"])
+            if tr is not None:
+                transports_by_care.setdefault(e["authorization_id"], []).append(tr)
 
         today = date.today()
         overlaps = auth_overlap_map(self._authorizations)
@@ -1919,9 +1935,9 @@ class MemberTabsWidget(QWidget):
 
             start_item = QTableWidgetItem(str(a["auth_start"]))
             end_item = QTableWidgetItem(str(a["auth_end"]))
-            table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
-            table.setItem(r, 1, start_item)
-            table.setItem(r, 2, end_item)
+            table.setItem(r, ci["ID"], QTableWidgetItem(str(a["id"])))
+            table.setItem(r, ci["Auth Start"], start_item)
+            table.setItem(r, ci["Auth End"], end_item)
 
             # Conflict: this auth's date range overlaps another's. Tint the date
             # cells red and explain which auth(s) it collides with.
@@ -1935,7 +1951,7 @@ class MemberTabsWidget(QWidget):
                     it.setToolTip(tip)
 
             chips = WeekdayChips(decode_auth_days(a["auth_days"] or ""), compact=True)
-            table.setCellWidget(r, 3, chips)
+            table.setCellWidget(r, ci["Days"], chips)
 
             # Health plan as the same colored pill used everywhere else, a
             # compact pill centered in its column.
@@ -1944,19 +1960,36 @@ class MemberTabsWidget(QWidget):
             if badge is not None:
                 plan_cell = _centered_cell(badge)
                 plan_badges.append(badge)
-                table.setCellWidget(r, 4, plan_cell)
+                table.setCellWidget(r, ci["Health Plan"], plan_cell)
             else:
-                table.setItem(r, 4, QTableWidgetItem(""))
+                table.setItem(r, ci["Health Plan"], QTableWidgetItem(""))
 
             # Member ID (per-authorization); blank when unset.
-            table.setItem(r, 5, QTableWidgetItem(a.get("member_id") or ""))
+            table.setItem(r, ci["Member ID"], QTableWidgetItem(a.get("member_id") or ""))
 
             # Authorization number; blank when unset / predating the column.
-            table.setItem(r, 6, QTableWidgetItem(a.get("auth_number") or ""))
+            table.setItem(r, ci["Auth Number"], QTableWidgetItem(a.get("auth_number") or ""))
 
             # When the row was created (auto-stamped on insert); blank for rows
             # that predate the column.
-            table.setItem(r, 7, QTableWidgetItem(format_created_at(a.get("created_at"))))
+            table.setItem(r, ci["Created"],
+                          QTableWidgetItem(format_created_at(a.get("created_at"))))
+
+            # Linked transportation auths: a button that opens a picker of the
+            # transport auths tied to this care auth; "—" when there are none.
+            linked = transports_by_care.get(a["id"], [])
+            if linked:
+                t_btn = QPushButton(f"View ({len(linked)})")
+                t_btn.setObjectName("btn_edit")
+                t_btn.clicked.connect(
+                    lambda _=False, items=linked:
+                    self._open_linked_transports_popup(items))
+                table.setCellWidget(r, ci["Transport"], t_btn)
+            else:
+                dash = QTableWidgetItem("—")
+                dash.setForeground(QColor(EXPIRED_FG))
+                dash.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(r, ci["Transport"], dash)
 
             has_doc = a["id"] in doc_ids
             doc_btn = QPushButton("Open" if has_doc else "Attach")
@@ -1967,13 +2000,13 @@ class MemberTabsWidget(QWidget):
             else:
                 doc_btn.clicked.connect(
                     lambda _=False, auth=a: self._attach_auth_document(auth))
-            table.setCellWidget(r, 9, doc_btn)
+            table.setCellWidget(r, ci["Document"], doc_btn)
 
             # Every authorization is editable (older ones included).
             btn = QPushButton("Edit")
             btn.setObjectName("btn_edit")
             btn.clicked.connect(lambda _=False, auth=a: self._edit_auth(auth))
-            table.setCellWidget(r, 10, btn)
+            table.setCellWidget(r, ci["Action"], btn)
 
             # Status pill: green Active / amber Upcoming / red Expired, centered.
             _label = {"active": "Active", "upcoming": "Upcoming",
@@ -1983,14 +2016,15 @@ class MemberTabsWidget(QWidget):
             chip = QLabel(_label)
             chip.setObjectName(_chip_obj)
             status_chips.append(chip)
-            table.setCellWidget(r, 8, _centered_cell(chip))
+            table.setCellWidget(r, ci["Status"], _centered_cell(chip))
 
             if status != "expired":
                 continue
 
             # Expired rows are dimmed so the in-effect ones stand out.
-            for col in (0, 1, 2, 4, 5, 6, 7):
-                item = table.item(r, col)
+            for name in ("ID", "Auth Start", "Auth End", "Member ID",
+                         "Auth Number", "Created"):
+                item = table.item(r, ci[name])
                 if item is not None:
                     item.setForeground(QColor(EXPIRED_FG))
             for widget in (chips, plan_cell):
@@ -2000,8 +2034,8 @@ class MemberTabsWidget(QWidget):
                     widget.setGraphicsEffect(eff)
 
         # Size the pill columns to fit their widest pill so nothing clips.
-        _fit_pill_column(table, 4, plan_badges, floor=96)
-        _fit_pill_column(table, 8, status_chips, floor=96)
+        _fit_pill_column(table, ci["Health Plan"], plan_badges, floor=96)
+        _fit_pill_column(table, ci["Status"], status_chips, floor=96)
 
         self._auth_table = table
         btn_add = QPushButton("+ Add")
@@ -2358,14 +2392,21 @@ class MemberTabsWidget(QWidget):
             table.setItem(r, ci["Member ID"], QTableWidgetItem(t.get("member_id") or ""))
             table.setItem(r, ci["Auth Number"], QTableWidgetItem(t.get("auth_number") or ""))
 
-            # Linked care auth: show its auth number (blank when unlinked).
+            # Linked care auth: show its auth number (blank when unlinked). When
+            # linked, the cell is a clickable link that jumps to that care auth
+            # on the Authorizations tab (care id stashed in UserRole).
             care_id = link_map.get(t["id"])
             care = auth_by_id.get(care_id)
             linked_item = QTableWidgetItem((care.get("auth_number") if care else "") or "")
             if care:
+                linked_item.setData(Qt.ItemDataRole.UserRole, care_id)
                 linked_item.setToolTip(
-                    f"Linked care auth #{care_id}: "
-                    f"{care.get('auth_start')} – {care.get('auth_end')}")
+                    f"Click to open the linked care authorization #{care_id} "
+                    f"({care.get('auth_start')} – {care.get('auth_end')})")
+                linked_item.setForeground(QColor(LINK_FG))
+                lf = linked_item.font()
+                lf.setUnderline(True)
+                linked_item.setFont(lf)
             table.setItem(r, ci["Linked Auth"], linked_item)
 
             table.setItem(r, ci["Created"],
@@ -2416,6 +2457,8 @@ class MemberTabsWidget(QWidget):
         _fit_pill_column(table, ci["Status"], status_chips, floor=96)
 
         self._transport_table = table
+        self._transport_linked_col = ci["Linked Auth"]
+        table.cellClicked.connect(self._on_transport_linked_clicked)
         btn_add = QPushButton("+ Add")
         btn_add.clicked.connect(self._add_transport)
         btn_del = QPushButton("Delete Selected")
@@ -2708,6 +2751,73 @@ class MemberTabsWidget(QWidget):
         self._refresh_tab(3, self._make_transport_tab())
         if description:
             self._log_event("TRANSPORT", description)
+
+    # ── Cross-tab navigation (Authorizations <-> Transportation) ───────────
+
+    def _select_row_by_id(self, table, record_id) -> None:
+        """Select and scroll to the row whose first column equals record_id."""
+        if table is None:
+            return
+        for r in range(table.rowCount()):
+            it = table.item(r, 0)
+            if it is not None and it.text() == str(record_id):
+                table.selectRow(r)
+                table.scrollToItem(it)
+                table.setFocus()
+                return
+
+    def _goto_auth(self, auth_id) -> None:
+        """Switch to the Authorizations tab and select that care auth."""
+        self._tabs.setCurrentIndex(2)
+        self._select_row_by_id(getattr(self, "_auth_table", None), auth_id)
+
+    def _goto_transport(self, transport_id) -> None:
+        """Switch to the Transportation tab and select that transport auth."""
+        self._tabs.setCurrentIndex(3)
+        self._select_row_by_id(getattr(self, "_transport_table", None), transport_id)
+
+    def _on_transport_linked_clicked(self, row, col) -> None:
+        """Clicking the Linked Auth cell jumps to its care auth on the Auth tab."""
+        if col != getattr(self, "_transport_linked_col", -1):
+            return
+        item = self._transport_table.item(row, col)
+        if item is None:
+            return
+        care_id = item.data(Qt.ItemDataRole.UserRole)
+        if care_id is not None:
+            self._goto_auth(care_id)
+
+    def _open_linked_transports_popup(self, transports: list) -> None:
+        """A small picker (Ctrl-K-like) of the transport auths linked to a care
+        auth; single-click navigates to that transport on the Transportation tab."""
+        from PyQt6.QtWidgets import (
+            QDialog, QVBoxLayout, QLabel, QListWidget, QListWidgetItem,
+        )
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Linked Transportation Authorizations")
+        dlg.resize(480, 320)
+        v = QVBoxLayout(dlg)
+        v.addWidget(QLabel("Select a transportation authorization to open it:"))
+        lst = QListWidget()
+        for t in sort_auths_latest_first(transports):
+            num = t.get("auth_number") or "(no #)"
+            days = format_auth_days(t.get("auth_days", "") or "")
+            label = (f"{num}      {t.get('auth_start')} – {t.get('auth_end')}"
+                     f"      [{days}]")
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, t["id"])
+            lst.addItem(item)
+        if lst.count():
+            lst.setCurrentRow(0)
+        v.addWidget(lst)
+
+        def choose(item):
+            tid = item.data(Qt.ItemDataRole.UserRole)
+            dlg.accept()
+            self._goto_transport(tid)
+
+        lst.itemClicked.connect(choose)
+        dlg.exec()
 
     # ── Availability tab ───────────────────────────────────────────────────
 

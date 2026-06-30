@@ -294,17 +294,27 @@ class MainWindow(QMainWindow):
         self._show_member(center_id)
 
     def _open_quick_search(self):
-        """Ctrl+K: a command-palette member search overlay."""
+        """Ctrl+K: a command-palette member search overlay.
+
+        Shown non-modally so clicking the window behind it both closes the
+        overlay and focuses that window; selection arrives via the `chosen`
+        signal. A reference is kept so the dialog isn't garbage-collected."""
         if not self._all_members:
             return
         from gui.quick_search import QuickSearchDialog
         dlg = QuickSearchDialog(self._all_members, matches_search, self)
-        if dlg.exec() and dlg.chosen_center_id is not None:
-            self._jump_to_member(dlg.chosen_center_id)
+        dlg.chosen.connect(self._jump_to_member)
+        self._quick_search_dlg = dlg
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+        dlg._search.setFocus()
 
     def _jump_to_member(self, center_id):
         """Open a member by id (from quick search), honoring the unsaved guard
         and syncing the sidebar highlight when that member is visible."""
+        if center_id is None:
+            return
         if not self._ok_to_leave_current():
             return
         self._show_member(center_id)

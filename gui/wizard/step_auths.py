@@ -3,6 +3,7 @@ from datetime import date
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
     QCheckBox, QTimeEdit, QPushButton, QAbstractSpinBox, QGridLayout,
+    QLineEdit,
 )
 from PyQt6.QtCore import QTime
 from gui.address_autocomplete import DateLineEdit
@@ -60,6 +61,25 @@ class StepAuths(QWidget):
             self._day_checks[num] = cb
             days_grid.addWidget(cb, i // 4, i % 4)   # 4 per row -> Mon-Thu / Fri-Sun
         auth_layout.addRow("Days:", days_widget)
+
+        # ── Transportation (optional) ────────────────────────────
+        # A transport auth shares the care auth's dates/days but carries its own
+        # number. Filled in here, it's created alongside and linked to the care
+        # auth; left blank, no transport auth is created. Days/dates can be
+        # adjusted later in the member's Transportation tab.
+        title_transport = QLabel("Transportation")
+        title_transport.setStyleSheet("font-weight:600; font-size:11px;")
+        auth_layout.addRow(title_transport)
+
+        self.transport_number = QLineEdit()
+        self.transport_number.setPlaceholderText(
+            "Transport auth number (optional)")
+        auth_layout.addRow("Transport Auth #:", self.transport_number)
+
+        caption_transport = QLabel("Uses the same dates & days as the authorization.")
+        caption_transport.setObjectName("quick_search_hint")
+        caption_transport.setWordWrap(True)
+        auth_layout.addRow(caption_transport)
 
         panels.addWidget(auth_box)
 
@@ -156,4 +176,12 @@ class StepAuths(QWidget):
             for r in self._avail_rows
         ]
         avail = merge_default_availability(added, date.today())
-        return {"authorization": auth, "availability_rows": avail}
+        # Transportation auth (optional): only when a care auth exists and a
+        # transport number was entered. Mirrors the care auth's dates/days.
+        transport = None
+        if auth is not None:
+            num = self.transport_number.text().strip()
+            if num:
+                transport = {"auth_number": num}
+        return {"authorization": auth, "availability_rows": avail,
+                "transport_authorization": transport}

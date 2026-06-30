@@ -1,30 +1,39 @@
 """Ctrl+K command-palette member search.
 
-A frameless, modal overlay: type to filter members (using the matcher passed in,
-so the comma-triggered "Last, First" rule is preserved), arrow keys to move,
-Enter to open the highlighted member, Esc to close. The matcher is injected to
-avoid importing main_window (and a circular import)."""
+A frameless, non-modal overlay: type to filter members (using the matcher passed
+in, so the comma-triggered "Last, First" rule is preserved), arrow keys to move,
+single-click or Enter to open the highlighted member, Esc to close. It is
+non-modal and closes itself when it loses focus (clicking the window behind it),
+so that click lands on — and focuses — the background window. Selection is
+reported via the `chosen` signal. The matcher is injected to avoid importing
+main_window (and a circular import)."""
 
 from PyQt6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QLineEdit, QListWidget, QListWidgetItem,
     QLabel, QGraphicsDropShadowEffect,
 )
-from PyQt6.QtCore import Qt, QEvent
+from PyQt6.QtCore import Qt, QEvent, pyqtSignal
 from PyQt6.QtGui import QColor
 
 
 class QuickSearchDialog(QDialog):
     MAX_RESULTS = 50
 
+    # Emitted with the chosen member's center_id when a result is picked.
+    chosen = pyqtSignal(object)
+
     def __init__(self, members, matcher, parent=None):
         super().__init__(parent)
         self._members = members
         self._matcher = matcher
         self.chosen_center_id = None
+        self._chosen_done = False
 
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setModal(True)
+        # Non-modal so a click on the background window goes through (focusing it);
+        # we close ourselves on deactivation (see event()).
+        self.setModal(False)
         self.resize(620, 460)
 
         # Transparent window; the rounded card lives inside so the corners render
@@ -56,10 +65,11 @@ class QuickSearchDialog(QDialog):
 
         self._list = QListWidget()
         self._list.setObjectName("quick_search_list")
-        self._list.itemDoubleClicked.connect(lambda _it: self._choose_current())
+        # Single click opens the member (the clicked item becomes current).
+        self._list.itemClicked.connect(lambda _it: self._choose_current())
         v.addWidget(self._list)
 
-        hint = QLabel("↑↓ navigate · Enter open · Esc close")
+        hint = QLabel("↑↓ navigate · click or Enter open · Esc close")
         hint.setObjectName("quick_search_hint")
         v.addWidget(hint)
 
@@ -107,8 +117,18 @@ class QuickSearchDialog(QDialog):
         item = self._list.currentItem()
         if item is None:
             return
-        self.chosen_center_id = item.data(Qt.ItemDataRole.UserRole)
+        cid = item.data(Qt.ItemDataRole.UserRole)
+        self.chosen_center_id = cid
+        self._chosen_done = True   # suppress the close-on-deactivate path
         self.accept()
+        self.chosen.emit(cid)
+
+    def event(self, e):
+        # Close when the window loses activation (e.g. the user clicks the
+        # background window) — but not when we're closing due to a selection.
+        if e.type() == QEvent.Type.WindowDeactivate and not self._chosen_done:
+            self.close()
+        return super().event(e)
 
     def eventFilter(self, obj, event):
         # Route Up/Down from the text box to the results list (keeps typing focus).
