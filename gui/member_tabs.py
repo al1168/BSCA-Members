@@ -706,6 +706,7 @@ class MemberTabsWidget(QWidget):
         self._member = {}
         self._enrollments = []
         self._authorizations = []
+        self._transport_auths = []
         self._availability = []
         self._absences = []
         self._one_off = []
@@ -725,6 +726,12 @@ class MemberTabsWidget(QWidget):
             self._emergency_contacts = ctx.get("emergency_contacts", [])
         except Exception as exc:
             QMessageBox.critical(self, "Load Error", str(exc))
+        # Transport auths load independently and degrade to [] if the
+        # [TransportAuthorization] table is missing, so they never block the
+        # member from loading.
+        from db.members import get_transport_authorizations
+        self._transport_auths = get_transport_authorizations(
+            self._center_id, self._db_path)
         self._overlay_current_auth()
 
     def _refresh_header_plan(self):
@@ -1018,6 +1025,7 @@ class MemberTabsWidget(QWidget):
         self._tab_info = self._make_info_tab()
         self._tab_enrollments = self._make_enrollments_tab()
         self._tab_auths = self._make_auths_tab()
+        self._tab_transport = self._make_transport_tab()
         self._tab_avail = self._make_avail_tab()
         self._tab_unavail = self._make_unavailable_tab()
         self._tab_absences = self._make_absences_tab()
@@ -1026,6 +1034,7 @@ class MemberTabsWidget(QWidget):
         self._tabs.addTab(self._tab_enrollments, "Enrollments")
         self._tabs.addTab(self._tab_auths,
             "Auths ⚠" if warn else "Authorizations")
+        self._tabs.addTab(self._tab_transport, "Transportation")
         self._tabs.addTab(self._tab_avail, "Time Slot Availability")
         self._tabs.addTab(self._tab_unavail, "Availability Override")
         self._tabs.addTab(self._tab_absences, "Absences")
@@ -2276,6 +2285,430 @@ class MemberTabsWidget(QWidget):
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 
+    # ── Transportation tab ─────────────────────────────────────────────────
+
+    def _make_transport_tab(self) -> QWidget:
+        """Transportation authorizations: a separate [TransportAuthorization]
+        table shown like the Authorizations tab, with a 'Linked Auth' column
+        derived from the [AuthEdge] junction. The Document column appears only
+        when [TransportAuthorization] has a [Document] attachment field."""
+        from datetime import date
+        from PyQt6.QtWidgets import (
+            QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView,
+            QGraphicsOpacityEffect,
+        )
+        from PyQt6.QtGui import QColor
+        from db.members import (
+            get_transport_ids_with_documents, get_auth_edges,
+            transport_has_document_column,
+        )
+
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(0, 12, 0, 0)
+
+        has_doc = transport_has_document_column(self._db_path)
+        columns = ["ID", "Auth Start", "Auth End", "Days", "Health Plan",
+                   "Member ID", "Auth Number", "Linked Auth", "Created", "Status"]
+        if has_doc:
+            columns.append("Document")
+        columns.append("Action")
+        ci = {name: i for i, name in enumerate(columns)}
+
+        table = QTableWidget(len(self._transport_auths), len(columns))
+        table.setHorizontalHeaderLabels(columns)
+        table.horizontalHeaderItem(ci["Days"]).setToolTip(
+            "1=Mon  2=Tue  3=Wed  4=Thu  5=Fri")
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        hdr = table.horizontalHeader()
+        hdr.setStretchLastSection(False)
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(40)
+
+        doc_ids = get_transport_ids_with_documents(self._center_id, self._db_path)
+
+        # care<->transport link: transport id -> care auth id -> care auth number.
+        link_map = {e["transport_authorization_id"]: e["authorization_id"]
+                    for e in get_auth_edges(self._db_path)}
+        auth_by_id = {a["id"]: a for a in self._authorizations}
+
+        today = date.today()
+        plan_badges, status_chips = [], []
+        for r, t in enumerate(sort_auths_latest_first(self._transport_auths)):
+            status = auth_status(t, today)
+
+            table.setItem(r, ci["ID"], QTableWidgetItem(str(t["id"])))
+            table.setItem(r, ci["Auth Start"], QTableWidgetItem(str(t["auth_start"])))
+            table.setItem(r, ci["Auth End"], QTableWidgetItem(str(t["auth_end"])))
+
+            chips = WeekdayChips(decode_auth_days(t["auth_days"] or ""), compact=True)
+            table.setCellWidget(r, ci["Days"], chips)
+
+            badge = make_plan_badge(t.get("health_plan", "") or "")
+            plan_cell = None
+            if badge is not None:
+                plan_cell = _centered_cell(badge)
+                plan_badges.append(badge)
+                table.setCellWidget(r, ci["Health Plan"], plan_cell)
+            else:
+                table.setItem(r, ci["Health Plan"], QTableWidgetItem(""))
+
+            table.setItem(r, ci["Member ID"], QTableWidgetItem(t.get("member_id") or ""))
+            table.setItem(r, ci["Auth Number"], QTableWidgetItem(t.get("auth_number") or ""))
+
+            # Linked care auth: show its auth number (blank when unlinked).
+            care_id = link_map.get(t["id"])
+            care = auth_by_id.get(care_id)
+            linked_item = QTableWidgetItem((care.get("auth_number") if care else "") or "")
+            if care:
+                linked_item.setToolTip(
+                    f"Linked care auth #{care_id}: "
+                    f"{care.get('auth_start')} – {care.get('auth_end')}")
+            table.setItem(r, ci["Linked Auth"], linked_item)
+
+            table.setItem(r, ci["Created"],
+                          QTableWidgetItem(format_created_at(t.get("created_at"))))
+
+            if has_doc:
+                has_d = t["id"] in doc_ids
+                doc_btn = QPushButton("Open" if has_d else "Attach")
+                doc_btn.setObjectName("btn_edit")
+                if has_d:
+                    doc_btn.clicked.connect(
+                        lambda _=False, tr=t: self._open_transport_document_menu(tr))
+                else:
+                    doc_btn.clicked.connect(
+                        lambda _=False, tr=t: self._attach_transport_document(tr))
+                table.setCellWidget(r, ci["Document"], doc_btn)
+
+            btn = QPushButton("Edit")
+            btn.setObjectName("btn_edit")
+            btn.clicked.connect(
+                lambda _=False, tr=t, link=care_id: self._edit_transport(tr, link))
+            table.setCellWidget(r, ci["Action"], btn)
+
+            _label = {"active": "Active", "upcoming": "Upcoming",
+                      "expired": "Expired"}[status]
+            _chip_obj = {"active": "active_chip", "upcoming": "upcoming_chip",
+                         "expired": "expired_chip"}[status]
+            chip = QLabel(_label)
+            chip.setObjectName(_chip_obj)
+            status_chips.append(chip)
+            table.setCellWidget(r, ci["Status"], _centered_cell(chip))
+
+            if status != "expired":
+                continue
+
+            for name in ("ID", "Auth Start", "Auth End", "Member ID",
+                         "Auth Number", "Linked Auth", "Created"):
+                item = table.item(r, ci[name])
+                if item is not None:
+                    item.setForeground(QColor(EXPIRED_FG))
+            for widget in (chips, plan_cell):
+                if widget is not None:
+                    eff = QGraphicsOpacityEffect(widget)
+                    eff.setOpacity(0.45)
+                    widget.setGraphicsEffect(eff)
+
+        _fit_pill_column(table, ci["Health Plan"], plan_badges, floor=96)
+        _fit_pill_column(table, ci["Status"], status_chips, floor=96)
+
+        self._transport_table = table
+        btn_add = QPushButton("+ Add")
+        btn_add.clicked.connect(self._add_transport)
+        btn_del = QPushButton("Delete Selected")
+        btn_del.clicked.connect(lambda: self._delete_transport(table))
+        self._style_crud_buttons(table, btn_add, btn_del)
+
+        layout.addLayout(self._add_bar(btn_add))   # Add at top-right
+        layout.addWidget(table)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(btn_del)
+        layout.addLayout(btn_row)
+        return w
+
+    def _open_transport_dialog(self, existing: dict | None = None,
+                               current_link=None) -> dict | None:
+        """Add/Edit Transportation Auth dialog. Mirrors the Authorization dialog
+        plus a 'Linked Care Auth' combo; on a fresh add, picking a care auth
+        prefills dates/days/plan from it (transport usually mirrors the care
+        auth, but may differ). Returns the auth dict + care_auth_id, or None."""
+        from PyQt6.QtWidgets import (
+            QDialog, QFormLayout, QCheckBox, QComboBox,
+            QHBoxLayout, QDialogButtonBox, QWidget, QLineEdit,
+        )
+        from db.members import (
+            HEALTH_PLANS, current_authorization, latest_authorization,
+        )
+        from datetime import date as _date
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(
+            "Edit Transportation Auth" if existing else "Add Transportation Auth")
+        form = QFormLayout(dlg)
+
+        auth_start = DateLineEdit()
+        auth_end = DateLineEdit()
+        if existing:
+            auth_start.set_pydate(existing["auth_start"])
+            auth_end.set_pydate(existing["auth_end"])
+        else:
+            today = _date.today()
+            auth_start.set_pydate(today)
+            auth_end.set_pydate(today.replace(year=today.year + 1))
+
+        existing_days = (
+            self.decode_auth_days_static(existing["auth_days"]) if existing else set()
+        )
+        day_checks = {}
+        days_widget = QWidget()
+        days_hl = QHBoxLayout(days_widget)
+        days_hl.setContentsMargins(0, 0, 0, 0)
+        for num, label in [(1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"),
+                           (5, "Fri"), (6, "Sat"), (7, "Sun")]:
+            cb = QCheckBox(label)
+            cb.setChecked(num in existing_days)
+            day_checks[num] = cb
+            days_hl.addWidget(cb)
+
+        plan_combo = QComboBox()
+        plan_combo.addItems(HEALTH_PLANS)
+        if existing:
+            idx = plan_combo.findText(existing.get("health_plan", ""))
+            if idx >= 0:
+                plan_combo.setCurrentIndex(idx)
+
+        member_id_edit = QLineEdit(
+            (existing.get("member_id") if existing else self._member.get("member_id"))
+            or "")
+        member_id_edit.setPlaceholderText("Health plan member / insurance ID")
+
+        auth_number_edit = QLineEdit(
+            (existing.get("auth_number") if existing else "") or "")
+        auth_number_edit.setPlaceholderText("Transportation authorization number")
+
+        # Linked care auth (optional). Selecting one on a fresh add prefills the
+        # dates/days/plan/member-id from it.
+        auth_by_id = {a["id"]: a for a in self._authorizations}
+        link_combo = QComboBox()
+        link_combo.addItem("— none —", None)
+        for a in sort_auths_latest_first(self._authorizations):
+            num = a.get("auth_number") or "(no #)"
+            link_combo.addItem(
+                f"{num}  ({a.get('auth_start')} – {a.get('auth_end')})", a["id"])
+
+        def apply_prefill():
+            if existing is not None:
+                return
+            src = auth_by_id.get(link_combo.currentData())
+            if not src:
+                return
+            if src.get("auth_start"):
+                auth_start.set_pydate(src["auth_start"])
+            if src.get("auth_end"):
+                auth_end.set_pydate(src["auth_end"])
+            src_days = self.decode_auth_days_static(src.get("auth_days") or "")
+            for n, cb in day_checks.items():
+                cb.setChecked(n in src_days)
+            pidx = plan_combo.findText(src.get("health_plan", "") or "")
+            if pidx >= 0:
+                plan_combo.setCurrentIndex(pidx)
+            if not member_id_edit.text().strip():
+                member_id_edit.setText(src.get("member_id") or "")
+
+        link_combo.currentIndexChanged.connect(lambda _=0: apply_prefill())
+
+        preselect_id = current_link if existing else (
+            (current_authorization(self._authorizations)
+             or latest_authorization(self._authorizations) or {}).get("id"))
+        if preselect_id is not None:
+            pos = link_combo.findData(preselect_id)
+            if pos >= 0:
+                link_combo.setCurrentIndex(pos)
+
+        form.addRow("Linked Care Auth:", link_combo)
+        form.addRow("Auth Start:", auth_start)
+        form.addRow("Auth End:", auth_end)
+        form.addRow("Days:", days_widget)
+        form.addRow("Health Plan:", plan_combo)
+        form.addRow("Member ID:", member_id_edit)
+        form.addRow("Auth Number:", auth_number_edit)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
+                                QDialogButtonBox.StandardButton.Cancel)
+        btns.rejected.connect(dlg.reject)
+        form.addRow(btns)
+
+        def on_accept():
+            ok = auth_start.flag_validity(required=True)
+            ok = auth_end.flag_validity(required=True) and ok
+            if not ok:
+                QMessageBox.warning(dlg, "Validation",
+                    "Enter valid Auth Start and Auth End dates (MM/DD/YYYY).")
+                return
+            if not any(cb.isChecked() for cb in day_checks.values()):
+                QMessageBox.warning(dlg, "Validation", "Select at least one day.")
+                return
+            dlg.accept()
+        btns.accepted.connect(on_accept)
+
+        if not dlg.exec():
+            return None
+        return {
+            "auth_start": auth_start.to_pydate(),
+            "auth_end": auth_end.to_pydate(),
+            "days": {n for n, cb in day_checks.items() if cb.isChecked()},
+            "health_plan": plan_combo.currentText(),
+            "member_id": member_id_edit.text().strip(),
+            "auth_number": auth_number_edit.text().strip(),
+            "care_auth_id": link_combo.currentData(),
+        }
+
+    def _add_transport(self):
+        from db.members import (
+            insert_transport_authorization, set_transport_link, encode_auth_days,
+        )
+        result = self._open_transport_dialog()
+        if not result:
+            return
+        try:
+            new_id = insert_transport_authorization(
+                self._center_id, result["auth_start"], result["auth_end"],
+                result["days"], result["health_plan"], self._db_path,
+                member_id=result["member_id"], auth_number=result["auth_number"],
+            )
+            set_transport_link(new_id, result["care_auth_id"], self._db_path)
+            self._after_transport_change(
+                f"Transport auth added: {result['auth_start']} – "
+                f"{result['auth_end']} · {encode_auth_days(result['days'])} · "
+                f"{result['auth_number']}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
+
+    def _edit_transport(self, transport: dict, current_link=None):
+        from db.members import (
+            update_transport_authorization, set_transport_link, encode_auth_days,
+        )
+        result = self._open_transport_dialog(existing=transport,
+                                             current_link=current_link)
+        if not result:
+            return
+        try:
+            update_transport_authorization(
+                transport["id"], result["auth_start"], result["auth_end"],
+                result["days"], result["health_plan"], self._db_path,
+                member_id=result["member_id"], auth_number=result["auth_number"],
+            )
+            set_transport_link(transport["id"], result["care_auth_id"], self._db_path)
+            self._after_transport_change(
+                f"Transport auth edited: {result['auth_start']} – "
+                f"{result['auth_end']} · {encode_auth_days(result['days'])} · "
+                f"{result['auth_number']}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", str(exc))
+
+    def _delete_transport(self, table):
+        row = table.currentRow()
+        if row < 0:
+            return
+        record_id = int(table.item(row, 0).text())
+        if QMessageBox.question(
+                self, "Confirm", "Delete this transportation authorization?") \
+                == QMessageBox.StandardButton.Yes:
+            from db.members import delete_transport_authorization
+            entry = next((t for t in self._transport_auths
+                          if t["id"] == record_id), None)
+            try:
+                delete_transport_authorization(record_id, self._db_path)
+                self._after_transport_change(None)
+                if entry:
+                    self._log_event(
+                        "TRANSPORT",
+                        f"Transport auth deleted: {entry['auth_start']} – "
+                        f"{entry['auth_end']} · {entry.get('auth_number', '')}")
+            except Exception as exc:
+                QMessageBox.critical(self, "Error", str(exc))
+
+    def _attach_transport_document(self, transport: dict, replace: bool = False):
+        from PyQt6.QtWidgets import QFileDialog
+        from db.members import set_transport_document
+        import os
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose document", "",
+            "Documents (*.pdf *.jpg *.jpeg *.png *.tif *.tiff *.doc *.docx)",
+        )
+        if not path:
+            return
+        try:
+            size_mb = os.path.getsize(path) / (1024 * 1024)
+        except OSError:
+            size_mb = 0
+        if size_mb > MAX_DOC_WARN_MB:
+            if QMessageBox.question(
+                self, "Large file",
+                f"This file is {size_mb:.1f} MB. Large attachments grow the database "
+                f"quickly (Access has a 2 GB limit). Attach it anyway?",
+            ) != QMessageBox.StandardButton.Yes:
+                return
+        try:
+            set_transport_document(transport["id"], path, self._db_path)
+            verb = "replaced" if replace else "attached"
+            self._after_transport_change(
+                f"Transport document {verb}: "
+                f"{transport['auth_start']} – {transport['auth_end']}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"Could not attach document:\n{exc}")
+
+    def _open_transport_document_menu(self, transport: dict):
+        box = QMessageBox(self)
+        box.setWindowTitle("Transportation Document")
+        box.setText(
+            f"Document for transportation authorization "
+            f"{transport['auth_start']} – {transport['auth_end']}.")
+        open_btn = box.addButton("Open", QMessageBox.ButtonRole.AcceptRole)
+        replace_btn = box.addButton("Replace", QMessageBox.ButtonRole.ActionRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is open_btn:
+            self._do_open_transport_document(transport)
+        elif clicked is replace_btn:
+            self._attach_transport_document(transport, replace=True)
+
+    def _do_open_transport_document(self, transport: dict):
+        from db.members import save_transport_document
+        import os
+        import tempfile
+
+        tmp_dir = tempfile.mkdtemp(prefix="transportdoc_")
+        try:
+            path = save_transport_document(transport["id"], tmp_dir, self._db_path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"Could not open document:\n{exc}")
+            return
+        if not path:
+            QMessageBox.information(self, "No document", "No document is attached.")
+            return
+        try:
+            os.startfile(path)  # Windows: open in the default application
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"Could not open the file:\n{exc}")
+
+    def _after_transport_change(self, description: str | None):
+        """Reload transport auths, refresh the Transportation tab, and (optionally)
+        log a TRANSPORT event. No Contacts plan/member sync (transport must not
+        drive the member's health plan)."""
+        from db.members import get_transport_authorizations
+        self._transport_auths = get_transport_authorizations(
+            self._center_id, self._db_path)
+        self._refresh_tab(3, self._make_transport_tab())
+        if description:
+            self._log_event("TRANSPORT", description)
+
     # ── Availability tab ───────────────────────────────────────────────────
 
     def _make_current_schedule_strip(self, today) -> QWidget:
@@ -2519,7 +2952,7 @@ class MemberTabsWidget(QWidget):
         try:
             update_availability(avail["id"], ts, te, es, ee, self._db_path)
             self._availability = get_availability(self._center_id, self._db_path)
-            self._refresh_tab(3, self._make_avail_tab())
+            self._refresh_tab(4, self._make_avail_tab())
             end_txt = ee.isoformat() if ee else "ongoing"
             self._log_event(
                 "AVAIL",
@@ -2601,7 +3034,7 @@ class MemberTabsWidget(QWidget):
                     eff_start.to_pydate(), None, self._db_path,
                 )
                 self._availability = get_availability(self._center_id, self._db_path)
-                self._refresh_tab(3, self._make_avail_tab())
+                self._refresh_tab(4, self._make_avail_tab())
                 self._log_event("AVAIL", f"Availability added: {day_name} {ts}–{te}")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
@@ -2619,7 +3052,7 @@ class MemberTabsWidget(QWidget):
             try:
                 delete_availability(record_id, self._db_path)
                 self._availability = get_availability(self._center_id, self._db_path)
-                self._refresh_tab(3, self._make_avail_tab())
+                self._refresh_tab(4, self._make_avail_tab())
                 if entry:
                     day = WEEKDAY_NAMES.get(entry["day_of_week"],
                                             str(entry["day_of_week"]))
@@ -2802,7 +3235,7 @@ class MemberTabsWidget(QWidget):
             insert_availability(self._center_id, day, ts, te, eff, None,
                                 self._db_path)
             self._availability = get_availability(self._center_id, self._db_path)
-            self._refresh_tab(3, self._make_avail_tab())
+            self._refresh_tab(4, self._make_avail_tab())
             day_name = WEEKDAY_NAMES.get(day, str(day))
             self._log_event("AVAIL", f"Scheduled change: {day_name} → {ts}–{te} "
                             f"effective {eff.isoformat()}")
@@ -2839,7 +3272,7 @@ class MemberTabsWidget(QWidget):
                     pred_new["effective_start_date"], eff - timedelta(days=1),
                     self._db_path)
             self._availability = get_availability(self._center_id, self._db_path)
-            self._refresh_tab(3, self._make_avail_tab())
+            self._refresh_tab(4, self._make_avail_tab())
             day_name = WEEKDAY_NAMES.get(day, str(day))
             self._log_event("AVAIL", f"Scheduled change updated: {day_name} → "
                             f"{ts}–{te} effective {eff.isoformat()}")
@@ -2868,7 +3301,7 @@ class MemberTabsWidget(QWidget):
                     self._db_path)
             delete_availability(entry["id"], self._db_path)
             self._availability = get_availability(self._center_id, self._db_path)
-            self._refresh_tab(3, self._make_avail_tab())
+            self._refresh_tab(4, self._make_avail_tab())
             self._log_event("AVAIL", f"Scheduled change canceled: {day_name} "
                             f"effective {entry['effective_start_date']}")
         except Exception as exc:
@@ -2999,7 +3432,7 @@ class MemberTabsWidget(QWidget):
                 result["avail_end"], result["notes"], self._db_path,
             )
             self._one_off = get_one_off_availability(self._center_id, self._db_path)
-            self._refresh_tab(4, self._make_unavailable_tab())
+            self._refresh_tab(5, self._make_unavailable_tab())
             self._log_event(
                 "AVAIL",
                 f"Availability override added: {result['date']} "
@@ -3023,7 +3456,7 @@ class MemberTabsWidget(QWidget):
                 result["avail_end"], result["notes"], self._db_path,
             )
             self._one_off = get_one_off_availability(self._center_id, self._db_path)
-            self._refresh_tab(4, self._make_unavailable_tab())
+            self._refresh_tab(5, self._make_unavailable_tab())
             self._log_event(
                 "AVAIL",
                 f"Availability override edited: {result['date']} "
@@ -3046,7 +3479,7 @@ class MemberTabsWidget(QWidget):
                 delete_one_off_availability(record_id, self._db_path)
                 self._one_off = get_one_off_availability(
                     self._center_id, self._db_path)
-                self._refresh_tab(4, self._make_unavailable_tab())
+                self._refresh_tab(5, self._make_unavailable_tab())
                 if entry:
                     self._log_event(
                         "AVAIL",
@@ -3119,7 +3552,7 @@ class MemberTabsWidget(QWidget):
             try:
                 insert_absence(self._center_id, lt, s, e, self._db_path)
                 self._absences = get_absences(self._center_id, self._db_path)
-                self._refresh_tab(5, self._make_absences_tab())
+                self._refresh_tab(6, self._make_absences_tab())
                 self._log_event("ABS", f"Absence added: {lt} · {s} – {e}")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
@@ -3137,7 +3570,7 @@ class MemberTabsWidget(QWidget):
             try:
                 delete_absence(record_id, self._db_path)
                 self._absences = get_absences(self._center_id, self._db_path)
-                self._refresh_tab(5, self._make_absences_tab())
+                self._refresh_tab(6, self._make_absences_tab())
                 if entry:
                     self._log_event(
                         "ABS",

@@ -243,6 +243,43 @@ AUTHORIZATION_SELECT = (
     "FROM [Authorization] WHERE [Center ID]=?"
 )
 
+# ── Transportation authorizations ───────────────────────────────────────────
+# A separate [TransportAuthorization] table, structurally identical to
+# [Authorization] (so _map_auth_row applies unchanged). The care<->transport
+# relationship is stored in the [AuthEdge] junction table. Kept out of the
+# scheduler's [Authorization] table so it never affects eligibility/scheduling.
+INSERT_TRANSPORT_AUTH = (
+    "INSERT INTO [TransportAuthorization] ([Center ID], [auth_start], [auth_end], "
+    "[effective_start], [effective_end], [auth_days], [Health Plan], [created_at], "
+    "[Member ID], [auth_number]) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+
+DELETE_TRANSPORT_AUTH = "DELETE FROM [TransportAuthorization] WHERE [ID]=?"
+
+UPDATE_TRANSPORT_AUTH = (
+    "UPDATE [TransportAuthorization] SET [auth_start]=?, [auth_end]=?, "
+    "[auth_days]=?, [Health Plan]=?, [Member ID]=?, [auth_number]=? WHERE [ID]=?"
+)
+
+TRANSPORT_AUTH_SELECT = (
+    "SELECT [ID],[Center ID],[auth_start],[auth_end],"
+    "[effective_start],[effective_end],[auth_days],[Health Plan],[created_at],"
+    "[Member ID],[auth_number] "
+    "FROM [TransportAuthorization] WHERE [Center ID]=?"
+)
+
+INSERT_AUTH_EDGE = (
+    "INSERT INTO [AuthEdge] ([authorization_id], [transport_authorization_id]) "
+    "VALUES (?, ?)"
+)
+DELETE_AUTH_EDGE_BY_TRANSPORT = (
+    "DELETE FROM [AuthEdge] WHERE [transport_authorization_id]=?"
+)
+AUTH_EDGE_SELECT = (
+    "SELECT [ID],[authorization_id],[transport_authorization_id] FROM [AuthEdge]"
+)
+
 INSERT_AVAILABILITY = (
     "INSERT INTO [Availability] ([Center ID], [effective_start_date], "
     "[effective_end_date], [Day Of Week], [avail_start], [avail_end]) "
@@ -577,8 +614,8 @@ def set_member_photo(center_id: int, image_path: str, db_path: str) -> None:
     _drop_dao_database(db_path)
 
 
-def set_auth_document(auth_id: int, file_path: str, db_path: str) -> None:
-    """Store file_path in the authorization's [Document] attachment, replacing any
+def _set_document(table: str, record_id: int, file_path: str, db_path: str) -> None:
+    """Store file_path in [table]'s [Document] attachment for one row, replacing any
     existing one. Uses a fresh writable DAO handle (the cached one is read-only).
     The file is stored as-is (PDFs/images preserved byte-for-byte)."""
     import win32com.client
@@ -586,11 +623,11 @@ def set_auth_document(auth_id: int, file_path: str, db_path: str) -> None:
     db = engine.OpenDatabase(db_path, False, False)  # shared, read-write
     try:
         rs = db.OpenRecordset(
-            f"SELECT * FROM [Authorization] WHERE [ID]={int(auth_id)}"
+            f"SELECT * FROM [{table}] WHERE [ID]={int(record_id)}"
         )
         if rs.EOF:
             rs.Close()
-            raise ValueError(f"No authorization with ID {auth_id}")
+            raise ValueError(f"No {table} row with ID {record_id}")
         rs.Edit()
         child = rs.Fields("Document").Value       # attachment child recordset
         while not child.EOF:                      # clear existing attachment(s)
@@ -606,17 +643,17 @@ def set_auth_document(auth_id: int, file_path: str, db_path: str) -> None:
     _drop_dao_database(db_path)
 
 
-def save_auth_document(auth_id: int, dest_dir: str, db_path: str) -> str | None:
-    """Write the authorization's attached document into dest_dir (using its original
-    file name) and return the written path, or None if there is no document. Uses
-    the cached read DAO handle (like get_member_photo)."""
+def _save_document(table: str, record_id: int, dest_dir: str, db_path: str) -> str | None:
+    """Write [table]'s attached document for one row into dest_dir (using its
+    original file name) and return the written path, or None if there is no
+    document. Uses the cached read DAO handle (like get_member_photo)."""
     if not os.path.exists(db_path):
         return None
     for attempt in (1, 2):
         try:
             db = _dao_database(db_path)
             rs = db.OpenRecordset(
-                f"SELECT * FROM [Authorization] WHERE [ID]={int(auth_id)}"
+                f"SELECT * FROM [{table}] WHERE [ID]={int(record_id)}"
             )
             if rs.EOF:
                 rs.Close()
@@ -637,17 +674,17 @@ def save_auth_document(auth_id: int, dest_dir: str, db_path: str) -> str | None:
                 return None
 
 
-def get_auth_ids_with_documents(center_id: int, db_path: str) -> set[int]:
-    """Authorization ids (for a member) that have a [Document] attachment. Cached
+def _ids_with_documents(table: str, center_id: int, db_path: str) -> set[int]:
+    """Row ids in [table] (for a member) that have a [Document] attachment. Cached
     read DAO handle. Returns an empty set on any error (e.g. the [Document] column
-    not yet added in Access), so the UI still renders."""
+    not present), so the UI still renders."""
     if not os.path.exists(db_path):
         return set()
     for attempt in (1, 2):
         try:
             db = _dao_database(db_path)
             rs = db.OpenRecordset(
-                f"SELECT * FROM [Authorization] WHERE [Center ID]={int(center_id)}"
+                f"SELECT * FROM [{table}] WHERE [Center ID]={int(center_id)}"
             )
             ids: set[int] = set()
             while not rs.EOF:
@@ -662,6 +699,30 @@ def get_auth_ids_with_documents(center_id: int, db_path: str) -> set[int]:
             _drop_dao_database(db_path)
             if attempt == 2:
                 return set()
+
+
+def set_auth_document(auth_id: int, file_path: str, db_path: str) -> None:
+    _set_document("Authorization", auth_id, file_path, db_path)
+
+
+def save_auth_document(auth_id: int, dest_dir: str, db_path: str) -> str | None:
+    return _save_document("Authorization", auth_id, dest_dir, db_path)
+
+
+def get_auth_ids_with_documents(center_id: int, db_path: str) -> set[int]:
+    return _ids_with_documents("Authorization", center_id, db_path)
+
+
+def set_transport_document(transport_id: int, file_path: str, db_path: str) -> None:
+    _set_document("TransportAuthorization", transport_id, file_path, db_path)
+
+
+def save_transport_document(transport_id: int, dest_dir: str, db_path: str) -> str | None:
+    return _save_document("TransportAuthorization", transport_id, dest_dir, db_path)
+
+
+def get_transport_ids_with_documents(center_id: int, db_path: str) -> set[int]:
+    return _ids_with_documents("TransportAuthorization", center_id, db_path)
 
 
 def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dict:
@@ -794,6 +855,73 @@ def get_authorizations(center_id: int, db_path: str, _retry: bool = True) -> lis
         if _retry:
             return get_authorizations(center_id, db_path, _retry=False)
         raise
+
+
+def get_transport_authorizations(center_id: int, db_path: str,
+                                 _retry: bool = True) -> list[dict]:
+    """Transportation authorizations for a member (cached read connection).
+
+    Same row shape as get_authorizations, so _map_auth_row applies. Returns []
+    if the [TransportAuthorization] table is missing/unreadable, so member load
+    and the rest of the UI keep working before the table exists.
+    """
+    import pyodbc
+    try:
+        conn = _read_connection(db_path)
+        c = conn.cursor()
+        c.execute(TRANSPORT_AUTH_SELECT, center_id)
+        return [_map_auth_row(r) for r in c.fetchall()]
+    except pyodbc.Error:
+        _drop_read_connection(db_path)
+        if _retry:
+            return get_transport_authorizations(center_id, db_path, _retry=False)
+        return []
+    except FileNotFoundError:
+        return []
+
+
+def get_auth_edges(db_path: str, _retry: bool = True) -> list[dict]:
+    """All care<->transport links from the [AuthEdge] junction table (small;
+    filter in Python). Returns dicts with keys id, authorization_id,
+    transport_authorization_id; [] on any error."""
+    import pyodbc
+    try:
+        conn = _read_connection(db_path)
+        c = conn.cursor()
+        c.execute(AUTH_EDGE_SELECT)
+        return [
+            {"id": r[0], "authorization_id": r[1],
+             "transport_authorization_id": r[2]}
+            for r in c.fetchall()
+        ]
+    except pyodbc.Error:
+        _drop_read_connection(db_path)
+        if _retry:
+            return get_auth_edges(db_path, _retry=False)
+        return []
+    except FileNotFoundError:
+        return []
+
+
+_transport_doc_col_cache: dict = {}
+
+
+def transport_has_document_column(db_path: str) -> bool:
+    """True if [TransportAuthorization] has a [Document] attachment column. Cached
+    per db_path for the session; the Transportation tab shows the Document feature
+    only when present (so the feature lights up once the user adds the column)."""
+    if db_path in _transport_doc_col_cache:
+        return _transport_doc_col_cache[db_path]
+    result = False
+    try:
+        conn = _read_connection(db_path)
+        cols = {row.column_name
+                for row in conn.cursor().columns(table="TransportAuthorization")}
+        result = "Document" in cols
+    except Exception:
+        result = False
+    _transport_doc_col_cache[db_path] = result
+    return result
 
 
 def get_one_off_availability(center_id: int, db_path: str,
@@ -1244,6 +1372,97 @@ def delete_authorization(record_id: int, db_path: str) -> None:
     conn = _connect(db_path)
     try:
         conn.cursor().execute(DELETE_AUTHORIZATION, (record_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def insert_transport_authorization(
+    center_id: int,
+    auth_start: date,
+    auth_end: date,
+    auth_days: set[int],
+    health_plan: str,
+    db_path: str,
+    member_id: str = "",
+    auth_number: str = "",
+) -> int:
+    """Insert a transportation authorization and return its new ID, so the caller
+    can link it to a care auth via set_transport_link. effective_* are left NULL
+    (nothing reads them for transport)."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            INSERT_TRANSPORT_AUTH,
+            (center_id, auth_start, auth_end, None, None,
+             encode_auth_days(auth_days), health_plan, datetime.now(), member_id,
+             auth_number),
+        )
+        cur.execute("SELECT @@IDENTITY")
+        new_id = int(cur.fetchone()[0])
+        conn.commit()
+        return new_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def update_transport_authorization(
+    record_id: int,
+    auth_start: date,
+    auth_end: date,
+    auth_days: set[int],
+    health_plan: str,
+    db_path: str,
+    member_id: str = "",
+    auth_number: str = "",
+) -> None:
+    """Update a transport auth's dates, days, plan, member id, and auth number."""
+    conn = _connect(db_path)
+    try:
+        conn.cursor().execute(
+            UPDATE_TRANSPORT_AUTH,
+            (auth_start, auth_end, encode_auth_days(auth_days), health_plan,
+             member_id, auth_number, record_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def delete_transport_authorization(record_id: int, db_path: str) -> None:
+    """Delete a transport auth and its [AuthEdge] links in one transaction."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(DELETE_AUTH_EDGE_BY_TRANSPORT, (record_id,))
+        cur.execute(DELETE_TRANSPORT_AUTH, (record_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def set_transport_link(transport_id: int, authorization_id, db_path: str) -> None:
+    """Replace the care<->transport link for one transport auth: clear its existing
+    [AuthEdge] rows, then add one for authorization_id (skipped when None)."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(DELETE_AUTH_EDGE_BY_TRANSPORT, (transport_id,))
+        if authorization_id is not None:
+            cur.execute(INSERT_AUTH_EDGE, (authorization_id, transport_id))
         conn.commit()
     except Exception:
         conn.rollback()
