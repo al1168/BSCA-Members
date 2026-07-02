@@ -144,6 +144,34 @@ def format_medicaid_live(text) -> str:
     return "".join(ch for ch in (text or "") if ch.isalnum()).upper()[:8]
 
 
+def format_time_live(text) -> str:
+    """A 12-hour time as you type, digits only: '815' -> '8:15',
+    '1230' -> '12:30'. The colon appears once there are 3+ digits (before the
+    last two); 1-2 digits stay bare so the hour can still grow (e.g. '1' -> '12')."""
+    d = "".join(ch for ch in (text or "") if ch.isdigit())[:4]
+    if len(d) <= 2:
+        return d
+    return f"{d[:-2]}:{d[-2:]}"
+
+
+def normalize_time_12h(text) -> str | None:
+    """Coerce a typed/partial 12-hour time to canonical 'H:MM' (hour 1-12,
+    minute 00-59), padding an hour-only entry with ':00'. Returns None when the
+    digits can't form a valid 12-hour time (so callers can flag an error)."""
+    d = "".join(ch for ch in (text or "") if ch.isdigit())
+    if not d:
+        return None
+    if len(d) <= 2:
+        hh, mm = int(d), 0
+    elif len(d) == 3:
+        hh, mm = int(d[0]), int(d[1:])
+    else:
+        hh, mm = int(d[:2]), int(d[2:4])
+    if not (1 <= hh <= 12 and 0 <= mm <= 59):
+        return None
+    return f"{hh}:{mm:02d}"
+
+
 def merge_default_availability(added_rows, effective_start,
                               start="08:00", end="16:00"):
     """Give a new member a default availability of `start`–`end` on every weekday

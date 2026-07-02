@@ -36,8 +36,8 @@ def test_authorized_weekdays_empty_when_no_current_auth():
     assert authorized_weekdays([], TODAY) == set()
 
 
-def test_strip_marks_authorized_days_with_a_check(qapp):
-    from PyQt6.QtWidgets import QLabel
+def test_strip_tints_authorized_days_light_green(qapp):
+    from PyQt6.QtWidgets import QWidget, QLabel
     import gui.member_tabs as mt
     w = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
     w._availability = []
@@ -46,6 +46,10 @@ def test_strip_marks_authorized_days_with_a_check(qapp):
          "auth_days": "1,3"},   # Mon + Wed authorized, in effect today
     ]
     strip = w._make_current_schedule_strip(TODAY)
-    checks = [l for l in strip.findChildren(QLabel)
-              if l.objectName() == "avail_day_check"]
-    assert len(checks) == 2     # exactly Mon and Wed get the green check
+    cells = [c for c in strip.findChildren(QWidget)
+             if c.objectName() in ("avail_day", "avail_day_empty")]
+    authorized = [c for c in cells if c.property("authorized")]
+    assert len(authorized) == 2     # exactly Mon and Wed tinted green
+    # the old green checkmark is gone
+    assert not [l for l in strip.findChildren(QLabel)
+                if l.objectName() == "avail_day_check"]

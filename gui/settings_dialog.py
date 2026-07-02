@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QPushButton, QHBoxLayout,
     QVBoxLayout, QRadioButton, QButtonGroup, QFileDialog, QDialogButtonBox,
-    QLabel, QWidget,
+    QLabel, QWidget, QCheckBox,
 )
 from PyQt6.QtCore import Qt
 
@@ -73,6 +73,14 @@ class SettingsDialog(QDialog):
         theme_hl.addWidget(self._radio_light)
         form.addRow("Theme:", theme_row)
 
+        # Debug: reveal the internal row "ID" column in the member tables.
+        self._show_row_ids = QCheckBox("Show row ID columns (debug)")
+        self._show_row_ids.setChecked(bool(self._settings.get("show_row_ids", False)))
+        self._show_row_ids.setToolTip(
+            "Show each table row's internal database id (e.g. 442). "
+            "Off by default; turn on only for debugging.")
+        form.addRow("Debug:", self._show_row_ids)
+
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(
@@ -117,4 +125,5 @@ class SettingsDialog(QDialog):
             "events_db_path": self._events_path.text().strip(),
             "theme": "light" if self._radio_light.isChecked() else "dark",
             "google_api_key": self._api_key.text().strip(),
+            "show_row_ids": self._show_row_ids.isChecked(),
         }

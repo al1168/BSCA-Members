@@ -46,6 +46,7 @@ class StepReview(QWidget):
                 "<b>Authorization</b>",
                 f"Period: {auth['auth_start']} – {auth['auth_end']}",
                 f"Days: {encode_auth_days(auth['auth_days'])}",
+                f"Auth #: {auth.get('auth_number') or '—'}",
             ]
         if avail:
             day_names = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri",

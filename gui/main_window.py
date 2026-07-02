@@ -332,7 +332,9 @@ class MainWindow(QMainWindow):
         db_path = self._settings.get("db_path", "")
         events_path = self._settings.get("events_db_path", "")
         api_key = self._settings.get("google_api_key", "")
-        widget = MemberTabsWidget(center_id, db_path, events_path, api_key)
+        show_row_ids = self._settings.get("show_row_ids", False)
+        widget = MemberTabsWidget(center_id, db_path, events_path, api_key,
+                                  show_row_ids)
         widget.members_changed.connect(self._refresh_terminated_marks)
         self._set_detail(widget)
 
@@ -402,3 +404,10 @@ class MainWindow(QMainWindow):
             self._refresh_list_theme()
             self._update_db_indicator()
             self._load_members()
+            # Apply the row-ID debug toggle to the open member live (no rebuild,
+            # so unsaved edits survive).
+            from gui.member_tabs import MemberTabsWidget
+            current = (self._detail_stack.widget(1)
+                       if self._detail_stack.count() > 1 else None)
+            if isinstance(current, MemberTabsWidget):
+                current.set_show_row_ids(self._settings.get("show_row_ids", False))

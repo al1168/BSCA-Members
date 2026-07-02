@@ -2,11 +2,42 @@ from datetime import date
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-    QCheckBox, QTimeEdit, QPushButton, QAbstractSpinBox, QGridLayout,
-    QLineEdit,
+    QCheckBox, QPushButton, QGridLayout, QLineEdit, QComboBox,
 )
-from PyQt6.QtCore import QTime
-from gui.address_autocomplete import DateLineEdit
+from PyQt6.QtCore import QRegularExpression
+from PyQt6.QtGui import QRegularExpressionValidator
+from gui.address_autocomplete import DateLineEdit, set_widget_error
+from db.members import format_time_live, normalize_time_12h
+
+
+class TimeLineEdit(QLineEdit):
+    """Free-text 12-hour time (AM/PM is a separate dropdown). Type digits and it
+    auto-formats to H:MM as you go ('815' -> '8:15'); the field can be cleared
+    and retyped. Outlines red on focus-out if the entry isn't a valid time."""
+
+    def __init__(self, default: str = "8:00", parent=None):
+        super().__init__(default, parent)
+        self.setValidator(
+            QRegularExpressionValidator(QRegularExpression(r"[0-9:]*"), self))
+        self.setFixedWidth(64)
+        self.textEdited.connect(self._on_edited)
+
+    def _on_edited(self):
+        new = format_time_live(self.text())
+        if new != self.text():
+            self.setText(new)                     # format as you type
+            self.setCursorPosition(len(new))
+        set_widget_error(self, False)
+
+    def focusOutEvent(self, e):
+        norm = normalize_time_12h(self.text())
+        if norm is not None:
+            self.setText(norm)                    # pad '8' -> '8:00' on blur
+        set_widget_error(self, bool(self.text().strip()) and norm is None)
+        super().focusOutEvent(e)
+
+    def is_valid(self) -> bool:
+        return normalize_time_12h(self.text()) is not None
 
 
 class StepAuths(QWidget):
@@ -62,6 +93,10 @@ class StepAuths(QWidget):
             days_grid.addWidget(cb, i // 4, i % 4)   # 4 per row -> Mon-Thu / Fri-Sun
         auth_layout.addRow("Days:", days_widget)
 
+        self.auth_number = QLineEdit()
+        self.auth_number.setPlaceholderText("Authorization number (optional)")
+        auth_layout.addRow("Auth #:", self.auth_number)
+
         # ── Transportation (optional) ────────────────────────────
         # A transport auth shares the care auth's dates/days but carries its own
         # number. Filled in here, it's created alongside and linked to the care
@@ -108,7 +143,6 @@ class StepAuths(QWidget):
         layout.addStretch()
 
     def _add_avail_row(self):
-        from PyQt6.QtWidgets import QComboBox
         row_widget = QWidget()
         hl = QHBoxLayout(row_widget)
         hl.setContentsMargins(0, 0, 0, 0)
@@ -121,34 +155,57 @@ class StepAuths(QWidget):
         # (60px clipped the last letter, e.g. "Mon" -> "Mor").
         day_combo.setMinimumWidth(90)
 
-        t_start = QTimeEdit(QTime(8, 0))
-        t_end = QTimeEdit(QTime(16, 0))
-        for te in (t_start, t_end):
-            # Drop the native up/down spin arrows (they clash with the theme);
-            # the time is typed or adjusted with the keyboard.
-            te.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-            te.setFixedWidth(88)
+        # Free-text time + a separate AM/PM dropdown (defaults 8:00 AM–4:00 PM).
+        t_start = TimeLineEdit("8:00")
+        ampm_start = QComboBox()
+        ampm_start.addItems(["AM", "PM"])
+        t_end = TimeLineEdit("4:00")
+        ampm_end = QComboBox()
+        ampm_end.addItems(["AM", "PM"])
+        ampm_end.setCurrentText("PM")
 
         hl.addWidget(day_combo)
         hl.addWidget(t_start)
+        hl.addWidget(ampm_start)
         hl.addWidget(QLabel("–"))
         hl.addWidget(t_end)
+        hl.addWidget(ampm_end)
         hl.addStretch()
 
         self._avail_container.addWidget(row_widget)
         self._avail_rows.append({
-            "combo": day_combo, "t_start": t_start, "t_end": t_end,
+            "combo": day_combo, "t_start": t_start, "ampm_start": ampm_start,
+            "t_end": t_end, "ampm_end": ampm_end,
         })
+
+    @staticmethod
+    def _row_time_24h(field, ampm, default: str) -> str:
+        """Convert a row's TimeLineEdit + AM/PM combo to 24-hour 'HH:mm',
+        falling back to `default` if the entry isn't a valid time."""
+        from db.members import time_12h_to_24h
+        norm = normalize_time_12h(field.text())
+        if norm is None:
+            return default
+        try:
+            return time_12h_to_24h(norm, ampm.currentText())
+        except ValueError:
+            return default
 
     def is_skipped(self) -> bool:
         return not any(cb.isChecked() for cb in self._day_checks.values())
 
     def validate(self) -> bool:
-        """When not skipped, the auth dates must be valid. Flags bad fields."""
-        if self.is_skipped():
-            return True
-        ok = self.auth_start.flag_validity(required=True)
-        ok = self.auth_end.flag_validity(required=True) and ok
+        """Auth dates (when not skipped) and any added availability times must be
+        valid. Flags the bad fields red."""
+        ok = True
+        if not self.is_skipped():
+            ok = self.auth_start.flag_validity(required=True) and ok
+            ok = self.auth_end.flag_validity(required=True) and ok
+        for r in self._avail_rows:
+            for field in (r["t_start"], r["t_end"]):
+                valid = field.is_valid()
+                set_widget_error(field, not valid)
+                ok = ok and valid
         return ok
 
     def collect(self) -> dict:
@@ -162,14 +219,15 @@ class StepAuths(QWidget):
                 "auth_end": self.auth_end.to_pydate(),
                 "auth_days": {n for n, cb in self._day_checks.items()
                               if cb.isChecked()},
+                "auth_number": self.auth_number.text().strip(),
             }
         # Availability: default Mon–Sun 8a–4p, with any added rows substituting
-        # their weekday's default.
+        # their weekday's default. Times come from the free-text field + AM/PM.
         added = [
             {
                 "day_of_week": r["combo"].currentData(),
-                "avail_start": r["t_start"].time().toString("HH:mm"),
-                "avail_end":   r["t_end"].time().toString("HH:mm"),
+                "avail_start": self._row_time_24h(r["t_start"], r["ampm_start"], "08:00"),
+                "avail_end":   self._row_time_24h(r["t_end"], r["ampm_end"], "16:00"),
                 "effective_start_date": date.today(),
                 "effective_end_date": None,
             }

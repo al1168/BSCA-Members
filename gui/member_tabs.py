@@ -566,14 +566,17 @@ class _ViewEditLineEdit(QLineEdit):
 
     def _on_edited(self):
         # Reformat as the user types (setText fires textChanged, not textEdited,
-        # so no recursion), then clear any stale error outline.
+        # so no recursion), then validate live: a non-empty value that doesn't yet
+        # match the field's format outlines red, clearing as soon as it's valid
+        # (or empty, since these fields are optional).
         if self._live_formatter is not None:
             new = self._live_formatter(self.text())
             if new != self.text():
                 self.setText(new)
                 self.setCursorPosition(len(new))
         if self._validator is not None:
-            set_widget_error(self, False)
+            text = self.text().strip()
+            set_widget_error(self, bool(text) and not self._validator(text))
 
     def _repolish(self):
         self.style().unpolish(self)
@@ -694,12 +697,13 @@ class MemberTabsWidget(QWidget):
     members_changed = pyqtSignal()
 
     def __init__(self, center_id: int, db_path: str, events_path: str,
-                 api_key: str = "", parent=None):
+                 api_key: str = "", show_row_ids: bool = False, parent=None):
         super().__init__(parent)
         self._center_id = center_id
         self._db_path = db_path
         self._events_path = events_path
         self._api_key = api_key or ""
+        self._show_row_ids = show_row_ids
         self._member = None
         self._load_data()
         self._build_ui()
@@ -1050,6 +1054,37 @@ class MemberTabsWidget(QWidget):
         )
         self._tabs.addTab(self._tab_events, "Events")
 
+        # Guard leaving the Info tab with unsaved edits (see _on_tab_changed).
+        # Connected last so building/adding the tabs above doesn't trigger it.
+        self._info_tab_index = self._tabs.indexOf(self._tab_info)
+        self._prev_tab_index = self._tabs.currentIndex()
+        self._tabs.currentChanged.connect(self._on_tab_changed)
+
+    def _on_tab_changed(self, index: int) -> None:
+        """When the user leaves the Info tab with unsaved edits, confirm before
+        moving on. On Cancel, snap back to the Info tab; on Discard, revert the
+        Info fields. Only the Info tab has editable fields, so only leaving it is
+        guarded."""
+        prev = getattr(self, "_prev_tab_index", index)
+        if (prev == getattr(self, "_info_tab_index", 0)
+                and index != prev
+                and getattr(self, "_dirty", False)):
+            reply = QMessageBox.question(
+                self, "Unsaved Changes",
+                "You have unsaved changes on the Info tab. Discard them?",
+                QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if reply == QMessageBox.StandardButton.Discard:
+                self._discard_info()
+            else:
+                # Cancel: return to the Info tab without re-triggering this guard.
+                self._tabs.blockSignals(True)
+                self._tabs.setCurrentIndex(prev)
+                self._tabs.blockSignals(False)
+                return
+        self._prev_tab_index = index
+
     # ── Info tab (Task 9) ──────────────────────────────────────────────────
 
     def _make_schedule_card(self, active_days, period_text) -> QWidget:
@@ -1084,6 +1119,35 @@ class MemberTabsWidget(QWidget):
         row.addStretch()
         outer.addLayout(row)
         return card
+
+    def _build_schedule_card(self) -> QWidget:
+        """A Schedule card reflecting the authorization in effect today: its
+        authorized-day chips and auth period. 'None' when no auth is current.
+        Factored out of _make_info_tab so it can be rebuilt after an auth
+        change (see _refresh_schedule_card)."""
+        active_auth = self._active_authorization(self._authorizations)
+        if active_auth:
+            active_days = decode_auth_days(active_auth.get("auth_days", ""))
+            plan = active_auth.get("health_plan", "")
+            period_text = (f"{active_auth['effective_start']} – "
+                           f"{active_auth['effective_end']}"
+                           + (f"  ·  {plan}" if plan else ""))
+        else:
+            active_days = set()
+            period_text = "None"
+        return self._make_schedule_card(active_days, period_text)
+
+    def _refresh_schedule_card(self) -> None:
+        """Rebuild the Info tab's Schedule card in place so a newly added/edited/
+        deleted authorization's days show the moment you return to the Info tab,
+        without reopening the member. No-op if the Info tab wasn't built yet."""
+        # __dict__ (not getattr) so it's safe on the __new__-built test widgets.
+        if self.__dict__.get("_schedule_card") is None:
+            return
+        new_card = self._build_schedule_card()
+        self._info_content_layout.replaceWidget(self._schedule_card, new_card)
+        self._schedule_card.deleteLater()
+        self._schedule_card = new_card
 
     def _make_info_tab(self) -> QWidget:
         from PyQt6.QtWidgets import (
@@ -1149,17 +1213,7 @@ class MemberTabsWidget(QWidget):
         enroll_start = self._enrollment_start(self._enrollments)
         enroll_lbl = _ViewEditLineEdit(str(enroll_start) if enroll_start else "—",
                                        editable=False)
-        active_auth = self._active_authorization(self._authorizations)
-        if active_auth:
-            active_days = decode_auth_days(active_auth.get("auth_days", ""))
-            plan = active_auth.get("health_plan", "")
-            period_text = (f"{active_auth['effective_start']} – "
-                           f"{active_auth['effective_end']}"
-                           + (f"  ·  {plan}" if plan else ""))
-        else:
-            active_days = set()
-            period_text = "None"
-        schedule_card = self._make_schedule_card(active_days, period_text)
+        schedule_card = self._build_schedule_card()
 
         # ── Dense sectioned grid: 3 field columns, no card chrome ──────────
         grid = QGridLayout()
@@ -1242,6 +1296,9 @@ class MemberTabsWidget(QWidget):
         cvbox.addWidget(schedule_card)
         cvbox.addLayout(grid)
         cvbox.addStretch()
+        # Kept so the Schedule card can be rebuilt in place when an auth changes.
+        self._schedule_card = schedule_card
+        self._info_content_layout = cvbox
 
         scroll = QScrollArea()
         scroll.setWidget(content)
@@ -1633,6 +1690,36 @@ class MemberTabsWidget(QWidget):
     def is_dirty(self) -> bool:
         return self._dirty
 
+    # ── Row-ID column visibility (debug setting) ────────────────────────────
+
+    def _apply_id_column(self, table) -> None:
+        """Hide the leftmost 'ID' column unless the debug 'show row IDs' setting
+        is on. The column's cells still populate, so row-id lookups (delete,
+        edit, select-by-id) keep working — it is only hidden from view. Called by
+        every table builder so refreshed tabs stay consistent. Tables without an
+        'ID' column (Info emergency, Events) are left untouched."""
+        # Read via __dict__ so it's safe on the __new__-built widgets used in
+        # tests (a missing attr would otherwise raise, not default).
+        show = self.__dict__.get("_show_row_ids", False)
+        for c in range(table.columnCount()):
+            header = table.horizontalHeaderItem(c)
+            if header is not None and header.text() == "ID":
+                table.setColumnHidden(c, not show)
+                return
+
+    # Tables (one per tab) whose 'ID' column the debug toggle governs.
+    _ID_TABLE_ATTRS = ("_enroll_table", "_auth_table", "_transport_table",
+                       "_avail_table", "_unavail_table", "_abs_table")
+
+    def set_show_row_ids(self, show: bool) -> None:
+        """Toggle the debug row-ID columns live across every already-built table,
+        without rebuilding the tabs (so unsaved edits aren't lost)."""
+        self._show_row_ids = show
+        for name in self._ID_TABLE_ATTRS:
+            table = self.__dict__.get(name)
+            if table is not None:
+                self._apply_id_column(table)
+
     # ── Table tab helper ───────────────────────────────────────────────────
 
     def _make_table_tab(self, columns, rows, on_add, on_delete):
@@ -1666,6 +1753,7 @@ class MemberTabsWidget(QWidget):
         btn_row.addStretch()
         btn_row.addWidget(btn_del)
         layout.addLayout(btn_row)
+        self._apply_id_column(table)
         return w, table
 
     def _refresh_tab(self, index: int, new_widget: QWidget):
@@ -1761,6 +1849,7 @@ class MemberTabsWidget(QWidget):
             else:
                 table.setItem(r, 3, QTableWidgetItem("Ended"))
 
+        self._apply_id_column(table)
         self._enroll_table = table
         btn_add = QPushButton("+ Add")
         btn_add.clicked.connect(self._add_enrollment)
@@ -2037,6 +2126,7 @@ class MemberTabsWidget(QWidget):
         _fit_pill_column(table, ci["Health Plan"], plan_badges, floor=96)
         _fit_pill_column(table, ci["Status"], status_chips, floor=96)
 
+        self._apply_id_column(table)
         self._auth_table = table
         btn_add = QPushButton("+ Add")
         btn_add.clicked.connect(self._add_auth)
@@ -2137,6 +2227,9 @@ class MemberTabsWidget(QWidget):
         if hasattr(self, "_info_member_id"):
             self._info_member_id.setText(self._member.get("member_id", "") or "")
         self._refresh_header_plan()
+        # Rebuild the Info tab's Schedule card so its authorized-day chips reflect
+        # the change immediately (not only after reopening the member).
+        self._refresh_schedule_card()
 
         self._refresh_tab(2, self._make_auths_tab())
         if description:
@@ -2456,6 +2549,7 @@ class MemberTabsWidget(QWidget):
         _fit_pill_column(table, ci["Health Plan"], plan_badges, floor=96)
         _fit_pill_column(table, ci["Status"], status_chips, floor=96)
 
+        self._apply_id_column(table)
         self._transport_table = table
         self._transport_linked_col = ci["Linked Auth"]
         table.cellClicked.connect(self._on_transport_linked_clicked)
@@ -2830,13 +2924,18 @@ class MemberTabsWidget(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(4)
 
-        # Caption + a small legend explaining the green check.
+        # Caption + a small legend: a light-green swatch marks authorized days.
         cap_row = QHBoxLayout()
         cap_row.setSpacing(8)
         caption = QLabel("Current Schedule")
         caption.setObjectName("strip_caption")
         cap_row.addWidget(caption)
-        legend = QLabel("✓ authorized day")
+        swatch = QLabel()
+        swatch.setObjectName("avail_legend_swatch")
+        swatch.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        swatch.setFixedSize(12, 12)
+        cap_row.addWidget(swatch)
+        legend = QLabel("authorized day")
         legend.setObjectName("avail_legend")
         cap_row.addWidget(legend)
         cap_row.addStretch()
@@ -2854,12 +2953,15 @@ class MemberTabsWidget(QWidget):
             cell = QWidget()
             cell.setObjectName("avail_day" if windows else "avail_day_empty")
             cell.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            # Authorized days are tinted light green (the time stays legible),
+            # driven by this dynamic property in the QSS.
+            cell.setProperty("authorized", bool(authorized))
             cell.setMinimumWidth(104)
             cv = QVBoxLayout(cell)
             cv.setContentsMargins(10, 7, 10, 7)
             cv.setSpacing(2)
 
-            # Day name, with a green check appended when the day is authorized.
+            # Day name (centered); authorization is conveyed by the cell tint.
             name_row = QHBoxLayout()
             name_row.setContentsMargins(0, 0, 0, 0)
             name_row.setSpacing(4)
@@ -2867,11 +2969,6 @@ class MemberTabsWidget(QWidget):
             day_lbl = QLabel(WEEKDAY_NAMES[d])
             day_lbl.setObjectName("avail_day_name")
             name_row.addWidget(day_lbl)
-            if authorized:
-                check = QLabel("✓")
-                check.setObjectName("avail_day_check")
-                check.setToolTip("Authorized day")
-                name_row.addWidget(check)
             name_row.addStretch()
             cv.addLayout(name_row)
             cell.setToolTip("Authorized day" if authorized
@@ -2958,6 +3055,7 @@ class MemberTabsWidget(QWidget):
 
         _fit_pill_column(table, 6, status_chips, floor=96)
 
+        self._apply_id_column(table)
         self._avail_table = table
 
         # This tab uses scheduled changes instead of a raw "+ Add": the Scheduled
@@ -3456,6 +3554,7 @@ class MemberTabsWidget(QWidget):
             btn.clicked.connect(lambda _=False, uv=a: self._edit_unavailable(uv))
             table.setCellWidget(r, 5, btn)
 
+        self._apply_id_column(table)
         self._unavail_table = table
         btn_add = QPushButton("+ Add")
         btn_add.clicked.connect(self._add_unavailable)

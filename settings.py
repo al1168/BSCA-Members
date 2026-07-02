@@ -6,6 +6,9 @@ DEFAULT_SETTINGS = {
     "theme": "dark",
     "events_db_path": "",
     "google_api_key": "",
+    # Debug: show the internal row "ID" column in the member tables. Off by
+    # default so day-to-day users don't see database ids like 442.
+    "show_row_ids": False,
 }
 
 

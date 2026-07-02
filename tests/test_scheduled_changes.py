@@ -85,9 +85,13 @@ def test_avail_tab_marks_future_row_upcoming(qapp):
     from PyQt6.QtWidgets import QLabel
     import gui.member_tabs as mt
     w = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
+    # Dates relative to the real today (the tab derives status from date.today()),
+    # so this doesn't turn stale as the calendar advances.
+    from datetime import timedelta
+    today = date.today()
     w._availability = [
-        _av(1, 3, "08:00", "16:00", date(2026, 1, 1), date(2026, 6, 30)),  # current
-        _av(2, 3, "10:00", "15:00", date(2026, 7, 1), None),               # upcoming
+        _av(1, 3, "08:00", "16:00", today - timedelta(days=180), None),   # current
+        _av(2, 3, "10:00", "15:00", today + timedelta(days=30), None),    # upcoming
     ]
     w._authorizations = []
     w._center_id = 1

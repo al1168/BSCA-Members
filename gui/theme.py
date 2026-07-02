@@ -550,6 +550,15 @@ QWidget#avail_day_empty {{
     border: 1px dashed {t['border']};
     border-radius: 7px;
 }}
+/* Authorized days: a light-green tint (kept subtle so the time stays legible). */
+QWidget#avail_day[authorized="true"] {{
+    background-color: {t['success_bg']};
+    border: 1px solid {t['success']};
+}}
+QWidget#avail_day_empty[authorized="true"] {{
+    background-color: {t['success_bg']};
+    border: 1px solid {t['success']};
+}}
 QLabel#avail_day_name {{
     color: {t['text3']};
     font-size: 10px;
@@ -557,13 +566,13 @@ QLabel#avail_day_name {{
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }}
-QLabel#avail_day_check {{
-    color: {t['success']};
-    font-size: 11px;
-    font-weight: 700;
+QLabel#avail_legend_swatch {{
+    background-color: {t['success_bg']};
+    border: 1px solid {t['success']};
+    border-radius: 3px;
 }}
 QLabel#avail_legend {{
-    color: {t['success']};
+    color: {t['text3']};
     font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.04em;
