@@ -19,11 +19,14 @@ class EventsTableWidget(QWidget):
     """Reusable events log table. Pass center_id=None for global view."""
 
     def __init__(self, events_path: str, center_id: int | None = None,
-                 show_header: bool = True, parent=None):
+                 show_header: bool = True, member_count: int | None = None,
+                 active_count: int | None = None, parent=None):
         super().__init__(parent)
         self._events_path = events_path
         self._center_id = center_id
         self._show_header = show_header
+        self._member_count = member_count
+        self._active_count = active_count
         self._build_ui()
         self._load()
 
@@ -41,6 +44,19 @@ class EventsTableWidget(QWidget):
             header_row.addStretch()
             header_row.addWidget(ttl_lbl)
             layout.addLayout(header_row)
+
+            # Under "All Events": total members and (in green) how many are
+            # active (not terminated). Only the global view carries these counts.
+            if self._center_id is None and self._member_count is not None:
+                counts = QLabel(
+                    f"<span style='color:#8a8f9c'>{self._member_count} members"
+                    f"</span>&nbsp;&nbsp;&nbsp;"
+                    f"<span style='color:#3d9e6e'>&#9679; {self._active_count} "
+                    f"active</span>")
+                counts.setObjectName("events_member_counts")
+                counts.setTextFormat(Qt.TextFormat.RichText)
+                counts.setStyleSheet("font-size:11px;")
+                layout.addWidget(counts)
 
         self._search = QLineEdit()
         self._search.setPlaceholderText("Filter by member or action…")
@@ -109,7 +125,8 @@ class EventsTableWidget(QWidget):
 
 
 class GlobalEventsWidget(QWidget):
-    def __init__(self, events_path: str, on_back=None, parent=None):
+    def __init__(self, events_path: str, on_back=None, member_count: int | None = None,
+                 active_count: int | None = None, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 16, 20, 12)
@@ -121,4 +138,6 @@ class GlobalEventsWidget(QWidget):
             back_row.addWidget(btn_back)
             back_row.addStretch()
             layout.addLayout(back_row)
-        layout.addWidget(EventsTableWidget(events_path, center_id=None))
+        layout.addWidget(EventsTableWidget(
+            events_path, center_id=None,
+            member_count=member_count, active_count=active_count))

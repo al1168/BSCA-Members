@@ -1014,14 +1014,25 @@ class MemberTabsWidget(QWidget):
         right.addLayout(top_row)
 
         notes_row = QHBoxLayout()
-        notes_lbl = QLabel("Notes")
-        notes_lbl.setObjectName("notes_label")
-        notes_row.addWidget(notes_lbl, alignment=Qt.AlignmentFlag.AlignTop)
+        self._notes_label = QLabel("Notes")
+        self._notes_label.setObjectName("notes_label")
+        notes_row.addWidget(self._notes_label, alignment=Qt.AlignmentFlag.AlignTop)
         self._info_notes = _NotesEdit()
         self._info_notes.setObjectName("notes_edit")
         self._info_notes.setPlainText(self._member.get("notes", "") or "")
         notes_row.addWidget(self._info_notes, 1)
+        # A compact "+ Add note" button stands in for the editor until there's a
+        # note (or the user clicks it), keeping the header uncluttered.
+        self._btn_add_note = QPushButton("+ Add note")
+        self._btn_add_note.setObjectName("btn_add_note")
+        self._btn_add_note.setMaximumHeight(26)
+        self._btn_add_note.clicked.connect(self._reveal_notes)
+        notes_row.addWidget(self._btn_add_note, alignment=Qt.AlignmentFlag.AlignTop)
+        notes_row.addStretch()
         right.addLayout(notes_row)
+
+        self._init_notes_visibility(
+            bool((self._member.get("notes") or "").strip()))
 
         header.addLayout(right, 1)
         layout.addLayout(header)
@@ -1059,6 +1070,21 @@ class MemberTabsWidget(QWidget):
         self._info_tab_index = self._tabs.indexOf(self._tab_info)
         self._prev_tab_index = self._tabs.currentIndex()
         self._tabs.currentChanged.connect(self._on_tab_changed)
+
+    def _init_notes_visibility(self, has_note: bool) -> None:
+        """Header shows the Notes editor when a note exists, or the compact
+        '+ Add note' button when it doesn't."""
+        self._notes_label.setVisible(has_note)
+        self._info_notes.setVisible(has_note)
+        self._btn_add_note.setVisible(not has_note)
+
+    def _reveal_notes(self) -> None:
+        """Show the header Notes editor in place of the '+ Add note' button and
+        focus it (the button only appears when the member has no note yet)."""
+        self._btn_add_note.setVisible(False)
+        self._notes_label.setVisible(True)
+        self._info_notes.setVisible(True)
+        self._info_notes.setFocus()
 
     def _on_tab_changed(self, index: int) -> None:
         """When the user leaves the Info tab with unsaved edits, confirm before

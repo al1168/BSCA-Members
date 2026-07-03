@@ -365,7 +365,12 @@ class MainWindow(QMainWindow):
     def _show_global_events(self):
         from gui.events_view import GlobalEventsWidget
         events_path = self._settings.get("events_db_path", "")
-        widget = GlobalEventsWidget(events_path, on_back=self._back_from_events)
+        total = len(self._all_members)
+        active = sum(1 for m in self._all_members
+                     if m["center_id"] not in self._terminated_ids)
+        widget = GlobalEventsWidget(
+            events_path, on_back=self._back_from_events,
+            member_count=total, active_count=active)
         self._set_detail(widget)
 
     def _back_from_events(self):
