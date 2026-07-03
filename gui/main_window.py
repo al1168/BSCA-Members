@@ -176,10 +176,19 @@ class MainWindow(QMainWindow):
         self._btn_events = QPushButton("All Events")
         self._btn_events.clicked.connect(self._show_global_events)
 
+        # Always-visible tally under the All Events button: total members and how
+        # many are active (not terminated), in green.
+        self._member_counts = QLabel("")
+        self._member_counts.setObjectName("sidebar_member_counts")
+        self._member_counts.setTextFormat(Qt.TextFormat.RichText)
+        self._member_counts.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._member_counts.setStyleSheet("font-size:10px;")
+
         sidebar_layout.addWidget(self._btn_add)
         sidebar_layout.addWidget(self._search)
         sidebar_layout.addWidget(self._member_list)
         sidebar_layout.addWidget(self._btn_events)
+        sidebar_layout.addWidget(self._member_counts)
 
         # ── Detail panel ─────────────────────────────────────
         self._detail_stack = QStackedWidget()
@@ -252,6 +261,17 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Database Error",
                 f"Could not load members:\n{exc}\n\nCheck Settings.")
         self._populate_list(self._all_members)
+        self._update_member_counts()
+
+    def _update_member_counts(self):
+        """Refresh the sidebar's 'N members · M active' tally (active = not
+        terminated), from the full member list regardless of any search filter."""
+        total = len(self._all_members)
+        active = sum(1 for m in self._all_members
+                     if m["center_id"] not in self._terminated_ids)
+        self._member_counts.setText(
+            f"<span style='color:#8a8f9c'>{total} members</span>"
+            f"&nbsp;&nbsp;<span style='color:#3d9e6e'>&#9679; {active} active</span>")
 
     def _populate_list(self, members: list[dict]):
         self._member_list.clear()
@@ -353,6 +373,7 @@ class MainWindow(QMainWindow):
             cid = item.data(Qt.ItemDataRole.UserRole)
             item.setData(TERMINATED_ROLE, cid in self._terminated_ids)
         self._member_list.viewport().update()
+        self._update_member_counts()
 
     def _set_detail(self, widget: QWidget):
         while self._detail_stack.count() > 1:
