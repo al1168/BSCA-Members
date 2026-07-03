@@ -53,23 +53,37 @@ LIGHT = {
 
 # Brand-approximate pill colors, one per health plan (see HEALTH_PLANS).
 # Solid background with near-white text; theme-independent by design.
+# Health-plan badge colors, matched to the staff's physical color-dot legend
+# (AE green, BCBS yellow, VCM orange, ES red, HOF blue, HF pink, HC purple).
+# Aetna/Anthem are legacy (dropped from HEALTH_PLANS) and kept so any
+# not-yet-migrated rows still render a badge. Text color is auto-picked per
+# background (see _readable_text) so light colors like yellow/orange stay legible.
 PLAN_COLORS = {
     "Aetna": "#7d3f98",
     "Anthem": "#1a9dd9",
-    "BCBS": "#0033a0",
-    "HF": "#e07b1a",
-    "VCM": "#5c9e31",
-    "AE": "#2bb3a3",
-    "ES": "#c0392b",
-    "HC": "#b8860b",
-    "HOF": "#c0507e",
+    "AE": "#3f9e35",    # green
+    "BCBS": "#f2ce1b",  # yellow
+    "VCM": "#e6912f",   # orange
+    "ES": "#d83a30",    # red
+    "HOF": "#2f5fd0",   # blue
+    "HF": "#d02f63",    # pink / magenta
+    "HC": "#6a2fa0",    # purple
 }
+
+
+def _readable_text(hex_color: str) -> str:
+    """Dark text on light badge colors, white on dark ones (perceptual
+    luminance), so e.g. yellow/orange badges stay legible."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    luminance = 0.299 * r + 0.587 * g + 0.114 * b
+    return "#1c1e26" if luminance > 150 else "#f4f6fd"
 
 
 def build_qss(t: dict) -> str:
     plan_rules = "\n".join(
         f'QLabel#plan_badge[plan="{code}"] {{ background-color: {color}; '
-        f'color: #f4f6fd; border: 1px solid {color}; }}'
+        f'color: {_readable_text(color)}; border: 1px solid {color}; }}'
         for code, color in PLAN_COLORS.items()
     )
     return f"""
