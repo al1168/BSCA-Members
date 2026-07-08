@@ -36,7 +36,9 @@ class AddMemberWizard(QDialog):
         try:
             from db.members import suggest_next_center_id
             suggested_cid = suggest_next_center_id(self._db_path)
-        except Exception:
+        except Exception as exc:
+            import crash_log
+            crash_log.log_warning(f"suggest_next_center_id failed: {exc!r}")
             suggested_cid = None
         self._step_contact = StepContact(self._api_key, center_id=suggested_cid)
         self._step_enrollment = StepEnrollment()
@@ -189,5 +191,5 @@ class AddMemberWizard(QDialog):
                     conn.close()
             self.accept()
         except Exception as exc:
-            QMessageBox.critical(self, "Save Failed",
-                f"Could not create member:\n{exc}")
+            from gui.errors import show_db_error
+            show_db_error(self, exc, "Could Not Create Member")

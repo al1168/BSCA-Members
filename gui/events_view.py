@@ -5,14 +5,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
 
-BADGE_COLORS = {
-    "NEW":    ("#182e22", "#3d9e6e"),
-    "EDIT":   ("#281f0a", "#c08a2a"),
-    "AUTH":   ("#1c2040", "#92b4ff"),
-    "ABS":    ("#1e1530", "#b090e8"),
-    "AVAIL":  ("#0e2028", "#5eead4"),
-    "ENROLL": ("#1a2030", "#80b0e8"),
-}
+from gui.theme import event_badge_colors, format_member_counts, current_tokens
 
 
 class EventsTableWidget(QWidget):
@@ -48,14 +41,11 @@ class EventsTableWidget(QWidget):
             # Under "All Events": total members and (in green) how many are
             # active (not terminated). Only the global view carries these counts.
             if self._center_id is None and self._member_count is not None:
-                counts = QLabel(
-                    f"<span style='color:#8a8f9c'>{self._member_count} members"
-                    f"</span>&nbsp;&nbsp;&nbsp;"
-                    f"<span style='color:#3d9e6e'>&#9679; {self._active_count} "
-                    f"active</span>")
+                counts = QLabel(format_member_counts(
+                    self._member_count, self._active_count))
                 counts.setObjectName("events_member_counts")
                 counts.setTextFormat(Qt.TextFormat.RichText)
-                counts.setStyleSheet("font-size:11px;")
+                counts.setStyleSheet("font-size:12px;")
                 layout.addWidget(counts)
 
         self._search = QLineEdit()
@@ -85,7 +75,7 @@ class EventsTableWidget(QWidget):
                 "No events log configured. Set an Events log path in "
                 "Settings to start recording changes."
             )
-            msg.setForeground(QColor("#888"))
+            msg.setForeground(QColor(current_tokens()["text3"]))
             self._table.setItem(0, 0, msg)
             return
         from db.events import open_db, query_events, purge_old_events
@@ -98,11 +88,26 @@ class EventsTableWidget(QWidget):
                 filter_text=self._search.text().strip() or None,
             )
             conn.close()
-        except Exception:
+        except Exception as exc:
+            import crash_log
+            crash_log.log_warning(f"events load failed: {exc!r}")
             return
 
         self._table.setRowCount(len(rows))
         self._table.clearSpans()
+        if not rows:
+            # Empty log or a filter with no hits — say which, never a bare void.
+            self._table.setRowCount(1)
+            self._table.setSpan(0, 0, 1, 4)
+            text = ("No events match your filter."
+                    if self._search.text().strip()
+                    else "No events recorded in the last 30 days. Changes made "
+                         "in this app will show up here.")
+            msg = QTableWidgetItem(text)
+            msg.setFlags(Qt.ItemFlag.NoItemFlags)
+            msg.setForeground(QColor(current_tokens()["text3"]))
+            self._table.setItem(0, 0, msg)
+            return
         mono_font = QFont("Cascadia Mono, Consolas", 10)
         for r, row in enumerate(rows):
             ts_item = QTableWidgetItem(row["ts"].replace("T", "  "))
@@ -111,7 +116,7 @@ class EventsTableWidget(QWidget):
 
             badge = QTableWidgetItem(row["event_type"])
             badge.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            bg, fg = BADGE_COLORS.get(row["event_type"], ("#333", "#ccc"))
+            bg, fg = event_badge_colors(row["event_type"])
             badge.setBackground(QColor(bg))
             badge.setForeground(QColor(fg))
             self._table.setItem(r, 1, badge)

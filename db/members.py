@@ -6,6 +6,7 @@ so multiple INSERTs can be wrapped in a single transaction.
 """
 import os
 import re
+from contextlib import contextmanager
 from datetime import date, datetime
 
 from monthly_schedule.db import (
@@ -463,6 +464,28 @@ def _connect(db_path: str):
         return pyodbc.connect(build_connection_string(db_path), autocommit=False)
     except pyodbc.Error as exc:
         raise RuntimeError(f"Could not open Access database: {exc}") from exc
+
+
+@contextmanager
+def write_conn(db_path: str):
+    """A transactional write: yields a cursor, commits on success, rolls back
+    and re-raises on failure, always closes. Every write helper goes through
+    this so the commit/rollback pattern can't drift between functions."""
+    conn = _connect(db_path)
+    try:
+        yield conn.cursor()
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _execute_write(db_path: str, sql: str, params: tuple) -> None:
+    """Run one parameterized write statement in its own transaction."""
+    with write_conn(db_path) as c:
+        c.execute(sql, params)
 
 
 # ── Per-click connection caches ──────────────────────────────────────────
@@ -931,6 +954,41 @@ def get_auth_edges(db_path: str, _retry: bool = True) -> list[dict]:
         return []
 
 
+# Tables and columns the app queries unconditionally. Older databases predate
+# some of them; missing ones make features fail with raw ODBC errors, so the
+# main window checks once per database and lists anything absent up front.
+REQUIRED_SCHEMA = {
+    "Contacts": ["Center ID", "Last Name", "First Name", "Health Plan", "DOB"],
+    "Enrollment": ["Center ID", "start_date", "end_date"],
+    "Authorization": ["Center ID", "auth_start", "auth_end", "auth_days",
+                      "Health Plan", "created_at", "Member ID", "auth_number"],
+    "Availability": ["Center ID", "Day Of Week", "avail_start", "avail_end"],
+    "Absences": ["Center ID", "Leave Type", "Start_Date", "End_Date"],
+    "OneOffAvailability": ["Center ID", "date", "avail_start", "avail_end"],
+    "EmergencyContact": ["Center ID", "Full Name", "Phone Number"],
+    "TransportAuthorization": ["Center ID", "auth_start", "auth_end"],
+    "AuthEdge": ["authorization_id", "transport_authorization_id"],
+}
+
+
+def missing_schema(db_path: str) -> list[str]:
+    """Human-readable list of required tables/columns absent from db_path,
+    e.g. ['table OneOffAvailability', 'column created_at on Authorization'].
+    Empty list when the schema is complete."""
+    conn = _read_connection(db_path)
+    c = conn.cursor()
+    tables = {row.table_name for row in c.tables(tableType="TABLE")}
+    problems: list[str] = []
+    for table, columns in REQUIRED_SCHEMA.items():
+        if table not in tables:
+            problems.append(f"table {table}")
+            continue
+        have = {row.column_name for row in c.columns(table=table)}
+        problems += [f"column {col} on {table}"
+                     for col in columns if col not in have]
+    return problems
+
+
 _transport_doc_col_cache: dict = {}
 
 
@@ -1028,18 +1086,9 @@ def sync_health_plan_from_current_auth(center_id: int, db_path: str) -> str | No
     plan = (current.get("health_plan") or "").strip()
     if not plan:
         return None
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(
-            "UPDATE [Contacts] SET [Health Plan]=? WHERE [Center ID]=?",
-            (plan, center_id),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path,
+                   "UPDATE [Contacts] SET [Health Plan]=? WHERE [Center ID]=?",
+                   (plan, center_id))
     return plan
 
 
@@ -1055,18 +1104,9 @@ def sync_member_id_from_current_auth(center_id: int, db_path: str) -> str | None
     member_id = (current.get("member_id") or "").strip()
     if not member_id:
         return None
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(
-            "UPDATE [Contacts] SET [Member ID]=? WHERE [Center ID]=?",
-            (member_id, center_id),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path,
+                   "UPDATE [Contacts] SET [Member ID]=? WHERE [Center ID]=?",
+                   (member_id, center_id))
     return member_id
 
 
@@ -1141,9 +1181,7 @@ def insert_member(
     with an authorization, a transportation auth mirroring the care auth's
     dates/days/plan is inserted and linked to it via [AuthEdge].
     """
-    conn = _connect(db_path)
-    try:
-        c = conn.cursor()
+    with write_conn(db_path) as c:
         c.execute(INSERT_CONTACT,
                   (center_id, last_name, first_name, health_plan, address,
                    long_lat, member_id, home_tell, cell, dob, gender))
@@ -1202,25 +1240,11 @@ def insert_member(
                     _hhmm_to_datetime(row["avail_end"]),
                 ),
             )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
 
 
 def set_member_long_lat(center_id: int, long_lat: str, db_path: str) -> None:
     """Persist 'lng,lat' to a member's [Long Lat] (only when a place was picked)."""
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(SET_LONG_LAT, (long_lat, center_id))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, SET_LONG_LAT, (long_lat, center_id))
 
 
 def update_contact(
@@ -1248,48 +1272,21 @@ def update_contact(
     notes: str,
     db_path: str,
 ) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(
-            UPDATE_CONTACT,
-            (
-                last_name, first_name, chinese_name, gender, dob,
-                member_id, health_plan, medicaid, medicare, ssn,
-                language, case_manager, home_tell, cell, address,
-                emergency, pcp, hospital, hha, admission_date, notes,
-                center_id,
-            ),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, UPDATE_CONTACT, (
+        last_name, first_name, chinese_name, gender, dob,
+        member_id, health_plan, medicaid, medicare, ssn,
+        language, case_manager, home_tell, cell, address,
+        emergency, pcp, hospital, hha, admission_date, notes,
+        center_id,
+    ))
 
 
 def insert_enrollment(center_id: int, start: date, end: date | None, db_path: str) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(INSERT_ENROLLMENT, (center_id, start, end))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, INSERT_ENROLLMENT, (center_id, start, end))
 
 
 def delete_enrollment(record_id: int, db_path: str) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(DELETE_ENROLLMENT, (record_id,))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, DELETE_ENROLLMENT, (record_id,))
 
 
 def is_terminated(enrollments: list[dict]) -> bool:
@@ -1358,15 +1355,7 @@ def get_terminated_center_ids(db_path: str) -> set[int]:
 
 def terminate_enrollment(record_id: int, db_path: str) -> None:
     """Set an enrollment's end date to today (used by the Terminate button)."""
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(UPDATE_ENROLLMENT_END, (date.today(), record_id))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, UPDATE_ENROLLMENT_END, (date.today(), record_id))
 
 
 def insert_authorization(
@@ -1381,20 +1370,11 @@ def insert_authorization(
     member_id: str = "",
     auth_number: str = "",
 ) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(
-            INSERT_AUTHORIZATION,
-            (center_id, auth_start, auth_end, effective_start, effective_end,
-             encode_auth_days(auth_days), health_plan, datetime.now(), member_id,
-             auth_number),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, INSERT_AUTHORIZATION, (
+        center_id, auth_start, auth_end, effective_start, effective_end,
+        encode_auth_days(auth_days), health_plan, datetime.now(), member_id,
+        auth_number,
+    ))
 
 
 def update_authorization(
@@ -1409,31 +1389,14 @@ def update_authorization(
 ) -> None:
     """Update an existing authorization's dates, days, plan, member id, and
     auth number."""
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(
-            UPDATE_AUTHORIZATION,
-            (auth_start, auth_end, encode_auth_days(auth_days), health_plan,
-             member_id, auth_number, record_id),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, UPDATE_AUTHORIZATION, (
+        auth_start, auth_end, encode_auth_days(auth_days), health_plan,
+        member_id, auth_number, record_id,
+    ))
 
 
 def delete_authorization(record_id: int, db_path: str) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(DELETE_AUTHORIZATION, (record_id,))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, DELETE_AUTHORIZATION, (record_id,))
 
 
 def insert_transport_authorization(
@@ -1449,24 +1412,15 @@ def insert_transport_authorization(
     """Insert a transportation authorization and return its new ID, so the caller
     can link it to a care auth via set_transport_link. effective_* are left NULL
     (nothing reads them for transport)."""
-    conn = _connect(db_path)
-    try:
-        cur = conn.cursor()
-        cur.execute(
+    with write_conn(db_path) as c:
+        c.execute(
             INSERT_TRANSPORT_AUTH,
             (center_id, auth_start, auth_end, None, None,
              encode_auth_days(auth_days), health_plan, datetime.now(), member_id,
              auth_number),
         )
-        cur.execute("SELECT @@IDENTITY")
-        new_id = int(cur.fetchone()[0])
-        conn.commit()
-        return new_id
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+        c.execute("SELECT @@IDENTITY")
+        return int(c.fetchone()[0])
 
 
 def update_transport_authorization(
@@ -1480,51 +1434,26 @@ def update_transport_authorization(
     auth_number: str = "",
 ) -> None:
     """Update a transport auth's dates, days, plan, member id, and auth number."""
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(
-            UPDATE_TRANSPORT_AUTH,
-            (auth_start, auth_end, encode_auth_days(auth_days), health_plan,
-             member_id, auth_number, record_id),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, UPDATE_TRANSPORT_AUTH, (
+        auth_start, auth_end, encode_auth_days(auth_days), health_plan,
+        member_id, auth_number, record_id,
+    ))
 
 
 def delete_transport_authorization(record_id: int, db_path: str) -> None:
     """Delete a transport auth and its [AuthEdge] links in one transaction."""
-    conn = _connect(db_path)
-    try:
-        cur = conn.cursor()
-        cur.execute(DELETE_AUTH_EDGE_BY_TRANSPORT, (record_id,))
-        cur.execute(DELETE_TRANSPORT_AUTH, (record_id,))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    with write_conn(db_path) as c:
+        c.execute(DELETE_AUTH_EDGE_BY_TRANSPORT, (record_id,))
+        c.execute(DELETE_TRANSPORT_AUTH, (record_id,))
 
 
 def set_transport_link(transport_id: int, authorization_id, db_path: str) -> None:
     """Replace the care<->transport link for one transport auth: clear its existing
     [AuthEdge] rows, then add one for authorization_id (skipped when None)."""
-    conn = _connect(db_path)
-    try:
-        cur = conn.cursor()
-        cur.execute(DELETE_AUTH_EDGE_BY_TRANSPORT, (transport_id,))
+    with write_conn(db_path) as c:
+        c.execute(DELETE_AUTH_EDGE_BY_TRANSPORT, (transport_id,))
         if authorization_id is not None:
-            cur.execute(INSERT_AUTH_EDGE, (authorization_id, transport_id))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+            c.execute(INSERT_AUTH_EDGE, (authorization_id, transport_id))
 
 
 def insert_availability(
@@ -1536,19 +1465,10 @@ def insert_availability(
     effective_end: date | None,
     db_path: str,
 ) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(
-            INSERT_AVAILABILITY,
-            (center_id, effective_start, effective_end, day_of_week,
-             _hhmm_to_datetime(avail_start), _hhmm_to_datetime(avail_end)),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, INSERT_AVAILABILITY, (
+        center_id, effective_start, effective_end, day_of_week,
+        _hhmm_to_datetime(avail_start), _hhmm_to_datetime(avail_end),
+    ))
 
 
 def update_availability(record_id: int, avail_start: str, avail_end: str,
@@ -1556,31 +1476,14 @@ def update_availability(record_id: int, avail_start: str, avail_end: str,
                         db_path: str) -> None:
     """Update an availability row's start/end times (24-hour 'HH:mm') and its
     effective window. `effective_end` may be None for an open-ended window."""
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(
-            UPDATE_AVAILABILITY,
-            (_hhmm_to_datetime(avail_start), _hhmm_to_datetime(avail_end),
-             effective_start, effective_end, record_id),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, UPDATE_AVAILABILITY, (
+        _hhmm_to_datetime(avail_start), _hhmm_to_datetime(avail_end),
+        effective_start, effective_end, record_id,
+    ))
 
 
 def delete_availability(record_id: int, db_path: str) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(DELETE_AVAILABILITY, (record_id,))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, DELETE_AVAILABILITY, (record_id,))
 
 
 def insert_one_off_availability(
@@ -1591,19 +1494,10 @@ def insert_one_off_availability(
     notes: str,
     db_path: str,
 ) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(
-            INSERT_ONE_OFF_AVAILABILITY,
-            (center_id, on_date, _hhmm_to_datetime(avail_start),
-             _hhmm_to_datetime(avail_end), notes),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, INSERT_ONE_OFF_AVAILABILITY, (
+        center_id, on_date, _hhmm_to_datetime(avail_start),
+        _hhmm_to_datetime(avail_end), notes,
+    ))
 
 
 def update_one_off_availability(
@@ -1614,75 +1508,30 @@ def update_one_off_availability(
     notes: str,
     db_path: str,
 ) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(
-            UPDATE_ONE_OFF_AVAILABILITY,
-            (on_date, _hhmm_to_datetime(avail_start),
-             _hhmm_to_datetime(avail_end), notes, record_id),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, UPDATE_ONE_OFF_AVAILABILITY, (
+        on_date, _hhmm_to_datetime(avail_start),
+        _hhmm_to_datetime(avail_end), notes, record_id,
+    ))
 
 
 def delete_one_off_availability(record_id: int, db_path: str) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(DELETE_ONE_OFF_AVAILABILITY, (record_id,))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, DELETE_ONE_OFF_AVAILABILITY, (record_id,))
 
 
 def insert_emergency_contact(center_id: int, full_name: str, phone: str,
                              relationship: str, db_path: str) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(
-            INSERT_EMERGENCY_CONTACT,
-            (center_id, full_name, phone, relationship),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, INSERT_EMERGENCY_CONTACT,
+                   (center_id, full_name, phone, relationship))
 
 
 def update_emergency_contact(record_id: int, full_name: str, phone: str,
                              relationship: str, db_path: str) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(
-            UPDATE_EMERGENCY_CONTACT,
-            (full_name, phone, relationship, record_id),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, UPDATE_EMERGENCY_CONTACT,
+                   (full_name, phone, relationship, record_id))
 
 
 def delete_emergency_contact(record_id: int, db_path: str) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(DELETE_EMERGENCY_CONTACT, (record_id,))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, DELETE_EMERGENCY_CONTACT, (record_id,))
 
 
 def insert_absence(
@@ -1692,24 +1541,8 @@ def insert_absence(
     end: date,
     db_path: str,
 ) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(INSERT_ABSENCE, (center_id, leave_type, start, end))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, INSERT_ABSENCE, (center_id, leave_type, start, end))
 
 
 def delete_absence(record_id: int, db_path: str) -> None:
-    conn = _connect(db_path)
-    try:
-        conn.cursor().execute(DELETE_ABSENCE, (record_id,))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    _execute_write(db_path, DELETE_ABSENCE, (record_id,))

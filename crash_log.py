@@ -53,6 +53,21 @@ def write_crash_report(directory: str, text: str, *, now: datetime) -> str:
     return path
 
 
+def log_warning(text: str) -> None:
+    """Append a one-line WARN entry to today's debug file.
+
+    For errors that are handled in the UI (shown to the user or deliberately
+    swallowed) but should stay diagnosable in the field. Never raises.
+    """
+    try:
+        now = datetime.now()
+        path = os.path.join(log_dir(), f"debug_{now:%Y-%m-%d}.txt")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"WARN {now:%Y-%m-%d %H:%M:%S} {text}\n")
+    except Exception:
+        pass
+
+
 def install(parent=None) -> None:
     """Route unhandled exceptions to a crash log + dialog, then exit."""
     def handler(exc_type, exc_value, exc_tb):

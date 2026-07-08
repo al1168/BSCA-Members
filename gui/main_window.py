@@ -1,4 +1,5 @@
 import os
+from html import escape as html_escape
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
@@ -27,8 +28,8 @@ def active_first(members: list[dict], terminated_ids: set) -> list[dict]:
 def _dob_matches(dob, query: str) -> bool:
     """Whether a member's `dob` (a date or None) matches a date `query` that uses
     '/' separators. The query is a prefix of MM/DD/YYYY: month/day are zero-padded
-    to two digits so '1/1' matches Jan 1, and a partial year prefix works too
-    ('1/1/20' matches 2001-? no — matches 2000s). Non-numeric segments never match."""
+    to two digits so '1/1' matches Jan 1, and a partial year works as a prefix
+    ('1/1/20' matches any Jan 1 in 2000–2009). Non-numeric segments never match."""
     if dob is None:
         return False
     if not any(ch.isdigit() for ch in query):
@@ -94,6 +95,7 @@ class _MemberItemDelegate(QStyledItemDelegate):
         opt = QStyleOptionViewItem(option)
         self.initStyleOption(opt, index)
         name, _, sub = opt.text.partition("\n")
+        name, sub = html_escape(name), html_escape(sub)  # names may contain & or <
         opt.text = ""
         style = opt.widget.style() if opt.widget else QApplication.style()
         style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, opt.widget)
@@ -182,7 +184,7 @@ class MainWindow(QMainWindow):
         self._member_counts.setObjectName("sidebar_member_counts")
         self._member_counts.setTextFormat(Qt.TextFormat.RichText)
         self._member_counts.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._member_counts.setStyleSheet("font-size:10px;")
+        self._member_counts.setStyleSheet("font-size:12px;")
 
         sidebar_layout.addWidget(self._btn_add)
         sidebar_layout.addWidget(self._search)
@@ -255,26 +257,66 @@ class MainWindow(QMainWindow):
             self._all_members = get_all_members(db_path)
             try:
                 self._terminated_ids = get_terminated_center_ids(db_path)
-            except Exception:
+            except Exception as exc:
+                # Members still render, just without terminated marks — log it
+                # so the missing marks are diagnosable.
+                import crash_log
+                crash_log.log_warning(f"get_terminated_center_ids failed: {exc!r}")
                 self._terminated_ids = set()
         except Exception as exc:
-            QMessageBox.critical(self, "Database Error",
-                f"Could not load members:\n{exc}\n\nCheck Settings.")
+            from gui.errors import show_db_error
+            show_db_error(self, exc, "Could Not Load Members")
+        # A database is configured now — the pane's job is member selection.
+        if self._all_members:
+            self._placeholder.setText(
+                "Select a member from the list to view their profile.\n"
+                "Tip: press Ctrl+K to search from anywhere."
+            )
+        else:
+            self._placeholder.setText(
+                "This database has no members yet.\n"
+                "Click  + Add New Member  to create the first one."
+            )
         self._populate_list(self._all_members)
         self._update_member_counts()
+        self._warn_missing_schema(db_path)
+
+    def _warn_missing_schema(self, db_path: str):
+        """One-time (per path) warning listing tables/columns this app needs but
+        the selected database lacks, so features don't fail one by one later."""
+        if db_path in getattr(self, "_schema_warned", set()):
+            return
+        try:
+            from db.members import missing_schema
+            missing = missing_schema(db_path)
+        except Exception:
+            return
+        self._schema_warned = getattr(self, "_schema_warned", set())
+        self._schema_warned.add(db_path)
+        if missing:
+            QMessageBox.warning(
+                self, "Database Schema",
+                "This database is missing some tables/columns the app uses.\n"
+                "The affected features won't work until they are added:\n\n  • "
+                + "\n  • ".join(missing))
 
     def _update_member_counts(self):
         """Refresh the sidebar's 'N members · M active' tally (active = not
         terminated), from the full member list regardless of any search filter."""
+        from gui.theme import format_member_counts
         total = len(self._all_members)
         active = sum(1 for m in self._all_members
                      if m["center_id"] not in self._terminated_ids)
-        self._member_counts.setText(
-            f"<span style='color:#8a8f9c'>{total} members</span>"
-            f"&nbsp;&nbsp;<span style='color:#3d9e6e'>&#9679; {active} active</span>")
+        self._member_counts.setText(format_member_counts(total, active))
 
-    def _populate_list(self, members: list[dict]):
+    def _populate_list(self, members: list[dict], search_text: str = ""):
         self._member_list.clear()
+        if not members and search_text.strip():
+            # Zero-result search: say so instead of showing a silent void.
+            item = QListWidgetItem(f"No members match\n“{search_text.strip()}”")
+            item.setFlags(Qt.ItemFlag.NoItemFlags)   # not selectable
+            self._member_list.addItem(item)
+            return
         for m in active_first(members, self._terminated_ids):
             label = f"{m['last_name']}, {m['first_name']}\n{m['center_id']} · {m['health_plan']}"
             item = QListWidgetItem(label)
@@ -284,7 +326,7 @@ class MainWindow(QMainWindow):
 
     def _filter_members(self, text: str):
         filtered = [m for m in self._all_members if matches_search(m, text)]
-        self._populate_list(filtered)
+        self._populate_list(filtered, search_text=text)
 
     def _ok_to_leave_current(self) -> bool:
         """True to proceed (no unsaved edits, or the user chose to discard)."""
@@ -366,7 +408,9 @@ class MainWindow(QMainWindow):
         db_path = self._settings.get("db_path", "")
         try:
             self._terminated_ids = get_terminated_center_ids(db_path)
-        except Exception:
+        except Exception as exc:
+            import crash_log
+            crash_log.log_warning(f"refresh terminated marks failed: {exc!r}")
             return
         for i in range(self._member_list.count()):
             item = self._member_list.item(i)

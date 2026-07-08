@@ -14,6 +14,7 @@ from gui.address_autocomplete import (
     set_active_inline_editor, clear_active_inline_editor, make_phone_validator,
     PhoneLineEdit, set_widget_error, DateLineEdit,
 )
+from gui.errors import show_db_error
 
 
 class _NotesEdit(QTextEdit):
@@ -81,6 +82,26 @@ def make_plan_badge(plan: str | None, *, max_height: int = 26):
 
 
 _PILL_CELL_HMARGIN = 6   # left+right inset inside a centered pill cell
+
+
+def set_table_empty_state(table, text: str) -> None:
+    """When `table` has no data rows, show one muted, non-selectable row saying
+    what belongs here and how to add it — never a bare void. Call after the
+    table is fully built (so hidden debug columns are already applied)."""
+    if table.rowCount() > 0:
+        return
+    from PyQt6.QtWidgets import QTableWidgetItem
+    from PyQt6.QtGui import QColor
+    from gui.theme import current_tokens
+    first_visible = next(
+        (c for c in range(table.columnCount()) if not table.isColumnHidden(c)), 0)
+    table.setRowCount(1)
+    if table.columnCount() - first_visible > 1:
+        table.setSpan(0, first_visible, 1, table.columnCount() - first_visible)
+    item = QTableWidgetItem(text)
+    item.setFlags(Qt.ItemFlag.NoItemFlags)          # not selectable/editable
+    item.setForeground(QColor(current_tokens()["text3"]))
+    table.setItem(0, first_visible, item)
 
 
 def _centered_cell(widget) -> QWidget:
@@ -733,7 +754,7 @@ class MemberTabsWidget(QWidget):
             self._one_off = ctx.get("one_off_availability", [])
             self._emergency_contacts = ctx.get("emergency_contacts", [])
         except Exception as exc:
-            QMessageBox.critical(self, "Load Error", str(exc))
+            show_db_error(self, exc, "Could Not Load Member")
         # Transport auths load independently and degrade to [] if the
         # [TransportAuthorization] table is missing, so they never block the
         # member from loading.
@@ -1494,7 +1515,7 @@ class MemberTabsWidget(QWidget):
             self._log_event("EDIT",
                             f"Emergency contact added: {result['full_name']}")
         except Exception as exc:
-            QMessageBox.critical(self, "Error", str(exc))
+            show_db_error(self, exc)
 
     def _edit_emergency(self, entry: dict):
         from db.members import update_emergency_contact, get_emergency_contacts
@@ -1512,7 +1533,7 @@ class MemberTabsWidget(QWidget):
             self._log_event("EDIT",
                             f"Emergency contact edited: {result['full_name']}")
         except Exception as exc:
-            QMessageBox.critical(self, "Error", str(exc))
+            show_db_error(self, exc)
 
     def _delete_emergency(self, table):
         row = table.currentRow()
@@ -1537,7 +1558,7 @@ class MemberTabsWidget(QWidget):
                         "EDIT",
                         f"Emergency contact deleted: {entry['full_name']}")
             except Exception as exc:
-                QMessageBox.critical(self, "Error", str(exc))
+                show_db_error(self, exc)
 
     def _confirm_discard(self):
         """Confirm before reverting unsaved edits. No-op when nothing changed."""
@@ -1684,7 +1705,7 @@ class MemberTabsWidget(QWidget):
                 set_member_long_lat(self._center_id, new_long_lat, self._db_path)
             self._log_event("EDIT", "; ".join(summary))
         except Exception as exc:
-            QMessageBox.critical(self, "Save Error", str(exc))
+            show_db_error(self, exc, "Could Not Save Changes")
 
     # ── Dirty tracking ─────────────────────────────────────────────────────
 
@@ -1748,7 +1769,8 @@ class MemberTabsWidget(QWidget):
 
     # ── Table tab helper ───────────────────────────────────────────────────
 
-    def _make_table_tab(self, columns, rows, on_add, on_delete):
+    def _make_table_tab(self, columns, rows, on_add, on_delete,
+                        empty_text: str = "Nothing here yet — click + Add."):
         from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView
         w = QWidget()
         layout = QVBoxLayout(w)
@@ -1780,6 +1802,7 @@ class MemberTabsWidget(QWidget):
         btn_row.addWidget(btn_del)
         layout.addLayout(btn_row)
         self._apply_id_column(table)
+        set_table_empty_state(table, empty_text)
         return w, table
 
     def _refresh_tab(self, index: int, new_widget: QWidget):
@@ -1866,16 +1889,26 @@ class MemberTabsWidget(QWidget):
             table.setItem(r, 1, QTableWidgetItem(str(e["start_date"])))
             table.setItem(r, 2, QTableWidgetItem(str(end) if end else "ongoing"))
             if enrollment_active(e, today):
-                btn = QPushButton("Terminate")
+                btn = QPushButton("Terminate…")
                 btn.setObjectName("btn_terminate")
                 btn.clicked.connect(
                     lambda _=False, rid=e["id"]: self._terminate_enrollment(rid)
                 )
-                table.setCellWidget(r, 3, btn)
+                # Wrap so the button hugs its text instead of stretching into a
+                # full-width red bar across the stretched Status column.
+                wrap = QWidget()
+                hl = QHBoxLayout(wrap)
+                hl.setContentsMargins(6, 2, 6, 2)
+                hl.addWidget(QLabel("Active"))
+                hl.addStretch()
+                hl.addWidget(btn)
+                table.setCellWidget(r, 3, wrap)
             else:
                 table.setItem(r, 3, QTableWidgetItem("Ended"))
 
         self._apply_id_column(table)
+        set_table_empty_state(
+            table, "No enrollments yet — click + Add to record one.")
         self._enroll_table = table
         btn_add = QPushButton("+ Add")
         btn_add.clicked.connect(self._add_enrollment)
@@ -1947,7 +1980,7 @@ class MemberTabsWidget(QWidget):
                 self.members_changed.emit()
                 self._log_event("ENROLL", f"Enrollment added: {s} – {e or 'ongoing'}")
             except Exception as exc:
-                QMessageBox.critical(self, "Error", str(exc))
+                show_db_error(self, exc)
 
     def _delete_enrollment(self, table):
         row = table.currentRow()
@@ -1971,7 +2004,7 @@ class MemberTabsWidget(QWidget):
                         f"Enrollment deleted: {entry['start_date']} – "
                         f"{entry['end_date'] or 'ongoing'}")
             except Exception as exc:
-                QMessageBox.critical(self, "Error", str(exc))
+                show_db_error(self, exc)
 
     def _terminate_enrollment(self, record_id: int):
         from datetime import date
@@ -1995,7 +2028,7 @@ class MemberTabsWidget(QWidget):
             self._log_event("ENROLL",
                             f"Enrollment terminated: end set to {today.isoformat()}")
         except Exception as exc:
-            QMessageBox.critical(self, "Error", str(exc))
+            show_db_error(self, exc)
 
     # ── Authorizations tab ─────────────────────────────────────────────────
 
@@ -2153,6 +2186,8 @@ class MemberTabsWidget(QWidget):
         _fit_pill_column(table, ci["Status"], status_chips, floor=96)
 
         self._apply_id_column(table)
+        set_table_empty_state(
+            table, "No authorizations yet — click + Add to record one.")
         self._auth_table = table
         btn_add = QPushButton("+ Add")
         btn_add.clicked.connect(self._add_auth)
@@ -2391,7 +2426,7 @@ class MemberTabsWidget(QWidget):
                 f"{encode_auth_days(result['days'])} · {result['health_plan']}"
             )
         except Exception as exc:
-            QMessageBox.critical(self, "Error", str(exc))
+            show_db_error(self, exc)
 
     def _edit_auth(self, auth: dict):
         from db.members import update_authorization, encode_auth_days
@@ -2414,7 +2449,7 @@ class MemberTabsWidget(QWidget):
                 f"{encode_auth_days(result['days'])} · {result['health_plan']}"
             )
         except Exception as exc:
-            QMessageBox.critical(self, "Error", str(exc))
+            show_db_error(self, exc)
 
     def _delete_auth(self, table):
         row = table.currentRow()
@@ -2436,7 +2471,7 @@ class MemberTabsWidget(QWidget):
                         f"[{format_auth_days(entry.get('auth_days', '') or '')}] · "
                         f"{entry.get('health_plan', '')}")
             except Exception as exc:
-                QMessageBox.critical(self, "Error", str(exc))
+                show_db_error(self, exc)
 
     # ── Transportation tab ─────────────────────────────────────────────────
 
@@ -2576,6 +2611,9 @@ class MemberTabsWidget(QWidget):
         _fit_pill_column(table, ci["Status"], status_chips, floor=96)
 
         self._apply_id_column(table)
+        set_table_empty_state(
+            table,
+            "No transportation authorizations yet — click + Add to record one.")
         self._transport_table = table
         self._transport_linked_col = ci["Linked Auth"]
         table.cellClicked.connect(self._on_transport_linked_clicked)
@@ -2749,7 +2787,7 @@ class MemberTabsWidget(QWidget):
                 f"{result['auth_end']} · {encode_auth_days(result['days'])} · "
                 f"{result['auth_number']}")
         except Exception as exc:
-            QMessageBox.critical(self, "Error", str(exc))
+            show_db_error(self, exc)
 
     def _edit_transport(self, transport: dict, current_link=None):
         from db.members import (
@@ -2771,7 +2809,7 @@ class MemberTabsWidget(QWidget):
                 f"{result['auth_end']} · {encode_auth_days(result['days'])} · "
                 f"{result['auth_number']}")
         except Exception as exc:
-            QMessageBox.critical(self, "Error", str(exc))
+            show_db_error(self, exc)
 
     def _delete_transport(self, table):
         row = table.currentRow()
@@ -2793,7 +2831,7 @@ class MemberTabsWidget(QWidget):
                         f"Transport auth deleted: {entry['auth_start']} – "
                         f"{entry['auth_end']} · {entry.get('auth_number', '')}")
             except Exception as exc:
-                QMessageBox.critical(self, "Error", str(exc))
+                show_db_error(self, exc)
 
     def _attach_transport_document(self, transport: dict, replace: bool = False):
         from PyQt6.QtWidgets import QFileDialog
@@ -3082,6 +3120,9 @@ class MemberTabsWidget(QWidget):
         _fit_pill_column(table, 6, status_chips, floor=96)
 
         self._apply_id_column(table)
+        set_table_empty_state(
+            table,
+            "No weekly availability yet — use Scheduled Changes to set it up.")
         self._avail_table = table
 
         # This tab uses scheduled changes instead of a raw "+ Add": the Scheduled
@@ -3193,7 +3234,7 @@ class MemberTabsWidget(QWidget):
                 f"Availability edited: {day_name} {ts}–{te} "
                 f"(eff {es.isoformat()} → {end_txt})")
         except Exception as exc:
-            QMessageBox.critical(self, "Error", str(exc))
+            show_db_error(self, exc)
 
     def _add_avail(self):
         from PyQt6.QtWidgets import (
@@ -3271,7 +3312,7 @@ class MemberTabsWidget(QWidget):
                 self._refresh_tab(4, self._make_avail_tab())
                 self._log_event("AVAIL", f"Availability added: {day_name} {ts}–{te}")
             except Exception as exc:
-                QMessageBox.critical(self, "Error", str(exc))
+                show_db_error(self, exc)
 
     def _delete_avail(self, table):
         row = table.currentRow()
@@ -3295,7 +3336,7 @@ class MemberTabsWidget(QWidget):
                         f"Availability deleted: {day} "
                         f"{entry['avail_start']}–{entry['avail_end']}")
             except Exception as exc:
-                QMessageBox.critical(self, "Error", str(exc))
+                show_db_error(self, exc)
 
     # ── Scheduled availability changes (future-effective rows) ───────────────
 
@@ -3474,7 +3515,7 @@ class MemberTabsWidget(QWidget):
             self._log_event("AVAIL", f"Scheduled change: {day_name} → {ts}–{te} "
                             f"effective {eff.isoformat()}")
         except Exception as exc:
-            QMessageBox.critical(self, "Error", str(exc))
+            show_db_error(self, exc)
 
     def _edit_scheduled_change(self, entry: dict):
         from datetime import timedelta
@@ -3511,7 +3552,7 @@ class MemberTabsWidget(QWidget):
             self._log_event("AVAIL", f"Scheduled change updated: {day_name} → "
                             f"{ts}–{te} effective {eff.isoformat()}")
         except Exception as exc:
-            QMessageBox.critical(self, "Error", str(exc))
+            show_db_error(self, exc)
 
     def _delete_scheduled_change(self, entry: dict):
         from db.members import delete_availability, update_availability
@@ -3539,7 +3580,7 @@ class MemberTabsWidget(QWidget):
             self._log_event("AVAIL", f"Scheduled change canceled: {day_name} "
                             f"effective {entry['effective_start_date']}")
         except Exception as exc:
-            QMessageBox.critical(self, "Error", str(exc))
+            show_db_error(self, exc)
 
     # ── Unavailable Times tab (one-off) ──────────────────────────────────────
 
@@ -3581,6 +3622,9 @@ class MemberTabsWidget(QWidget):
             table.setCellWidget(r, 5, btn)
 
         self._apply_id_column(table)
+        set_table_empty_state(
+            table,
+            "No overrides yet — click + Add to record a date-specific change.")
         self._unavail_table = table
         btn_add = QPushButton("+ Add")
         btn_add.clicked.connect(self._add_unavailable)
@@ -3673,7 +3717,7 @@ class MemberTabsWidget(QWidget):
                 f"Availability override added: {result['date']} "
                 f"{result['avail_start']}–{result['avail_end']}")
         except Exception as exc:
-            QMessageBox.critical(self, "Error", str(exc))
+            show_db_error(self, exc)
 
     def _edit_unavailable(self, entry: dict):
         from db.members import (
@@ -3697,7 +3741,7 @@ class MemberTabsWidget(QWidget):
                 f"Availability override edited: {result['date']} "
                 f"{result['avail_start']}–{result['avail_end']}")
         except Exception as exc:
-            QMessageBox.critical(self, "Error", str(exc))
+            show_db_error(self, exc)
 
     def _delete_unavailable(self, table):
         row = table.currentRow()
@@ -3721,7 +3765,7 @@ class MemberTabsWidget(QWidget):
                         f"Availability override deleted: {entry['date']} "
                         f"{entry['avail_start']}–{entry['avail_end']}")
             except Exception as exc:
-                QMessageBox.critical(self, "Error", str(exc))
+                show_db_error(self, exc)
 
     # ── Absences tab ───────────────────────────────────────────────────────
 
@@ -3790,7 +3834,7 @@ class MemberTabsWidget(QWidget):
                 self._refresh_tab(6, self._make_absences_tab())
                 self._log_event("ABS", f"Absence added: {lt} · {s} – {e}")
             except Exception as exc:
-                QMessageBox.critical(self, "Error", str(exc))
+                show_db_error(self, exc)
 
     def _delete_absence(self, table):
         row = table.currentRow()
@@ -3812,4 +3856,4 @@ class MemberTabsWidget(QWidget):
                         f"Absence deleted: {entry['leave_type']} "
                         f"{entry['start_date']} – {entry['end_date']}")
             except Exception as exc:
-                QMessageBox.critical(self, "Error", str(exc))
+                show_db_error(self, exc)

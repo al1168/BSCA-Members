@@ -265,7 +265,17 @@ QLineEdit#info_field[error="true"] {{
 }}
 QComboBox::drop-down {{
     border: none;
-    padding-right: 8px;
+    width: 22px;
+}}
+/* A visible arrow so combo boxes read as pickers, not text fields. */
+QComboBox::down-arrow {{
+    image: none;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid {t['text2']};
+    margin-right: 8px;
 }}
 QComboBox QAbstractItemView {{
     background-color: {t['raised']};
@@ -341,16 +351,26 @@ QLabel#db_indicator[connected="true"] {{
 QLabel#db_indicator[connected="false"] {{
     color: {t['warning']};
 }}
+/* Destructive but calm: outline style until hovered, and never wider than
+   its text (the cell wrapper keeps it from stretching across the table). */
 QPushButton#btn_terminate {{
-    background-color: {t['error']};
-    color: #ffffff;
-    border: none;
+    background-color: {t['error_bg']};
+    color: {t['error_text']};
+    border: 1px solid {t['error']};
     font-weight: 600;
-    padding: 4px 12px;
+    padding: 3px 14px;
     border-radius: 5px;
 }}
 QPushButton#btn_terminate:hover {{
-    background-color: {t['error_text']};
+    background-color: {t['error']};
+    color: #ffffff;
+}}
+/* Muted line shown inside empty tables / lists ("No … yet — click + Add"). */
+QLabel#empty_state {{
+    color: {t['text3']};
+    font-size: 12px;
+    font-style: italic;
+    padding: 18px;
 }}
 QPushButton#btn_edit {{
     background-color: {t['accent_bg']};
@@ -671,7 +691,70 @@ QHeaderView::section {{
 """
 
 
+# The active theme, kept current by apply_theme so widgets built later (event
+# badges, count labels) can color themselves without threading the settings
+# dict everywhere.
+_current_name = "dark"
+
+
+def current_theme_name() -> str:
+    return _current_name
+
+
+def current_tokens() -> dict:
+    """The token dict of the theme applied last (defaults to dark)."""
+    return DARK if _current_name == "dark" else LIGHT
+
+
+# Event-type badge colors per theme (bg, fg). The dark values are the original
+# palette; the light values keep the same hues on pale backgrounds.
+EVENT_BADGE_COLORS = {
+    "dark": {
+        "NEW":    ("#182e22", "#3d9e6e"),
+        "EDIT":   ("#281f0a", "#c08a2a"),
+        "AUTH":   ("#1c2040", "#92b4ff"),
+        "ABS":    ("#1e1530", "#b090e8"),
+        "AVAIL":  ("#0e2028", "#5eead4"),
+        "ENROLL": ("#1a2030", "#80b0e8"),
+    },
+    "light": {
+        "NEW":    ("#e8f5ee", "#1e7a4e"),
+        "EDIT":   ("#f5f0e0", "#876010"),
+        "AUTH":   ("#e5eafc", "#2c47b8"),
+        "ABS":    ("#efe8f8", "#6a3fa8"),
+        "AVAIL":  ("#e0f4f2", "#0f766e"),
+        "ENROLL": ("#e6eef8", "#2a5f9e"),
+    },
+}
+
+
+def event_badge_colors(event_type: str) -> tuple[str, str]:
+    """(background, foreground) for an event-type badge in the active theme."""
+    palette = EVENT_BADGE_COLORS[_current_name]
+    fallback = ("#333333", "#cccccc") if _current_name == "dark" else ("#e0e0e6", "#444450")
+    return palette.get(event_type, fallback)
+
+
+def format_member_counts(total: int, active: int) -> str:
+    """The 'N members · M active' rich-text line used by the sidebar and the
+    All Events header, colored from the active theme's tokens."""
+    t = current_tokens()
+    return (
+        f"<span style='color:{t['text2']}'>{total} members</span>"
+        f"&nbsp;&nbsp;<span style='color:{t['success']}'>&#9679; {active} active</span>"
+    )
+
+
 def apply_theme(app, theme_name: str) -> None:
     """Apply 'dark' or 'light' QSS to the entire application."""
+    global _current_name
+    _current_name = "dark" if theme_name == "dark" else "light"
     tokens = DARK if theme_name == "dark" else LIGHT
     app.setStyleSheet(build_qss(tokens))
+    # Re-polish everything: some chrome (toolbars, property-selector styles)
+    # keeps the old palette after a runtime stylesheet swap otherwise.
+    style = app.style()
+    for w in app.allWidgets():
+        style.unpolish(w)
+        style.polish(w)
+        w.update()
