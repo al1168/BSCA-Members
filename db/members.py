@@ -908,6 +908,68 @@ def get_authorizations(center_id: int, db_path: str, _retry: bool = True) -> lis
         raise
 
 
+AUTH_ENDS_QUERY = "SELECT [Center ID], [auth_end] FROM [Authorization]"
+
+
+def get_member_auth_ends(db_path: str, _retry: bool = True) -> list[tuple]:
+    """All (center_id, auth_end) pairs from [Authorization] in one query, for
+    the expiring/expired notifications. Cached read connection with the same
+    stale-connection retry as get_member_context."""
+    import pyodbc
+    conn = _read_connection(db_path)
+    try:
+        c = conn.cursor()
+        c.execute(AUTH_ENDS_QUERY)
+        return [(r[0], r[1]) for r in c.fetchall()]
+    except pyodbc.Error:
+        _drop_read_connection(db_path)
+        if _retry:
+            return get_member_auth_ends(db_path, _retry=False)
+        raise
+
+
+def classify_auth_notifications(rows, active_ids, today,
+                                window_days: int = 35) -> dict:
+    """Sort members into auth-notification buckets from raw (center_id,
+    auth_end) rows.
+
+    A member's effective end is the latest auth_end across their auths —
+    the same rule as the header's "Authorization Expired" chip
+    (gui.member_tabs.auth_warning), so a notification clears exactly when a
+    new authorization with a later end date is added. Open-ended auths
+    (null auth_end) are ignored the same way the chip ignores them.
+
+    Only members in `active_ids` (active = not terminated) are considered;
+    members with no dated auths at all are skipped — they have nothing to
+    expire and already surface a "Missing: Authorizations" warning.
+
+    Returns {"expiring": [(center_id, end_date, days_left)],
+             "expired":  [(center_id, end_date, days_ago)]}
+    with expiring sorted soonest-first and expired most-recent-first.
+    Pure (no DB), so it is unit-testable.
+    """
+    latest: dict[int, date] = {}
+    for cid, end in rows:
+        if cid is None or end is None:
+            continue
+        cid = int(cid)
+        if cid not in active_ids:
+            continue
+        end = end.date() if isinstance(end, datetime) else end
+        if cid not in latest or end > latest[cid]:
+            latest[cid] = end
+    expiring, expired = [], []
+    for cid, end in latest.items():
+        days = (end - today).days
+        if days < 0:
+            expired.append((cid, end, -days))
+        elif days <= window_days:
+            expiring.append((cid, end, days))
+    expiring.sort(key=lambda t: (t[2], t[0]))    # soonest end first
+    expired.sort(key=lambda t: (t[2], t[0]))     # most recently expired first
+    return {"expiring": expiring, "expired": expired}
+
+
 def get_transport_authorizations(center_id: int, db_path: str,
                                  _retry: bool = True) -> list[dict]:
     """Transportation authorizations for a member (cached read connection).

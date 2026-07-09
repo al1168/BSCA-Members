@@ -2297,6 +2297,9 @@ class MemberTabsWidget(QWidget):
         self._refresh_tab(2, self._make_auths_tab())
         if description:
             self._log_event("AUTH", description)
+        # Auth dates changed: let the main window refresh the notification
+        # bell (expiring/expired counts) without reopening the member.
+        self.members_changed.emit()
 
     def _open_auth_dialog(self, existing: dict | None = None) -> dict | None:
         """Build the Add/Edit Authorization dialog. Returns a dict with

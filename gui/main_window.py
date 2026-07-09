@@ -213,6 +213,14 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
 
+        # Bell with a live count of expiring/expired auths for active members.
+        # Lives in the toolbar so it's visible whichever profile is open.
+        self._btn_notif = QPushButton("🔔")
+        self._btn_notif.setObjectName("btn_notifications")
+        self._btn_notif.setToolTip("Authorizations expiring soon or expired")
+        self._btn_notif.clicked.connect(self._open_notifications)
+        toolbar.addWidget(self._btn_notif)
+
         btn_settings = QPushButton("⚙  Settings")
         btn_settings.setObjectName("btn_settings")
         btn_settings.clicked.connect(self._open_settings)
@@ -279,6 +287,7 @@ class MainWindow(QMainWindow):
             )
         self._populate_list(self._all_members)
         self._update_member_counts()
+        self._refresh_notifications()
         self._warn_missing_schema(db_path)
 
     def _warn_missing_schema(self, db_path: str):
@@ -418,6 +427,61 @@ class MainWindow(QMainWindow):
             item.setData(TERMINATED_ROLE, cid in self._terminated_ids)
         self._member_list.viewport().update()
         self._update_member_counts()
+        self._refresh_notifications()
+
+    def _compute_notifications(self) -> dict:
+        """Expiring/expired auth buckets for active members (35-day window)."""
+        from datetime import date
+        from db.members import get_member_auth_ends, classify_auth_notifications
+        db_path = self._settings.get("db_path", "")
+        empty = {"expiring": [], "expired": []}
+        if not db_path or not self._all_members:
+            return empty
+        try:
+            rows = get_member_auth_ends(db_path)
+        except Exception as exc:
+            import crash_log
+            crash_log.log_warning(f"notification auth scan failed: {exc!r}")
+            return empty
+        active_ids = ({m["center_id"] for m in self._all_members}
+                      - self._terminated_ids)
+        return classify_auth_notifications(rows, active_ids, date.today())
+
+    def _refresh_notifications(self):
+        """Recompute the buckets and update the toolbar bell's count badge."""
+        if not hasattr(self, "_btn_notif"):
+            return
+        self._notifications = self._compute_notifications()
+        total = (len(self._notifications["expiring"])
+                 + len(self._notifications["expired"]))
+        self._btn_notif.setText(f"🔔  {total}" if total else "🔔")
+        self._btn_notif.setProperty(
+            "alert", bool(self._notifications["expired"]))
+        self._btn_notif.style().unpolish(self._btn_notif)
+        self._btn_notif.style().polish(self._btn_notif)
+
+    def _open_notifications(self):
+        from gui.notifications import NotificationsPanel
+        self._refresh_notifications()          # fresh data on every open
+        names = {m["center_id"]: f"{m['last_name']}, {m['first_name']}"
+                 for m in self._all_members}
+        panel = NotificationsPanel(
+            self._notifications["expiring"], self._notifications["expired"],
+            names, self)
+        panel.member_chosen.connect(self._open_member_auths)
+        self._notif_panel = panel              # keep a reference while shown
+        panel.open_under(self._btn_notif)
+
+    def _open_member_auths(self, center_id):
+        """From a notification row: open the member on their Auths tab so the
+        expiring/expired authorization can be resolved."""
+        self._jump_to_member(center_id)
+        if self._last_center_id != center_id:
+            return                              # blocked by unsaved-changes guard
+        current = (self._detail_stack.widget(1)
+                   if self._detail_stack.count() > 1 else None)
+        if current is not None and hasattr(current, "_tabs"):
+            current._tabs.setCurrentIndex(2)    # Authorizations tab
 
     def _set_detail(self, widget: QWidget):
         while self._detail_stack.count() > 1:

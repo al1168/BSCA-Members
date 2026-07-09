@@ -325,6 +325,61 @@ QToolBar#main_toolbar {{
     padding: 5px 10px;
     spacing: 6px;
 }}
+/* Toolbar notifications bell: quiet until something needs attention;
+   red-tinted when any authorization has expired. */
+QPushButton#btn_notifications {{
+    background-color: transparent;
+    color: {t['text2']};
+    border: 1px solid {t['border']};
+    border-radius: 7px;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 600;
+}}
+QPushButton#btn_notifications:hover {{
+    background-color: {t['raised']};
+    color: {t['text']};
+}}
+QPushButton#btn_notifications[alert="true"] {{
+    color: {t['error_text']};
+    border-color: {t['error']};
+    background-color: {t['error_bg']};
+}}
+QFrame#notif_frame {{
+    background-color: {t['raised']};
+    border: 1px solid {t['border']};
+    border-radius: 10px;
+}}
+QLabel#notif_title {{
+    font-size: 13px;
+    font-weight: 600;
+    color: {t['text']};
+}}
+QPushButton#notif_tab {{
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: {t['text2']};
+}}
+QPushButton#notif_tab:hover {{
+    color: {t['text']};
+}}
+QPushButton#notif_tab[active="true"] {{
+    color: {t['accent_text']};
+    border-bottom-color: {t['accent']};
+    font-weight: 600;
+}}
+QFrame#notif_row {{
+    background: transparent;
+    border: none;
+}}
+QFrame#notif_row:hover {{
+    background-color: {t['accent_bg']};
+}}
 QPushButton#btn_settings {{
     background-color: {t['accent_bg']};
     color: {t['accent_text']};
