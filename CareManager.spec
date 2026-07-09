@@ -12,6 +12,7 @@ a = Analysis(
         'monthly_schedule',
         'monthly_schedule.db',
         'PyQt6.QtNetwork',
+        'openpyxl',
     ],
     hookspath=[],
     hooksconfig={},
