@@ -1,6 +1,7 @@
 PyQt6>=6.6.0
 pyodbc>=5.0
 pywin32>=306
+openpyxl>=3.1
 pyinstaller>=6.0.0
 pytest>=8.0
 pytest-qt>=4.4

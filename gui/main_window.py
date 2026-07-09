@@ -213,6 +213,14 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
 
+        btn_export = QPushButton("⬇  Export")
+        btn_export.setObjectName("btn_export")
+        btn_export.setToolTip(
+            "Save a spreadsheet of every member's info, enrollment, "
+            "current auth, and emergency contact")
+        btn_export.clicked.connect(self._export_members)
+        toolbar.addWidget(btn_export)
+
         # Bell with a live count of expiring/expired auths for active members.
         # Lives in the toolbar so it's visible whichever profile is open.
         self._btn_notif = QPushButton("🔔")
@@ -524,6 +532,51 @@ class MainWindow(QMainWindow):
         dlg = AddMemberWizard(db_path, events_path, api_key, self)
         if dlg.exec():
             self._load_members()
+
+    def _export_members(self):
+        """Save the full member roster (info + latest enrollment + today's
+        active auth + first emergency contact) as an .xlsx spreadsheet."""
+        from datetime import date
+        from PyQt6.QtWidgets import QFileDialog
+        db_path = self._settings.get("db_path", "")
+        if not db_path:
+            QMessageBox.warning(self, "No Database",
+                "Set a database path in Settings before exporting.")
+            return
+        default = os.path.join(
+            os.path.expanduser("~/Documents"),
+            f"BSCA Members {date.today():%Y-%m-%d}.xlsx")
+        out_path, _ = QFileDialog.getSaveFileName(
+            self, "Export Members", default, "Excel Workbook (*.xlsx)")
+        if not out_path:
+            return
+        from PyQt6.QtGui import QGuiApplication, QCursor
+        QGuiApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
+        try:
+            from db.export import export_members_xlsx
+            count = export_members_xlsx(db_path, out_path)
+        except PermissionError:
+            QGuiApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, "Export Failed",
+                "The file couldn't be written.\n\nIt may be open in Excel — "
+                "close it there and try again.")
+            return
+        except Exception as exc:
+            QGuiApplication.restoreOverrideCursor()
+            from gui.errors import show_db_error
+            show_db_error(self, exc, "Export Failed")
+            return
+        QGuiApplication.restoreOverrideCursor()
+        done = QMessageBox(self)
+        done.setWindowTitle("Export Complete")
+        done.setIcon(QMessageBox.Icon.Information)
+        done.setText(f"Exported {count} members to:\n{out_path}")
+        open_btn = done.addButton("Open Spreadsheet",
+                                  QMessageBox.ButtonRole.AcceptRole)
+        done.addButton(QMessageBox.StandardButton.Close)
+        done.exec()
+        if done.clickedButton() is open_btn:
+            os.startfile(out_path)
 
     def _open_settings(self):
         dlg = SettingsDialog(self._settings, self)

@@ -325,6 +325,19 @@ QToolBar#main_toolbar {{
     padding: 5px 10px;
     spacing: 6px;
 }}
+QPushButton#btn_export {{
+    background-color: transparent;
+    color: {t['text2']};
+    border: 1px solid {t['border']};
+    border-radius: 7px;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 600;
+}}
+QPushButton#btn_export:hover {{
+    background-color: {t['raised']};
+    color: {t['text']};
+}}
 /* Toolbar notifications bell: quiet until something needs attention;
    red-tinted when any authorization has expired. */
 QPushButton#btn_notifications {{

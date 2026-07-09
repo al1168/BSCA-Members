@@ -1,0 +1,190 @@
+"""Member roster export: one spreadsheet row per member, joining Contacts,
+the latest Enrollment, today's active Authorization, and the first
+EmergencyContact on file.
+
+Four bulk queries (not per-member lookups) keep the export fast over a
+network-share database; assembling rows is pure Python so it's unit-testable.
+"""
+from datetime import date, datetime
+
+from db.members import (
+    _read_connection, _drop_read_connection, _access_date,
+    format_phone, format_ssn, format_medicaid, format_medicare,
+    decode_auth_days,
+)
+
+COLUMNS = [
+    "Center Id", "Last Name", "First Name", "Chinese Name", "DOB",
+    "Health Plan", "Member ID", "Medicaid", "Medicare", "SSN", "Language",
+    "Case Manager", "Home Tell", "Cell", "Address", "PCP", "Hospital",
+    "Notes", "Gender", "Long Lat", "HHA",
+    "Enrollment Date",
+    "Auth Days", "Auth Start", "Auth End",
+    "Emergency_Full Name", "Emergency_Phone Number", "Emergency_Relationship",
+]
+
+_CONTACTS_QUERY = (
+    "SELECT [Center ID],[Last Name],[First Name],[Chinese Name],[DOB],"
+    "[Health Plan],[Member ID],[Medicaid],[Medicare],[SSN],[Language],"
+    "[Case Manager],[Home Tell],[Cell],[Address],[PCP],[Hospital],[Notes],"
+    "[Gender],[Long Lat],[HHA] FROM [Contacts] "
+    "ORDER BY [Last Name],[First Name]"
+)
+_ENROLLMENTS_QUERY = "SELECT [Center ID],[start_date] FROM [Enrollment]"
+_AUTHS_QUERY = ("SELECT [Center ID],[auth_start],[auth_end],[auth_days] "
+                "FROM [Authorization]")
+_EMERGENCY_QUERY = ("SELECT [ID],[Center ID],[Full Name],[Phone Number],"
+                    "[Relationship] FROM [EmergencyContact]")
+
+_DAY_NAMES = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri",
+              6: "Sat", 7: "Sun"}
+
+
+def _fetch_all(db_path: str, sql: str, _retry: bool = True) -> list:
+    """One bulk SELECT over the cached read connection, with the same
+    stale-connection retry as get_member_context."""
+    import pyodbc
+    conn = _read_connection(db_path)
+    try:
+        c = conn.cursor()
+        c.execute(sql)
+        return c.fetchall()
+    except pyodbc.Error:
+        _drop_read_connection(db_path)
+        if _retry:
+            return _fetch_all(db_path, sql, _retry=False)
+        raise
+
+
+def format_auth_day_names(auth_days) -> str:
+    """'1,3,5' -> 'Mon, Wed, Fri' (unknown numbers are shown as-is)."""
+    days = decode_auth_days(auth_days or "")
+    return ", ".join(_DAY_NAMES.get(d, str(d)) for d in sorted(days))
+
+
+def pick_active_auth(auths: list[tuple], today) -> tuple | None:
+    """The (start, end, days) auth in effect today: auth_start <= today <=
+    auth_end, same rule as the Auths tab's 'active' status pill (a missing
+    start or end doesn't disqualify). Latest start wins; None when nothing
+    is active — the spreadsheet shows blank cells so lapsed coverage is
+    easy to filter."""
+    active = []
+    for start, end, days in auths:
+        start_d, end_d = _access_date(start), _access_date(end)
+        if start_d is not None and start_d > today:
+            continue
+        if end_d is not None and end_d < today:
+            continue
+        active.append((start_d, end_d, days))
+    if not active:
+        return None
+    return max(active, key=lambda a: (a[0] or date.min))
+
+
+def build_export_rows(contacts, enrollments, auths, emergency, today) -> list[list]:
+    """Assemble spreadsheet rows (matching COLUMNS) from raw table rows.
+
+    contacts:    rows in _CONTACTS_QUERY order (drives row order)
+    enrollments: (center_id, start_date) — latest start becomes Enrollment Date
+    auths:       (center_id, auth_start, auth_end, auth_days)
+    emergency:   (id, center_id, full_name, phone, relationship) — the row
+                 with the lowest id (first on file) is used
+    Pure (no DB), so it is unit-testable.
+    """
+    enroll_by_member: dict[int, date] = {}
+    for cid, start in enrollments:
+        if cid is None or start is None:
+            continue
+        start = _access_date(start)
+        cid = int(cid)
+        if cid not in enroll_by_member or start > enroll_by_member[cid]:
+            enroll_by_member[cid] = start
+
+    auths_by_member: dict[int, list] = {}
+    for cid, start, end, days in auths:
+        if cid is None:
+            continue
+        auths_by_member.setdefault(int(cid), []).append((start, end, days))
+
+    emergency_by_member: dict[int, tuple] = {}
+    for rec_id, cid, name, phone, rel in emergency:
+        if cid is None:
+            continue
+        cid = int(cid)
+        current = emergency_by_member.get(cid)
+        if current is None or rec_id < current[0]:
+            emergency_by_member[cid] = (rec_id, name, phone, rel)
+
+    rows = []
+    for r in contacts:
+        if r[0] is None:            # skip Contacts rows with no Center ID
+            continue
+        cid = int(r[0])
+        active = pick_active_auth(auths_by_member.get(cid, []), today)
+        em = emergency_by_member.get(cid)
+        rows.append([
+            cid,
+            r[1] or "", r[2] or "", r[3] or "",
+            _access_date(r[4]),                       # DOB as a real date
+            r[5] or "", r[6] or "",
+            format_medicaid(r[7]), format_medicare(r[8]), format_ssn(r[9]),
+            r[10] or "", r[11] or "",
+            format_phone(r[12]), format_phone(r[13]),
+            r[14] or "", r[15] or "", r[16] or "", r[17] or "",
+            r[18] or "", r[19] or "", r[20] or "",
+            enroll_by_member.get(cid),
+            format_auth_day_names(active[2]) if active else "",
+            active[0] if active else None,
+            active[1] if active else None,
+            (em[1] or "") if em else "",
+            format_phone(em[2]) if em else "",
+            (em[3] or "") if em else "",
+        ])
+    return rows
+
+
+def write_members_xlsx(path: str, rows: list[list]) -> None:
+    """Write COLUMNS + rows to `path`: bold frozen header, MM/DD/YYYY date
+    cells, and column widths sized to their content."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Members"
+    ws.append(COLUMNS)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    ws.freeze_panes = "A2"
+
+    for row in rows:
+        ws.append(row)
+        for cell in ws[ws.max_row]:
+            if isinstance(cell.value, (date, datetime)):
+                cell.number_format = "MM/DD/YYYY"
+
+    widths = {}
+    for row in [COLUMNS] + rows:
+        for i, v in enumerate(row, start=1):
+            text = f"{v:%m/%d/%Y}" if isinstance(v, (date, datetime)) else str(v or "")
+            # Notes can be paragraphs; cap so one memo doesn't blow up a column.
+            widths[i] = min(max(widths.get(i, 0), len(text) + 2), 40)
+    for i, w in widths.items():
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    wb.save(path)
+
+
+def export_members_xlsx(db_path: str, out_path: str, today=None) -> int:
+    """Query, assemble, and write the roster. Returns the number of rows."""
+    today = today or date.today()
+    rows = build_export_rows(
+        _fetch_all(db_path, _CONTACTS_QUERY),
+        _fetch_all(db_path, _ENROLLMENTS_QUERY),
+        _fetch_all(db_path, _AUTHS_QUERY),
+        _fetch_all(db_path, _EMERGENCY_QUERY),
+        today,
+    )
+    write_members_xlsx(out_path, rows)
+    return len(rows)
