@@ -121,7 +121,8 @@ class MainWindow(QMainWindow):
         self._settings_path = settings_path
         self._last_center_id = None
         self._terminated_ids = set()
-        self.setWindowTitle("Bowery Care Manager")
+        from version import app_version
+        self.setWindowTitle(f"Bowery Care Manager — {app_version()}")
         self._apply_default_geometry()
         self._build_ui()
         self._load_members()
