@@ -1052,11 +1052,13 @@ class MemberTabsWidget(QWidget):
         notes_row.addStretch()
         right.addLayout(notes_row)
 
-        self._init_notes_visibility(
-            bool((self._member.get("notes") or "").strip()))
-
         header.addLayout(right, 1)
         layout.addLayout(header)
+        # Only now do the notes widgets have this widget as parent (the layout
+        # chain was just attached) — setVisible(True) before this point turns
+        # them into parentless top-level windows that flash on screen.
+        self._init_notes_visibility(
+            bool((self._member.get("notes") or "").strip()))
 
         # Tabs
         self._tabs = QTabWidget()
