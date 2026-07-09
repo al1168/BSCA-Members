@@ -18,7 +18,7 @@ New-Item -ItemType Directory -Force $tmp | Out-Null
 
 $tag = (gh release view --repo $Repo --json tagName -q .tagName)
 if (-not $tag) { throw "No releases found in $Repo" }
-Write-Output "Latest release: $tag — downloading..."
+Write-Output "Latest release: $tag - downloading..."
 gh release download $tag --repo $Repo --pattern "*.exe" --dir $tmp
 if ($LASTEXITCODE -ne 0) { throw "Download failed" }
 

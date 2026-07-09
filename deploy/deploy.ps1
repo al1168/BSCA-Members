@@ -33,7 +33,7 @@ if ($ShareDir) {
     if (-not (Test-Path $ShareDir)) { New-Item -ItemType Directory -Force $ShareDir | Out-Null }
     Copy-Item $exe (Join-Path $ShareDir "Care Manager.exe") -Force
     Set-Content -Path (Join-Path $ShareDir "version.txt") -Encoding utf8 -Value $version
-    Write-Output "Copied to $ShareDir — office PCs get it on next launch."
+    Write-Output "Copied to $ShareDir - office PCs get it on next launch."
 } elseif (-not $NoRelease) {
     if ($dirty) { Write-Warning "Working tree has uncommitted changes; release is tagged $version" }
     $tag = "v$stamp"
