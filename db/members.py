@@ -232,6 +232,33 @@ def format_date_only(value) -> str:
         return head
     return s
 
+def parse_flexible_date(value):
+    """A date from the ways DOBs are stored across databases: date/datetime
+    objects, ISO 'YYYY-MM-DD' text (with optional trailing time), or
+    'M/D/YYYY' text. None when it can't be parsed."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    s = format_date_only(value)          # trims and drops a trailing time
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            pass
+    return None
+
+
+def format_dob_display(value) -> str:
+    """Render a stored DOB as MM/DD/YYYY however the database holds it (real
+    DATETIME, ISO text, or M/D/YYYY text). Unparseable values come back
+    trimmed but unchanged so bad data stays visible instead of vanishing."""
+    d = parse_flexible_date(value)
+    return f"{d:%m/%d/%Y}" if d else format_date_only(value)
+
+
 SET_LONG_LAT = "UPDATE [Contacts] SET [Long Lat]=? WHERE [Center ID]=?"
 
 UPDATE_CONTACT = (

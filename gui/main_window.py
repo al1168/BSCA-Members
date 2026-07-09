@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QStackedWidget, QApplication, QMessageBox, QSizePolicy,
     QStyledItemDelegate, QStyle, QStyleOptionViewItem,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QEvent
 from PyQt6.QtGui import (
     QTextDocument, QAbstractTextDocumentLayout, QShortcut, QKeySequence,
 )
@@ -165,6 +165,10 @@ class MainWindow(QMainWindow):
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search members…   (Ctrl+K)")
         self._search.textChanged.connect(self._filter_members)
+        # Enter opens the highlighted result (or the first one); ↑/↓ move the
+        # highlight without leaving the box — same feel as the Ctrl+K palette.
+        self._search.returnPressed.connect(self._open_from_search)
+        self._search.installEventFilter(self)
 
         # Ctrl+K opens the command-palette member search from anywhere.
         quick = QShortcut(QKeySequence("Ctrl+K"), self)
@@ -345,6 +349,50 @@ class MainWindow(QMainWindow):
     def _filter_members(self, text: str):
         filtered = [m for m in self._all_members if matches_search(m, text)]
         self._populate_list(filtered, search_text=text)
+
+    def eventFilter(self, obj, event):
+        # ↑/↓ typed in the sidebar search box move the list highlight while
+        # focus stays in the box; Enter (returnPressed) opens the highlight.
+        if obj is getattr(self, "_search", None) and \
+                event.type() == QEvent.Type.KeyPress:
+            if event.key() == Qt.Key.Key_Down:
+                self._move_search_selection(1)
+                return True
+            if event.key() == Qt.Key.Key_Up:
+                self._move_search_selection(-1)
+                return True
+        return super().eventFilter(obj, event)
+
+    def _move_search_selection(self, delta: int):
+        """Move the sidebar highlight without opening members along the way —
+        selection signals are blocked, so only Enter commits (each open costs
+        a database load)."""
+        lst = self._member_list
+        n = lst.count()
+        if not n:
+            return
+        row = lst.currentRow()
+        row = 0 if row < 0 else max(0, min(n - 1, row + delta))
+        if lst.item(row).data(Qt.ItemDataRole.UserRole) is None:
+            return                     # the "No members match" placeholder
+        lst.blockSignals(True)
+        lst.setCurrentRow(row)
+        lst.blockSignals(False)
+
+    def _open_from_search(self):
+        """Enter in the search box: open the highlighted member, or the first
+        result when nothing is highlighted yet."""
+        item = self._member_list.currentItem()
+        if item is None or item.data(Qt.ItemDataRole.UserRole) is None:
+            item = next(
+                (self._member_list.item(i)
+                 for i in range(self._member_list.count())
+                 if self._member_list.item(i).data(Qt.ItemDataRole.UserRole)
+                 is not None),
+                None)
+        if item is None:
+            return                     # no results to open
+        self._jump_to_member(item.data(Qt.ItemDataRole.UserRole))
 
     def _ok_to_leave_current(self) -> bool:
         """True to proceed (no unsaved edits, or the user chose to discard)."""

@@ -27,9 +27,10 @@ def _esc(value) -> str:
 
 
 def _date_only(value) -> str:
-    """Drop a trailing time so a DOB stored as a datetime
-    (e.g. '1941-06-04 00:00:00') prints as just the date."""
-    return format_date_only(value)
+    """Print a DOB as MM/DD/YYYY however it's stored (datetime, ISO text,
+    or M/D/YYYY text)."""
+    from db.members import format_dob_display
+    return format_dob_display(value)
 
 
 def _fields_grid(pairs, cols: int = 2) -> str:

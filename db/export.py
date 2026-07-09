@@ -10,7 +10,7 @@ from datetime import date, datetime
 from db.members import (
     _read_connection, _drop_read_connection, _access_date,
     format_phone, format_ssn, format_medicaid, format_medicare,
-    decode_auth_days,
+    decode_auth_days, parse_flexible_date,
 )
 
 COLUMNS = [
@@ -121,7 +121,9 @@ def build_export_rows(contacts, enrollments, auths, emergency, today) -> list[li
         rows.append([
             cid,
             r[1] or "", r[2] or "", r[3] or "",
-            _access_date(r[4]),                       # DOB as a real date
+            # DOB as a real date cell (MM/DD/YYYY) even when the column holds
+            # text like '8/23/1953'; unparseable text passes through visibly.
+            parse_flexible_date(r[4]) or (r[4] or ""),
             r[5] or "", r[6] or "",
             format_medicaid(r[7]), format_medicare(r[8]), format_ssn(r[9]),
             r[10] or "", r[11] or "",

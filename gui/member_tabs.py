@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from db.members import (
-    get_member_context, format_phone, format_date_only,
+    get_member_context, format_phone, format_date_only, format_dob_display,
     format_ssn, is_valid_ssn, format_medicaid, is_valid_medicaid,
     format_medicare, is_valid_medicare,
     format_ssn_live, format_medicaid_live, format_medicare_live,
@@ -1222,7 +1222,7 @@ class MemberTabsWidget(QWidget):
         self._info_chinese   = field("chinese_name")
         self._info_gender    = field("gender")
         self._info_dob       = _ViewEditLineEdit(
-            format_date_only(m.get("dob", "") or ""))
+            format_dob_display(m.get("dob", "") or ""))
         self._info_cid       = _ViewEditLineEdit(str(self._center_id),
                                                  editable=False)
         # Member ID is assigned at member creation and shown read-only here.
@@ -1584,7 +1584,7 @@ class MemberTabsWidget(QWidget):
         self._info_last.setText(m.get("last_name", "") or "")
         self._info_chinese.setText(m.get("chinese_name", "") or "")
         self._info_gender.setText(m.get("gender", "") or "")
-        self._info_dob.setText(format_date_only(m.get("dob", "") or ""))
+        self._info_dob.setText(format_dob_display(m.get("dob", "") or ""))
         self._info_member_id.setText(m.get("member_id", "") or "")
         self._info_medicaid.setText(format_medicaid(m.get("medicaid", "") or ""))
         self._info_medicare.setText(format_medicare(m.get("medicare", "") or ""))

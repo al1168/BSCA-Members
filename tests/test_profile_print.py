@@ -37,16 +37,16 @@ def test_includes_member_name_and_id():
 
 def test_includes_identity_contact_and_insurance_fields():
     html = build_profile_html(_member(), [], "2026-01-01")
-    for value in ("5/14/1948", "M-1234", "(212)-555-0100", "1 Main St, NY",
+    for value in ("05/14/1948", "M-1234", "(212)-555-0100", "1 Main St, NY",
                   "Cantonese", "Dr. Smith", "Mt Sinai"):
         assert value in html
 
 
-def test_dob_strips_midnight_time():
-    # Access stores some DOBs as a midnight datetime; the printout should show
-    # just the date, not "... 00:00:00".
+def test_dob_prints_mmddyyyy_without_time():
+    # Access stores some DOBs as a midnight datetime; the printout shows
+    # MM/DD/YYYY, never "... 00:00:00".
     html = build_profile_html(_member(dob="1941-06-04 00:00:00"), [], "2026-01-01")
-    assert "1941-06-04" in html
+    assert "06/04/1941" in html
     assert "00:00:00" not in html
 
 
