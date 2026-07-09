@@ -28,7 +28,7 @@ _CONTACTS_QUERY = (
     "[Health Plan],[Member ID],[Medicaid],[Medicare],[SSN],[Language],"
     "[Case Manager],[Home Tell],[Cell],[Address],[PCP],[Hospital],[Notes],"
     "[Gender],[Long Lat],[HHA] FROM [Contacts] "
-    "ORDER BY [Last Name],[First Name]"
+    "ORDER BY [Center ID]"
 )
 _ENROLLMENTS_QUERY = "SELECT [Center ID],[start_date] FROM [Enrollment]"
 _AUTHS_QUERY = ("SELECT [Center ID],[auth_start],[auth_end],[auth_days] "
