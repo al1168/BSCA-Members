@@ -2,7 +2,7 @@
 from datetime import date, datetime
 
 from db.export import (
-    COLUMNS, build_export_rows, pick_active_auth, format_auth_day_names,
+    COLUMNS, build_export_rows, pick_active_auth, format_auth_days_dotted,
     write_members_xlsx,
 )
 
@@ -54,7 +54,7 @@ def test_row_is_fully_populated_and_formatted():
     assert r["Home Tell"] == "(212)-555-0100"
     assert r["Long Lat"] == "-73.9,40.7"
     assert r["Enrollment Date"] == date(2025, 5, 1)
-    assert r["Auth Days"] == "Mon, Wed, Fri"
+    assert r["Auth Days"] == "1.3.5"
     assert r["Auth Start"] == date(2026, 1, 1)
     assert r["Auth End"] == date(2026, 12, 31)
     assert r["Emergency_Full Name"] == "Wei Lu"
@@ -112,10 +112,11 @@ def test_all_members_included_even_without_related_rows():
     assert r2["Enrollment Date"] is None and r2["Emergency_Full Name"] == ""
 
 
-def test_auth_day_names():
-    assert format_auth_day_names("1,3,5") == "Mon, Wed, Fri"
-    assert format_auth_day_names("") == ""
-    assert format_auth_day_names(None) == ""
+def test_auth_days_dotted():
+    assert format_auth_days_dotted("1,3,5") == "1.3.5"
+    assert format_auth_days_dotted("3,1,2,4") == "1.2.3.4"   # sorted
+    assert format_auth_days_dotted("") == ""
+    assert format_auth_days_dotted(None) == ""
 
 
 def test_xlsx_round_trip(tmp_path):
@@ -137,7 +138,7 @@ def test_xlsx_round_trip(tmp_path):
     r = dict(zip(header, data))
     assert r["Center Id"] == 1
     assert r["Chinese Name"] == "陳美"
-    assert r["Auth Days"] == "Mon, Wed, Fri"
+    assert r["Auth Days"] == "1.3.5"
     # Dates come back as datetimes from openpyxl with the display format set.
     assert r["DOB"].date() == date(1950, 3, 15)
     assert ws.cell(row=2, column=5).number_format == "MM/DD/YYYY"

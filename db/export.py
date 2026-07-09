@@ -36,10 +36,6 @@ _AUTHS_QUERY = ("SELECT [Center ID],[auth_start],[auth_end],[auth_days] "
 _EMERGENCY_QUERY = ("SELECT [ID],[Center ID],[Full Name],[Phone Number],"
                     "[Relationship] FROM [EmergencyContact]")
 
-_DAY_NAMES = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri",
-              6: "Sat", 7: "Sun"}
-
-
 def _fetch_all(db_path: str, sql: str, _retry: bool = True) -> list:
     """One bulk SELECT over the cached read connection, with the same
     stale-connection retry as get_member_context."""
@@ -56,10 +52,10 @@ def _fetch_all(db_path: str, sql: str, _retry: bool = True) -> list:
         raise
 
 
-def format_auth_day_names(auth_days) -> str:
-    """'1,3,5' -> 'Mon, Wed, Fri' (unknown numbers are shown as-is)."""
+def format_auth_days_dotted(auth_days) -> str:
+    """Stored '1,3,5' -> '1.3.5' (day numbers, period-separated, sorted)."""
     days = decode_auth_days(auth_days or "")
-    return ", ".join(_DAY_NAMES.get(d, str(d)) for d in sorted(days))
+    return ".".join(str(d) for d in sorted(days))
 
 
 def pick_active_auth(auths: list[tuple], today) -> tuple | None:
@@ -133,7 +129,7 @@ def build_export_rows(contacts, enrollments, auths, emergency, today) -> list[li
             r[14] or "", r[15] or "", r[16] or "", r[17] or "",
             r[18] or "", r[19] or "", r[20] or "",
             enroll_by_member.get(cid),
-            format_auth_day_names(active[2]) if active else "",
+            format_auth_days_dotted(active[2]) if active else "",
             active[0] if active else None,
             active[1] if active else None,
             (em[1] or "") if em else "",
