@@ -145,6 +145,22 @@ def format_medicaid_live(text) -> str:
     return "".join(ch for ch in (text or "") if ch.isalnum()).upper()[:8]
 
 
+def format_mdy_live(text) -> str:
+    """A date slashed as you type when entering bare digits: '0710' -> '07/10',
+    '07102026' -> '07/10/2026' (MMDDYYYY, capped at 8 digits). Hand-typed
+    shorthand like '7/1/2026' (slashes off the auto positions) is returned
+    unchanged so both entry styles work."""
+    t = text or ""
+    if any(i not in (2, 5) for i, ch in enumerate(t) if ch == "/"):
+        return t
+    d = "".join(ch for ch in t if ch.isdigit())[:8]
+    if len(d) <= 2:
+        return d
+    if len(d) <= 4:
+        return f"{d[:2]}/{d[2:]}"
+    return f"{d[:2]}/{d[2:4]}/{d[4:]}"
+
+
 def format_time_live(text) -> str:
     """A 12-hour time as you type, digits only: '815' -> '8:15',
     '1230' -> '12:30'. The colon appears once there are 3+ digits (before the
@@ -666,6 +682,9 @@ def get_member_photo(center_id: int, db_path: str) -> bytes | None:
 def set_member_photo(center_id: int, image_path: str, db_path: str) -> None:
     """Store image_path (a JPEG file) in the member's Contacts.Photo attachment,
     replacing any existing attachment. Uses a fresh writable DAO handle."""
+    # DAO's LoadFromFile can't handle the forward slashes Qt file dialogs
+    # return ("Could not find file 'C:/Users/…'") — normalize to backslashes.
+    image_path = os.path.normpath(image_path)
     import win32com.client
     engine = win32com.client.Dispatch("DAO.DBEngine.120")
     db = engine.OpenDatabase(db_path, False, False)  # shared, read-write
@@ -696,6 +715,9 @@ def _set_document(table: str, record_id: int, file_path: str, db_path: str) -> N
     """Store file_path in [table]'s [Document] attachment for one row, replacing any
     existing one. Uses a fresh writable DAO handle (the cached one is read-only).
     The file is stored as-is (PDFs/images preserved byte-for-byte)."""
+    # DAO's LoadFromFile can't handle the forward slashes Qt file dialogs
+    # return — normalize to backslashes or it reports "Could not find file".
+    file_path = os.path.normpath(file_path)
     import win32com.client
     engine = win32com.client.Dispatch("DAO.DBEngine.120")
     db = engine.OpenDatabase(db_path, False, False)  # shared, read-write
@@ -741,7 +763,10 @@ def _save_document(table: str, record_id: int, dest_dir: str, db_path: str) -> s
                 child.Close()
                 rs.Close()
                 return None
-            dest = os.path.join(dest_dir, str(child.Fields("FileName").Value))
+            # normpath: SaveToFile rejects the forward slashes Qt dir pickers
+            # return, same as LoadFromFile.
+            dest = os.path.normpath(
+                os.path.join(dest_dir, str(child.Fields("FileName").Value)))
             child.Fields("FileData").SaveToFile(dest)
             child.Close()
             rs.Close()

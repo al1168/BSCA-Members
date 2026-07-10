@@ -119,7 +119,17 @@ class DateLineEdit(QLineEdit):
         self.setValidator(
             QRegularExpressionValidator(QRegularExpression(r"[0-9/]*"), self))
         self.setPlaceholderText("MM/DD/YYYY")
-        self.textEdited.connect(lambda: set_widget_error(self, False))
+        self.textEdited.connect(self._on_edited)
+
+    def _on_edited(self, text: str) -> None:
+        """Slash bare-digit entry as it's typed ('07102026' -> '07/10/2026');
+        clear any error outline. setText doesn't re-emit textEdited, so this
+        can't recurse."""
+        from db.members import format_mdy_live
+        formatted = format_mdy_live(text)
+        if formatted != text:
+            self.setText(formatted)
+        set_widget_error(self, False)
 
     def set_pydate(self, d) -> None:
         self.setText(d.strftime("%m/%d/%Y") if d else "")
