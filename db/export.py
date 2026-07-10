@@ -253,14 +253,21 @@ def write_expiring_xlsx(path: str, rows: list[dict], month_label: str) -> None:
             cell.alignment = centered if col in (1, 3, 4) else vcenter
         ws.cell(row=row_i, column=4).number_format = "MM/DD/YYYY"
 
-    for i, width in enumerate((10, 26, 12, 13, 44), start=1):
+    for i, width in enumerate((10, 26, 12, 13, 46), start=1):
         ws.column_dimensions[get_column_letter(i)].width = width
 
-    # Print like a form: all columns on one page wide, header row repeated.
+    # Print like a form: slim margins so the table fills the sheet, all
+    # columns on one page wide, header row repeated on every page. The slim
+    # margins also keep the fit-to-width scale at ~100%, where Excel renders
+    # every hairline border (heavy shrink makes it drop some gridlines).
+    from openpyxl.worksheet.page import PageMargins
+    ws.page_margins = PageMargins(left=0.3, right=0.3, top=0.4, bottom=0.4,
+                                  header=0.2, footer=0.2)
     ws.print_title_rows = "1:1"
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
     ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_options.horizontalCentered = True
     wb.save(path)
 
 
