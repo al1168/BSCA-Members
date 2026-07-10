@@ -73,6 +73,17 @@ def test_xlsx_round_trip(tmp_path):
     assert first[4] is None                    # empty Notes column
     assert ws.cell(row=2, column=4).number_format == "MM/DD/YYYY"
 
+    # A record sheet: every cell ruled, including the empty Notes boxes;
+    # header shaded and repeated on each printed page; fit-to-width printing.
+    for col in range(1, 6):
+        assert ws.cell(row=1, column=col).border.top.style == "thin"
+        assert ws.cell(row=2, column=col).border.bottom.style == "thin"
+    assert ws.cell(row=2, column=5).border.left.style == "thin"
+    assert ws.cell(row=1, column=1).fill.fgColor.rgb.endswith("E8E8E8")
+    assert ws.print_title_rows in ("1:1", "$1:$1")
+    assert ws.page_setup.fitToWidth == 1
+    assert ws.row_dimensions[2].height == 24
+
 
 def test_html_has_rows_notes_column_and_title():
     rows = members_expiring_in_month(

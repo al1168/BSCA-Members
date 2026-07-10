@@ -216,11 +216,20 @@ def members_expiring_in_month(members, terminated_ids, auth_rows,
 
 
 def write_expiring_xlsx(path: str, rows: list[dict], month_label: str) -> None:
-    """Write the expiring-auths report: bold frozen header, MM/DD/YYYY dates,
-    and a wide empty Notes column for working the renewals."""
+    """Write the expiring-auths report as a printable record sheet: every
+    cell ruled with borders (including the empty Notes boxes, so it can be
+    filled in by hand), shaded header, roomy row heights, and page setup
+    that fits all five columns to the sheet with the header repeating on
+    each printed page."""
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
+
+    thin = Side(style="thin", color="000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    header_fill = PatternFill("solid", fgColor="E8E8E8")
+    centered = Alignment(horizontal="center", vertical="center")
+    vcenter = Alignment(vertical="center")
 
     wb = Workbook()
     ws = wb.active
@@ -228,14 +237,30 @@ def write_expiring_xlsx(path: str, rows: list[dict], month_label: str) -> None:
     ws.append(EXPIRING_COLUMNS)
     for cell in ws[1]:
         cell.font = Font(bold=True)
+        cell.border = grid
+        cell.fill = header_fill
+        cell.alignment = centered
+    ws.row_dimensions[1].height = 20
     ws.freeze_panes = "A2"
 
     for r in rows:
         ws.append([r["center_id"], r["name"], r["health_plan"], r["end"], ""])
-        ws.cell(row=ws.max_row, column=4).number_format = "MM/DD/YYYY"
+        row_i = ws.max_row
+        ws.row_dimensions[row_i].height = 24      # room to write in Notes
+        for col in range(1, len(EXPIRING_COLUMNS) + 1):
+            cell = ws.cell(row=row_i, column=col)
+            cell.border = grid
+            cell.alignment = centered if col in (1, 3, 4) else vcenter
+        ws.cell(row=row_i, column=4).number_format = "MM/DD/YYYY"
 
-    for i, width in enumerate((12, 28, 14, 15, 50), start=1):
+    for i, width in enumerate((10, 26, 12, 13, 44), start=1):
         ws.column_dimensions[get_column_letter(i)].width = width
+
+    # Print like a form: all columns on one page wide, header row repeated.
+    ws.print_title_rows = "1:1"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
     wb.save(path)
 
 
