@@ -7,8 +7,9 @@ import os
 from datetime import date
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QSpinBox,
-    QPushButton, QFileDialog, QMessageBox, QDialogButtonBox,
+    QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QComboBox,
+    QSpinBox, QCheckBox, QPushButton, QFileDialog, QMessageBox,
+    QDialogButtonBox,
 )
 from PyQt6.QtCore import Qt
 
@@ -108,6 +109,39 @@ class ExpiringReportDialog(QDialog):
         row.addStretch()
         layout.addLayout(row)
 
+        # Health-plan filter: one checkbox per plan that appears among the
+        # active members (all on by default), so a report can be run for a
+        # single plan's renewals.
+        plans_row = QHBoxLayout()
+        plans_row.addWidget(QLabel("Health plans:"))
+        btn_all = QPushButton("All")
+        btn_none = QPushButton("None")
+        for b in (btn_all, btn_none):
+            b.setFlat(True)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.setStyleSheet("font-size:11px; padding:1px 8px;")
+        btn_all.clicked.connect(lambda: self._set_all_plans(True))
+        btn_none.clicked.connect(lambda: self._set_all_plans(False))
+        plans_row.addWidget(btn_all)
+        plans_row.addWidget(btn_none)
+        plans_row.addStretch()
+        layout.addLayout(plans_row)
+
+        plans = sorted(
+            {(m.get("health_plan") or "") for m in members
+             if m["center_id"] not in terminated_ids},
+            key=lambda p: (p == "", p))          # blanks last
+        self._plan_checks: dict[str, QCheckBox] = {}
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(14)
+        for i, plan in enumerate(plans):
+            cb = QCheckBox(plan if plan else "(No plan)")
+            cb.setChecked(True)
+            cb.toggled.connect(self._refresh_count)
+            self._plan_checks[plan] = cb
+            grid.addWidget(cb, i // 4, i % 4)
+        layout.addLayout(grid)
+
         self._count = QLabel("")
         self._count.setStyleSheet("font-weight:600;")
         layout.addWidget(self._count)
@@ -132,13 +166,26 @@ class ExpiringReportDialog(QDialog):
         self._refresh_count()
 
     # ── data ────────────────────────────────────────────────────────────
+    def _set_all_plans(self, checked: bool):
+        for cb in self._plan_checks.values():
+            cb.blockSignals(True)
+            cb.setChecked(checked)
+            cb.blockSignals(False)
+        self._refresh_count()
+
+    def _selected_plans(self) -> set:
+        return {plan for plan, cb in self._plan_checks.items()
+                if cb.isChecked()}
+
     def _rows(self) -> list[dict]:
         from db.members import get_member_auth_ends
         from db.export import members_expiring_in_month
         auth_rows = get_member_auth_ends(self._db_path)
-        return members_expiring_in_month(
+        rows = members_expiring_in_month(
             self._members, self._terminated, auth_rows,
             self._year.value(), self._month.currentIndex() + 1)
+        plans = self._selected_plans()
+        return [r for r in rows if (r["health_plan"] or "") in plans]
 
     def _month_label(self) -> str:
         return f"{self._month.currentText()} {self._year.value()}"

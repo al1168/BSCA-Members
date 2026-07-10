@@ -119,6 +119,32 @@ def test_dialog_counts_and_defaults(qapp, monkeypatch):
     assert not dlg._btn_save.isEnabled()
 
 
+def test_dialog_plan_checkboxes_filter_rows(qapp, monkeypatch):
+    from gui import expiring_report as er
+    monkeypatch.setattr(
+        "db.members.get_member_auth_ends",
+        lambda _db: [(1, date(2026, 8, 20)),          # HF
+                     (2, date(2026, 8, 5)),           # AE
+                     (4, date(2026, 8, 9))])          # terminated AE
+    dlg = er.ExpiringReportDialog(
+        "fake.accdb", MEMBERS, {4}, today=date(2026, 7, 10))
+
+    # One checkbox per active member plan, all on -> both rows counted.
+    assert set(dlg._plan_checks) == {"HF", "AE", "VCM"}
+    assert "2 members" in dlg._count.text()
+
+    dlg._plan_checks["HF"].setChecked(False)          # drop HF
+    assert "1 member " in dlg._count.text()
+    assert [r["health_plan"] for r in dlg._rows()] == ["AE"]
+
+    dlg._set_all_plans(False)                         # none selected
+    assert "0 members" in dlg._count.text()
+    assert not dlg._btn_save.isEnabled() and not dlg._btn_print.isEnabled()
+
+    dlg._set_all_plans(True)                          # back to everything
+    assert "2 members" in dlg._count.text()
+
+
 @pytest.fixture(scope="module")
 def qapp():
     from PyQt6.QtWidgets import QApplication
