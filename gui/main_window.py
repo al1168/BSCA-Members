@@ -218,6 +218,14 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
 
+        btn_expiring = QPushButton("📅  Expiring Report")
+        btn_expiring.setObjectName("btn_expiring_report")
+        btn_expiring.setToolTip(
+            "Spreadsheet/printout of members whose auths expire in a chosen "
+            "month, grouped by health plan")
+        btn_expiring.clicked.connect(self._open_expiring_report)
+        toolbar.addWidget(btn_expiring)
+
         btn_export = QPushButton("⬇  Export")
         btn_export.setObjectName("btn_export")
         btn_export.setToolTip(
@@ -581,6 +589,18 @@ class MainWindow(QMainWindow):
         dlg = AddMemberWizard(db_path, events_path, api_key, self)
         if dlg.exec():
             self._load_members()
+
+    def _open_expiring_report(self):
+        """Monthly expiring-auths report: pick a month, save as a spreadsheet
+        or print, grouped by health plan."""
+        db_path = self._settings.get("db_path", "")
+        if not db_path:
+            QMessageBox.warning(self, "No Database",
+                "Set a database path in Settings before running reports.")
+            return
+        from gui.expiring_report import ExpiringReportDialog
+        ExpiringReportDialog(db_path, self._all_members,
+                             self._terminated_ids, self).exec()
 
     def _export_members(self):
         """Save the full member roster (info + latest enrollment + today's

@@ -174,6 +174,71 @@ def write_members_xlsx(path: str, rows: list[list]) -> None:
     wb.save(path)
 
 
+EXPIRING_COLUMNS = ["Center Id", "Name", "Health Plan", "Expiring Date", "Notes"]
+
+
+def members_expiring_in_month(members, terminated_ids, auth_rows,
+                              year: int, month: int) -> list[dict]:
+    """Active members whose coverage ends inside the given month, for the
+    expiring-auths report.
+
+    A member's coverage end is the latest auth_end across their auths — the
+    same rule as the notification bell — so adding a renewal that pushes the
+    end past the month drops them from the report. Rows are grouped by
+    health plan (then soonest end, then name) so one continuous table keeps
+    each plan's members together. Pure (no DB), so it is unit-testable.
+    """
+    latest: dict[int, date] = {}
+    for cid, end in auth_rows:
+        if cid is None or end is None:
+            continue
+        cid = int(cid)
+        end = end.date() if isinstance(end, datetime) else end
+        if cid not in latest or end > latest[cid]:
+            latest[cid] = end
+    rows = []
+    for m in members:
+        cid = m["center_id"]
+        if cid in terminated_ids:
+            continue
+        end = latest.get(cid)
+        if end is None or (end.year, end.month) != (year, month):
+            continue
+        rows.append({
+            "center_id": cid,
+            "name": f"{m.get('last_name', '')}, {m.get('first_name', '')}",
+            "health_plan": m.get("health_plan") or "",
+            "end": end,
+        })
+    rows.sort(key=lambda r: (r["health_plan"].lower(), r["end"],
+                             r["name"].lower()))
+    return rows
+
+
+def write_expiring_xlsx(path: str, rows: list[dict], month_label: str) -> None:
+    """Write the expiring-auths report: bold frozen header, MM/DD/YYYY dates,
+    and a wide empty Notes column for working the renewals."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"Expiring {month_label}"[:31]
+    ws.append(EXPIRING_COLUMNS)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    ws.freeze_panes = "A2"
+
+    for r in rows:
+        ws.append([r["center_id"], r["name"], r["health_plan"], r["end"], ""])
+        ws.cell(row=ws.max_row, column=4).number_format = "MM/DD/YYYY"
+
+    for i, width in enumerate((12, 28, 14, 15, 50), start=1):
+        ws.column_dimensions[get_column_letter(i)].width = width
+    wb.save(path)
+
+
 def export_members_xlsx(db_path: str, out_path: str, today=None) -> int:
     """Query, assemble, and write the roster. Returns the number of rows."""
     today = today or date.today()
