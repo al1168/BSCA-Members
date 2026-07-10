@@ -246,27 +246,26 @@ def write_expiring_xlsx(path: str, rows: list[dict], month_label: str) -> None:
     for r in rows:
         ws.append([r["center_id"], r["name"], r["health_plan"], r["end"], ""])
         row_i = ws.max_row
-        ws.row_dimensions[row_i].height = 24      # room to write in Notes
+        ws.row_dimensions[row_i].height = 22      # room to write in Notes
         for col in range(1, len(EXPIRING_COLUMNS) + 1):
             cell = ws.cell(row=row_i, column=col)
             cell.border = grid
             cell.alignment = centered if col in (1, 3, 4) else vcenter
         ws.cell(row=row_i, column=4).number_format = "MM/DD/YYYY"
 
-    for i, width in enumerate((10, 26, 12, 13, 46), start=1):
+    for i, width in enumerate((9, 24, 11, 12, 42), start=1):
         ws.column_dimensions[get_column_letter(i)].width = width
 
-    # Print like a form: slim margins so the table fills the sheet, all
-    # columns on one page wide, header row repeated on every page. The slim
-    # margins also keep the fit-to-width scale at ~100%, where Excel renders
-    # every hairline border (heavy shrink makes it drop some gridlines).
+    # Print like a form: slim margins, header row repeated on every page,
+    # horizontally centered. Fixed 100% scale — any fit-to-width shrink makes
+    # Excel render the hairline borders at uneven weights (and drop some
+    # entirely at heavier shrink), so the columns are sized to genuinely fit
+    # the printable width instead.
     from openpyxl.worksheet.page import PageMargins
     ws.page_margins = PageMargins(left=0.3, right=0.3, top=0.4, bottom=0.4,
                                   header=0.2, footer=0.2)
     ws.print_title_rows = "1:1"
-    ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 0
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.scale = 100
     ws.print_options.horizontalCentered = True
     wb.save(path)
 
