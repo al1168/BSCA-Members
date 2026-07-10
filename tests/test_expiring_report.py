@@ -7,7 +7,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 
 from db.export import members_expiring_in_month, write_expiring_xlsx, EXPIRING_COLUMNS
-from gui.expiring_report import build_expiring_report_html
 
 
 def member(cid, last, first, plan):
@@ -85,23 +84,6 @@ def test_xlsx_round_trip(tmp_path):
     assert ws.row_dimensions[2].height == 22
 
 
-def test_html_has_rows_notes_column_and_title():
-    rows = members_expiring_in_month(
-        MEMBERS, set(),
-        [(1, date(2026, 8, 20)), (2, date(2026, 8, 5))], 2026, 8)
-    html = build_expiring_report_html(rows, "August 2026", "07/10/2026")
-    assert "Expiring Authorizations — August 2026" in html
-    assert "Lu, Wei" in html and "Chan, Mei" in html
-    assert "08/05/2026" in html
-    assert "Notes" in html
-    assert "2 members" in html
-
-
-def test_html_empty_month_message():
-    html = build_expiring_report_html([], "March 2026", "07/10/2026")
-    assert "No members have authorizations expiring" in html
-
-
 def test_dialog_counts_and_defaults(qapp, monkeypatch):
     from gui import expiring_report as er
     monkeypatch.setattr(
@@ -112,7 +94,7 @@ def test_dialog_counts_and_defaults(qapp, monkeypatch):
     assert dlg._month.currentText() == "August"       # defaults to next month
     assert dlg._year.value() == 2026
     assert "2 members" in dlg._count.text()
-    assert dlg._btn_save.isEnabled() and dlg._btn_print.isEnabled()
+    assert dlg._btn_save.isEnabled()
 
     dlg._month.setCurrentIndex(2)                     # March: nothing expiring
     assert "0 members" in dlg._count.text()
@@ -139,7 +121,7 @@ def test_dialog_plan_checkboxes_filter_rows(qapp, monkeypatch):
 
     dlg._set_all_plans(False)                         # none selected
     assert "0 members" in dlg._count.text()
-    assert not dlg._btn_save.isEnabled() and not dlg._btn_print.isEnabled()
+    assert not dlg._btn_save.isEnabled()
 
     dlg._set_all_plans(True)                          # back to everything
     assert "2 members" in dlg._count.text()

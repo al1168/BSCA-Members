@@ -1,8 +1,8 @@
-"""Expiring-auths monthly report: pick a month, get every active member whose
-coverage ends in it — grouped by health plan — as a spreadsheet or a printout
-with a wide blank Notes column for working the renewals by hand."""
+"""Expiring-auths monthly report: pick a month and health plans, get every
+active member whose coverage ends in it — grouped by plan — as a spreadsheet
+with a wide blank Notes column. Printing happens from Excel, which renders
+the ruled table correctly."""
 import calendar
-import html as _html
 import os
 from datetime import date
 
@@ -12,69 +12,6 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
 )
 from PyQt6.QtCore import Qt
-
-
-def build_expiring_report_html(rows: list[dict], month_label: str,
-                               generated_on: str) -> str:
-    """The printable report: a full-width table (ID, Name, Plan, Expiring
-    Date, Notes) where Notes takes ~40% of the page for handwriting. Rows
-    arrive already grouped by health plan; the plan cell is bolded on each
-    group's first row so the groups read at a glance. Pure — unit-testable."""
-    body_rows = []
-    prev_plan = object()
-    for r in rows:
-        plan = r["health_plan"]
-        plan_cell = (f"<b>{_html.escape(plan or '—')}</b>"
-                     if plan != prev_plan else _html.escape(plan or "—"))
-        prev_plan = plan
-        body_rows.append(
-            "<tr>"
-            f'<td align="center">{r["center_id"]}</td>'
-            f"<td>{_html.escape(r['name'])}</td>"
-            f'<td align="center">{plan_cell}</td>'
-            f'<td align="center">{r["end"]:%m/%d/%Y}</td>'
-            "<td></td>"
-            "</tr>"
-        )
-    if not body_rows:
-        body_rows.append(
-            '<tr><td colspan="5" align="center" style="color:#666666;">'
-            "No members have authorizations expiring this month.</td></tr>")
-    return f"""
-    <h2 style="margin-bottom:2px;">Expiring Authorizations — {_html.escape(month_label)}</h2>
-    <p style="color:#666666; margin-top:0;">Active members whose coverage ends in
-    {_html.escape(month_label)}, grouped by health plan · generated {generated_on}
-    · {len(rows)} member{"s" if len(rows) != 1 else ""}</p>
-    <table width="100%" border="0.5" cellspacing="0" cellpadding="6"
-           style="border-collapse:collapse; font-size:11pt;">
-      <tr bgcolor="#eeeeee">
-        <th width="10%">ID</th><th width="26%" align="left">Name</th>
-        <th width="12%">Health Plan</th><th width="14%">Expiring Date</th>
-        <th width="38%" align="left">Notes</th>
-      </tr>
-      {"".join(body_rows)}
-    </table>
-    """
-
-
-def _open_print_preview(parent, html: str) -> None:
-    """Print-preview (print or Save-as-PDF), same setup as the member
-    profile printout."""
-    from PyQt6.QtCore import QMarginsF
-    from PyQt6.QtGui import QTextDocument, QPageLayout
-    from PyQt6.QtPrintSupport import QPrinter, QPrintPreviewDialog
-
-    doc = QTextDocument()
-    doc.setHtml(html)
-    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
-    printer.setPageMargins(QMarginsF(10, 10, 10, 10),
-                           QPageLayout.Unit.Millimeter)
-    preview = QPrintPreviewDialog(printer, parent)
-    preview.resize(1000, 800)
-    preview.paintRequested.connect(
-        lambda p: (doc.setPageSize(p.pageRect(
-            QPrinter.Unit.DevicePixel).size()), doc.print(p)))
-    preview.exec()
 
 
 class ExpiringReportDialog(QDialog):
@@ -150,10 +87,7 @@ class ExpiringReportDialog(QDialog):
         self._btn_save = QPushButton("Save Spreadsheet…")
         self._btn_save.setObjectName("btn_row_add")
         self._btn_save.clicked.connect(self._save)
-        self._btn_print = QPushButton("Print…")
-        self._btn_print.clicked.connect(self._print)
         buttons.addWidget(self._btn_save)
-        buttons.addWidget(self._btn_print)
         buttons.addStretch()
         layout.addLayout(buttons)
 
@@ -201,7 +135,6 @@ class ExpiringReportDialog(QDialog):
             f"{n} member{'s' if n != 1 else ''} with coverage ending in "
             f"{self._month_label()}")
         self._btn_save.setEnabled(n > 0)
-        self._btn_print.setEnabled(n > 0)
 
     # ── actions ─────────────────────────────────────────────────────────
     def _save(self):
@@ -237,14 +170,3 @@ class ExpiringReportDialog(QDialog):
         done.exec()
         if done.clickedButton() is open_btn:
             os.startfile(path)
-
-    def _print(self):
-        try:
-            rows = self._rows()
-        except Exception as exc:
-            from gui.errors import show_db_error
-            show_db_error(self, exc)
-            return
-        html = build_expiring_report_html(
-            rows, self._month_label(), f"{date.today():%m/%d/%Y}")
-        _open_print_preview(self, html)
