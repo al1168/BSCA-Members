@@ -1191,6 +1191,18 @@ class MemberTabsWidget(QWidget):
         days_lbl.setObjectName("field_label")
         row.addWidget(days_lbl)
         row.addWidget(WeekdayChips(active_days))
+        # The same days in the paper-form notation staff use ("SADC 1.5"
+        # for Mon+Fri), right next to the chips.
+        sadc_lbl = QLabel("SADC")
+        sadc_lbl.setObjectName("field_label")
+        row.addSpacing(18)
+        row.addWidget(sadc_lbl)
+        sadc_val = QLabel(
+            ".".join(str(d) for d in sorted(active_days)) or "—")
+        sadc_val.setObjectName("schedule_value")
+        sadc_val.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        row.addWidget(sadc_val)
         row.addSpacing(28)
         period_lbl = QLabel("Auth Period")
         period_lbl.setObjectName("field_label")

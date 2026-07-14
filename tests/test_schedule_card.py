@@ -22,6 +22,17 @@ def test_schedule_card_shows_days_and_period(qapp):
     assert any("Authorized Days" in t for t in texts)
     assert any("Auth Period" in t for t in texts)
     assert any("2026-06-01" in t for t in texts)
+    assert "SADC" in texts
+    assert "1.3.5" in texts                    # day numbers, dotted
+
+
+def test_schedule_card_sadc_dash_when_no_days(qapp):
+    from PyQt6.QtWidgets import QLabel
+    import gui.member_tabs as mt
+    w = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
+    card = w._make_schedule_card(set(), "None")
+    texts = [l.text() for l in card.findChildren(QLabel)]
+    assert "—" in texts
 
 
 def test_theme_has_schedule_card_styles(qapp):
