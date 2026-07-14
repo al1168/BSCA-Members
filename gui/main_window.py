@@ -218,6 +218,13 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
 
+        btn_birthdays = QPushButton("🎂  Birthdays")
+        btn_birthdays.setObjectName("btn_birthday_report")
+        btn_birthdays.setToolTip(
+            "Spreadsheet of active members with a birthday in a chosen month")
+        btn_birthdays.clicked.connect(self._open_birthday_report)
+        toolbar.addWidget(btn_birthdays)
+
         btn_expiring = QPushButton("📅  Expiring Report")
         btn_expiring.setObjectName("btn_expiring_report")
         btn_expiring.setToolTip(
@@ -589,6 +596,17 @@ class MainWindow(QMainWindow):
         dlg = AddMemberWizard(db_path, events_path, api_key, self)
         if dlg.exec():
             self._load_members()
+
+    def _open_birthday_report(self):
+        """Monthly birthdays report: pick a month, save a record sheet of
+        active members born in it."""
+        if not self._all_members:
+            QMessageBox.warning(self, "No Members",
+                "Load a database first (see ⚙ Settings).")
+            return
+        from gui.birthday_report import BirthdayReportDialog
+        BirthdayReportDialog(self._all_members, self._terminated_ids,
+                             self).exec()
 
     def _open_expiring_report(self):
         """Monthly expiring-auths report: pick a month, save as a spreadsheet

@@ -215,15 +215,19 @@ def members_expiring_in_month(members, terminated_ids, auth_rows,
     return rows
 
 
-def write_expiring_xlsx(path: str, rows: list[dict], month_label: str) -> None:
-    """Write the expiring-auths report as a printable record sheet: every
-    cell ruled with borders (including the empty Notes boxes, so it can be
-    filled in by hand), shaded header, roomy row heights, and page setup
-    that fits all five columns to the sheet with the header repeating on
-    each printed page."""
+def _write_record_sheet(path: str, sheet_title: str, columns: list[str],
+                        data_rows: list[list], widths: tuple,
+                        center_cols: set[int]) -> None:
+    """A printable record sheet: every cell ruled with borders (including
+    empty fill-in columns), shaded header, 22pt rows for handwriting, and
+    print setup — slim margins, header repeated on every page, horizontally
+    centered, fixed 100% scale (any fit-to-width shrink makes Excel render
+    hairline borders at uneven weights, so column widths are chosen to
+    genuinely fit the printable width instead)."""
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.page import PageMargins
 
     thin = Side(style="thin", color="000000")
     grid = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -233,8 +237,8 @@ def write_expiring_xlsx(path: str, rows: list[dict], month_label: str) -> None:
 
     wb = Workbook()
     ws = wb.active
-    ws.title = f"Expiring {month_label}"[:31]
-    ws.append(EXPIRING_COLUMNS)
+    ws.title = sheet_title[:31]
+    ws.append(columns)
     for cell in ws[1]:
         cell.font = Font(bold=True)
         cell.border = grid
@@ -243,31 +247,71 @@ def write_expiring_xlsx(path: str, rows: list[dict], month_label: str) -> None:
     ws.row_dimensions[1].height = 20
     ws.freeze_panes = "A2"
 
-    for r in rows:
-        ws.append([r["center_id"], r["name"], r["health_plan"], r["end"], ""])
+    for values in data_rows:
+        ws.append(values)
         row_i = ws.max_row
-        ws.row_dimensions[row_i].height = 22      # room to write in Notes
-        for col in range(1, len(EXPIRING_COLUMNS) + 1):
+        ws.row_dimensions[row_i].height = 22
+        for col in range(1, len(columns) + 1):
             cell = ws.cell(row=row_i, column=col)
             cell.border = grid
-            cell.alignment = centered if col in (1, 3, 4) else vcenter
-        ws.cell(row=row_i, column=4).number_format = "MM/DD/YYYY"
+            cell.alignment = centered if col in center_cols else vcenter
+            if isinstance(cell.value, (date, datetime)):
+                cell.number_format = "MM/DD/YYYY"
 
-    for i, width in enumerate((9, 24, 11, 12, 42), start=1):
+    for i, width in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = width
 
-    # Print like a form: slim margins, header row repeated on every page,
-    # horizontally centered. Fixed 100% scale — any fit-to-width shrink makes
-    # Excel render the hairline borders at uneven weights (and drop some
-    # entirely at heavier shrink), so the columns are sized to genuinely fit
-    # the printable width instead.
-    from openpyxl.worksheet.page import PageMargins
     ws.page_margins = PageMargins(left=0.3, right=0.3, top=0.4, bottom=0.4,
                                   header=0.2, footer=0.2)
     ws.print_title_rows = "1:1"
     ws.page_setup.scale = 100
     ws.print_options.horizontalCentered = True
     wb.save(path)
+
+
+def write_expiring_xlsx(path: str, rows: list[dict], month_label: str) -> None:
+    """The expiring-auths record sheet (empty Notes column to work the
+    renewals by hand)."""
+    _write_record_sheet(
+        path, f"Expiring {month_label}", EXPIRING_COLUMNS,
+        [[r["center_id"], r["name"], r["health_plan"], r["end"], ""]
+         for r in rows],
+        widths=(9, 24, 11, 12, 42), center_cols={1, 3, 4})
+
+
+BIRTHDAY_COLUMNS = ["Center Id", "Name", "Birthday", "Sign"]
+
+
+def members_with_birthday_in_month(members, terminated_ids,
+                                   month: int) -> list[dict]:
+    """Active members whose birthday falls in the given month, sorted by day
+    of month (then name) so the sheet reads like a calendar. DOBs are parsed
+    however the database stores them (date, ISO text, or M/D/YYYY text);
+    members without a parseable DOB are skipped. Pure — unit-testable."""
+    from db.members import parse_flexible_date
+    rows = []
+    for m in members:
+        cid = m["center_id"]
+        if cid in terminated_ids:
+            continue
+        dob = parse_flexible_date(m.get("dob"))
+        if dob is None or dob.month != month:
+            continue
+        rows.append({
+            "center_id": cid,
+            "name": f"{m.get('last_name', '')}, {m.get('first_name', '')}",
+            "dob": dob,
+        })
+    rows.sort(key=lambda r: (r["dob"].day, r["name"].lower()))
+    return rows
+
+
+def write_birthday_xlsx(path: str, rows: list[dict], month_label: str) -> None:
+    """The birthdays record sheet (empty Sign column for signatures)."""
+    _write_record_sheet(
+        path, f"Birthdays {month_label}", BIRTHDAY_COLUMNS,
+        [[r["center_id"], r["name"], r["dob"], ""] for r in rows],
+        widths=(10, 28, 14, 46), center_cols={1, 3})
 
 
 def export_members_xlsx(db_path: str, out_path: str, today=None) -> int:

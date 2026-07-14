@@ -325,7 +325,8 @@ QToolBar#main_toolbar {{
     padding: 5px 10px;
     spacing: 6px;
 }}
-QPushButton#btn_export, QPushButton#btn_expiring_report {{
+QPushButton#btn_export, QPushButton#btn_expiring_report,
+QPushButton#btn_birthday_report {{
     background-color: transparent;
     color: {t['text2']};
     border: 1px solid {t['border']};
@@ -334,7 +335,8 @@ QPushButton#btn_export, QPushButton#btn_expiring_report {{
     font-size: 12px;
     font-weight: 600;
 }}
-QPushButton#btn_export:hover, QPushButton#btn_expiring_report:hover {{
+QPushButton#btn_export:hover, QPushButton#btn_expiring_report:hover,
+QPushButton#btn_birthday_report:hover {{
     background-color: {t['raised']};
     color: {t['text']};
 }}
