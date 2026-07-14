@@ -69,9 +69,16 @@ def build_profile_html(
     emergency_contacts: list,
     enroll_start,
     include_photo: bool = False,
+    active_auth: dict | None = None,
 ) -> str:
     """Render a member profile as a left-aligned one-page HTML document with
-    Identity, Contact, Insurance/Medical and Emergency Contacts sections.
+    Identity, Contact, Insurance/Medical, Authorization and Emergency
+    Contacts sections.
+
+    ``active_auth`` carries the current (in-effect-today) authorization as
+    pre-formatted strings: sadc (day numbers like '1.2.3'), auth_start,
+    auth_end, auth_number, trans_auth. None renders the section with a
+    "no active authorization" note so a lapse is visible on paper.
 
     Pure: no Qt, no DB. When ``include_photo`` is set the header references the
     photo via ``profile://photo`` — the caller attaches the actual image as a
@@ -105,8 +112,7 @@ def build_profile_html(
         ("Gender", m.get("gender")),
         ("Date of Birth", dob),
         ("Language", m.get("language")),
-        ("Enrollment Start", enroll_start),
-        ("Admission Date", m.get("admission_date")),
+        ("Enrollment Start", _date_only(enroll_start)),
     ], cols=2)
     contact = _fields_grid([
         ("Home Phone", format_phone(m.get("home_tell"))),
@@ -120,10 +126,21 @@ def build_profile_html(
         ("Medicare", m.get("medicare")),
         ("SSN", m.get("ssn")),
         ("PCP", m.get("pcp")),
-        ("Hospital", m.get("hospital")),
         ("HHA", m.get("hha")),
         ("Case Manager", m.get("case_manager")),
     ], cols=2)
+
+    if active_auth:
+        authorization = _fields_grid([
+            ("SADC", active_auth.get("sadc")),
+            ("Auth Number", active_auth.get("auth_number")),
+            ("Auth BGN", active_auth.get("auth_start")),
+            ("Auth END", active_auth.get("auth_end")),
+            ("TRANS Auth", active_auth.get("trans_auth")),
+        ], cols=2)
+    else:
+        authorization = (f'<p style="color:{_LABEL}; font-size:12pt;">'
+                         f'— No active authorization —</p>')
 
     if emergency_contacts:
         ec_rows = "".join(
@@ -153,6 +170,7 @@ def build_profile_html(
         _section("Identity", identity),
         _section("Contact", contact),
         _section("Insurance / Medical", insurance),
+        _section("Authorization", authorization),
         _section("Emergency Contacts", emergency),
     ]
 
@@ -172,6 +190,7 @@ def open_profile_print_preview(
     emergency_contacts: list,
     enroll_start,
     photo_bytes: bytes | None = None,
+    active_auth: dict | None = None,
 ) -> None:
     """Show a print-preview dialog (print or Save-as-PDF) for a member profile."""
     from PyQt6.QtCore import QUrl, QMarginsF
@@ -187,6 +206,7 @@ def open_profile_print_preview(
     doc.setHtml(build_profile_html(
         member, emergency_contacts, enroll_start,
         include_photo=bool(photo_bytes),
+        active_auth=active_auth,
     ))
 
     printer = QPrinter(QPrinter.PrinterMode.HighResolution)

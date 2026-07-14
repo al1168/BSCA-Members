@@ -954,6 +954,40 @@ class MemberTabsWidget(QWidget):
         dates = [e["start_date"] for e in enrollments if e.get("start_date")]
         return min(dates) if dates else None
 
+    def _print_active_auth(self) -> dict | None:
+        """The current active auth (auth_start <= today <= auth_end, same rule
+        as the Auths tab's status pill; latest start wins) as pre-formatted
+        strings for the printout, with the linked transport auth's number.
+        None when nothing is active — the printout notes the lapse."""
+        from datetime import date as _date
+        today = _date.today()
+        active = [a for a in self._authorizations
+                  if auth_status(a, today) == "active"]
+        if not active:
+            return None
+        a = max(active, key=lambda x: _as_date(x.get("auth_start")) or _date.min)
+
+        def fmt(value):
+            d = _as_date(value)
+            return f"{d:%m/%d/%Y}" if d else ""
+
+        from db.members import get_auth_edges
+        linked = {e["transport_authorization_id"]
+                  for e in get_auth_edges(self._db_path)
+                  if e["authorization_id"] == a["id"]}
+        trans_numbers = ", ".join(
+            t.get("auth_number") or "" for t in self._transport_auths
+            if t["id"] in linked and (t.get("auth_number") or ""))
+
+        from db.export import format_auth_days_dotted
+        return {
+            "sadc": format_auth_days_dotted(a.get("auth_days")),
+            "auth_start": fmt(a.get("auth_start")),
+            "auth_end": fmt(a.get("auth_end")),
+            "auth_number": a.get("auth_number") or "",
+            "trans_auth": trans_numbers,
+        }
+
     def _print_profile(self):
         """Open a print preview (print or Save-as-PDF) of this member's profile."""
         from gui.profile_print import open_profile_print_preview
@@ -963,6 +997,7 @@ class MemberTabsWidget(QWidget):
         open_profile_print_preview(
             self, self._member, self._emergency_contacts,
             self._enrollment_start(self._enrollments), photo_bytes=photo,
+            active_auth=self._print_active_auth(),
         )
 
     def _build_ui(self):
