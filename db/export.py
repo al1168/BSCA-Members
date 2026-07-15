@@ -279,7 +279,7 @@ def write_expiring_xlsx(path: str, rows: list[dict], month_label: str) -> None:
         widths=(9, 24, 11, 12, 42), center_cols={1, 3, 4})
 
 
-BIRTHDAY_COLUMNS = ["Center Id", "Name", "Birthday", "Sign"]
+BIRTHDAY_COLUMNS = ["Center Id", "Name", "Birthday", "Sign", "Date"]
 
 
 def members_with_birthday_in_month(members, terminated_ids,
@@ -307,11 +307,12 @@ def members_with_birthday_in_month(members, terminated_ids,
 
 
 def write_birthday_xlsx(path: str, rows: list[dict], month_label: str) -> None:
-    """The birthdays record sheet (empty Sign column for signatures)."""
+    """The birthdays record sheet (empty Sign and Date columns to fill in
+    by hand)."""
     _write_record_sheet(
         path, f"Birthdays {month_label}", BIRTHDAY_COLUMNS,
-        [[r["center_id"], r["name"], r["dob"], ""] for r in rows],
-        widths=(10, 28, 14, 46), center_cols={1, 3})
+        [[r["center_id"], r["name"], r["dob"], "", ""] for r in rows],
+        widths=(10, 28, 14, 34, 13), center_cols={1, 3})
 
 
 def export_members_xlsx(db_path: str, out_path: str, today=None) -> int:

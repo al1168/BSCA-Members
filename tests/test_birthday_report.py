@@ -56,9 +56,10 @@ def test_xlsx_round_trip(tmp_path):
     assert first[0] == 2 and first[1] == "Lu, Wei"
     assert first[2].date() == date(1948, 6, 4)
     assert first[3] is None                          # empty Sign column
+    assert first[4] is None                          # empty Date column
     assert ws.cell(row=2, column=3).number_format == "MM/DD/YYYY"
     # Same ruled record-sheet treatment as the expiring report.
-    for col in range(1, 5):
+    for col in range(1, 6):
         assert ws.cell(row=2, column=col).border.bottom.style == "thin"
     assert ws.page_setup.scale == 100
     assert ws.print_title_rows in ("1:1", "$1:$1")
