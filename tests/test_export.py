@@ -30,16 +30,17 @@ def contact(cid, last="Chan", first="Mei", **kw):
 
 def test_column_order_matches_request():
     assert COLUMNS[0] == "Center Id"
-    assert COLUMNS[21] == "Enrollment Date"
-    assert COLUMNS[22:25] == ["Auth Days", "Auth Start", "Auth End"]
-    assert COLUMNS[25:] == ["Emergency_Full Name", "Emergency_Phone Number",
+    assert COLUMNS[1] == "Status"
+    assert COLUMNS[22] == "Enrollment Date"
+    assert COLUMNS[23:26] == ["Auth Days", "Auth Start", "Auth End"]
+    assert COLUMNS[26:] == ["Emergency_Full Name", "Emergency_Phone Number",
                             "Emergency_Relationship"]
 
 
 def test_row_is_fully_populated_and_formatted():
     rows = build_export_rows(
         [contact(1)],
-        [(1, datetime(2025, 5, 1))],
+        [(1, datetime(2025, 5, 1), None)],
         [(1, date(2026, 1, 1), date(2026, 12, 31), "1,3,5")],
         [(10, 1, "Wei Lu", "7185550100", "Son")],
         TODAY,
@@ -47,6 +48,7 @@ def test_row_is_fully_populated_and_formatted():
     assert len(rows) == 1
     r = dict(zip(COLUMNS, rows[0]))
     assert r["Center Id"] == 1
+    assert r["Status"] == "Active"
     assert r["Chinese Name"] == "陳美"
     assert r["DOB"] == date(1950, 3, 15)          # datetime -> date
     assert r["SSN"] == "123-45-6789"              # display formatting applied
@@ -65,9 +67,24 @@ def test_row_is_fully_populated_and_formatted():
 def test_latest_enrollment_start_wins():
     rows = build_export_rows(
         [contact(1)],
-        [(1, date(2024, 1, 1)), (1, date(2026, 6, 2)), (1, date(2025, 5, 1))],
+        [(1, date(2024, 1, 1), None), (1, date(2026, 6, 2), None),
+         (1, date(2025, 5, 1), None)],
         [], [], TODAY)
     assert dict(zip(COLUMNS, rows[0]))["Enrollment Date"] == date(2026, 6, 2)
+
+
+def test_status_follows_latest_enrollment():
+    # Latest enrollment ended -> Terminated; re-enrolled (latest open) -> Active;
+    # no enrollments at all -> Active (never terminated).
+    rows = build_export_rows(
+        [contact(1), contact(2, last="Lu"), contact(3, last="Ng")],
+        [(1, date(2024, 1, 1), None), (1, date(2025, 1, 1), date(2026, 6, 2)),
+         (2, date(2024, 1, 1), date(2024, 12, 31)), (2, date(2025, 1, 1), None)],
+        [], [], TODAY)
+    by_id = {r[0]: dict(zip(COLUMNS, r)) for r in rows}
+    assert by_id[1]["Status"] == "Terminated"
+    assert by_id[2]["Status"] == "Active"
+    assert by_id[3]["Status"] == "Active"
 
 
 def test_no_active_auth_leaves_cells_blank():
@@ -123,7 +140,7 @@ def test_xlsx_round_trip(tmp_path):
     from openpyxl import load_workbook
     rows = build_export_rows(
         [contact(1)],
-        [(1, date(2025, 5, 1))],
+        [(1, date(2025, 5, 1), None)],
         [(1, date(2026, 1, 1), date(2026, 12, 31), "1,3,5")],
         [(10, 1, "Wei Lu", "7185550100", "Son")],
         TODAY)
@@ -141,4 +158,5 @@ def test_xlsx_round_trip(tmp_path):
     assert r["Auth Days"] == "1.3.5"
     # Dates come back as datetimes from openpyxl with the display format set.
     assert r["DOB"].date() == date(1950, 3, 15)
-    assert ws.cell(row=2, column=5).number_format == "MM/DD/YYYY"
+    dob_col = COLUMNS.index("DOB") + 1
+    assert ws.cell(row=2, column=dob_col).number_format == "MM/DD/YYYY"

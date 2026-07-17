@@ -14,7 +14,7 @@ from db.members import (
 )
 
 COLUMNS = [
-    "Center Id", "Last Name", "First Name", "Chinese Name", "DOB",
+    "Center Id", "Status", "Last Name", "First Name", "Chinese Name", "DOB",
     "Health Plan", "Member ID", "Medicaid", "Medicare", "SSN", "Language",
     "Case Manager", "Home Tell", "Cell", "Address", "PCP", "Hospital",
     "Notes", "Gender", "Long Lat", "HHA",
@@ -30,7 +30,8 @@ _CONTACTS_QUERY = (
     "[Gender],[Long Lat],[HHA] FROM [Contacts] "
     "ORDER BY [Center ID]"
 )
-_ENROLLMENTS_QUERY = "SELECT [Center ID],[start_date] FROM [Enrollment]"
+_ENROLLMENTS_QUERY = ("SELECT [Center ID],[start_date],[end_date] "
+                      "FROM [Enrollment]")
 _AUTHS_QUERY = ("SELECT [Center ID],[auth_start],[auth_end],[auth_days] "
                 "FROM [Authorization]")
 _EMERGENCY_QUERY = ("SELECT [ID],[Center ID],[Full Name],[Phone Number],"
@@ -81,14 +82,19 @@ def build_export_rows(contacts, enrollments, auths, emergency, today) -> list[li
     """Assemble spreadsheet rows (matching COLUMNS) from raw table rows.
 
     contacts:    rows in _CONTACTS_QUERY order (drives row order)
-    enrollments: (center_id, start_date) — latest start becomes Enrollment Date
+    enrollments: (center_id, start_date, end_date) — latest start becomes
+                 Enrollment Date; the rows also decide Status
+                 (Active/Terminated, the same latest-enrollment-has-an-end
+                 rule as the sidebar's terminated marks)
     auths:       (center_id, auth_start, auth_end, auth_days)
     emergency:   (id, center_id, full_name, phone, relationship) — the row
                  with the lowest id (first on file) is used
     Pure (no DB), so it is unit-testable.
     """
+    from db.members import terminated_ids_from_rows
+    terminated = terminated_ids_from_rows(enrollments)
     enroll_by_member: dict[int, date] = {}
-    for cid, start in enrollments:
+    for cid, start, _end in enrollments:
         if cid is None or start is None:
             continue
         start = _access_date(start)
@@ -120,6 +126,7 @@ def build_export_rows(contacts, enrollments, auths, emergency, today) -> list[li
         em = emergency_by_member.get(cid)
         rows.append([
             cid,
+            "Terminated" if cid in terminated else "Active",
             r[1] or "", r[2] or "", r[3] or "",
             # DOB as a real date cell (MM/DD/YYYY) even when the column holds
             # text like '8/23/1953'; unparseable text passes through visibly.
