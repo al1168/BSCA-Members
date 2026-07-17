@@ -634,6 +634,28 @@ def get_all_members(db_path: str) -> list[dict]:
         conn.close()
 
 
+def extract_attachment_image(data: bytes) -> bytes:
+    """Strip the Access attachment header from a Photo FileData blob.
+
+    The blob is a small header followed by the original file, and the header's
+    length lives in the first four bytes (little-endian) — so slicing there
+    works for every image format, not just JPEG. When the offset doesn't land
+    on a known image signature (malformed blob), fall back to hunting for a
+    JPEG/PNG/GIF/BMP marker; as a last resort return the input unchanged so
+    the caller's decoder can try its best."""
+    import struct
+    magics = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n", b"GIF8", b"BM")
+    if len(data) >= 8:
+        offset = struct.unpack("<I", data[:4])[0]
+        if 4 <= offset < len(data) and data[offset:].startswith(magics):
+            return data[offset:]
+    for magic in magics:
+        i = data.find(magic)
+        if i >= 0:
+            return data[i:]
+    return data
+
+
 def get_member_photo(center_id: int, db_path: str) -> bytes | None:
     """Return raw JPEG bytes from the Access Attachment field, or None.
 
@@ -663,12 +685,9 @@ def get_member_photo(center_id: int, db_path: str) -> bytes | None:
                 attach_rs.Close()
                 rs.Close()
                 return None
-            data = bytes(raw)
-            # Access stores attachment metadata before the actual file data.
-            # The JPEG data starts at the first FF D8 FF marker.
-            jpeg_start = data.find(b'\xff\xd8\xff')
-            if jpeg_start >= 0:
-                data = data[jpeg_start:]
+            # Access stores attachment metadata before the actual file data;
+            # strip it by its declared length (works for PNG as well as JPEG).
+            data = extract_attachment_image(bytes(raw))
             attach_rs.Close()
             rs.Close()
             return data
