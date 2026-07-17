@@ -20,9 +20,13 @@ def test_is_terminated_latest_ended_past():
     assert is_terminated(enrs) is True
 
 
-def test_is_terminated_latest_ended_future():
+def test_future_end_date_stays_active_until_the_day():
+    # Terminated is decided by the enrollment *day*: an end date that hasn't
+    # arrived yet keeps the member Active; the day itself reads as ended.
     enrs = [{"start_date": date(2026, 1, 1), "end_date": date(2099, 1, 1)}]
-    assert is_terminated(enrs) is True
+    assert is_terminated(enrs, today=date(2026, 7, 17)) is False
+    assert is_terminated(enrs, today=date(2099, 1, 1)) is True
+    assert is_terminated(enrs, today=date(2099, 1, 2)) is True
 
 
 def test_terminated_ids_from_rows():

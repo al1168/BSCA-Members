@@ -1422,13 +1422,17 @@ def delete_enrollment(record_id: int, db_path: str) -> None:
     _execute_write(db_path, DELETE_ENROLLMENT, (record_id,))
 
 
-def is_terminated(enrollments: list[dict]) -> bool:
-    """True when the member's latest enrollment (by start date) has an end date.
-    No enrollments -> False; a latest ongoing enrollment -> False."""
+def is_terminated(enrollments: list[dict], today=None) -> bool:
+    """True when the member's latest enrollment (by start date) has ended —
+    an end date that has passed. A future end date stays Active until the day
+    arrives (an enrollment ending today reads as ended, matching
+    enrollment_active). No enrollments -> False; latest ongoing -> False."""
     if not enrollments:
         return False
+    if today is None:
+        today = date.today()
     latest = max(enrollments, key=lambda e: e.get("start_date") or date.min)
-    return latest.get("end_date") is not None
+    return not enrollment_active(latest, today)
 
 
 def enrollment_active(enrollment: dict, today) -> bool:
@@ -1458,7 +1462,7 @@ def sort_enrollments_active_first(enrollments: list[dict], today) -> list[dict]:
     return sorted(enrollments, key=key, reverse=True)
 
 
-def terminated_ids_from_rows(rows) -> set[int]:
+def terminated_ids_from_rows(rows, today=None) -> set[int]:
     """Group raw (center_id, start_date, end_date) rows by member and return the
     set of terminated center ids. Pure (no DB) so it is unit-testable."""
     from collections import defaultdict
@@ -1469,7 +1473,7 @@ def terminated_ids_from_rows(rows) -> set[int]:
         by_member[int(cid)].append(
             {"start_date": _access_date(start), "end_date": _access_date(end)}
         )
-    return {cid for cid, enrs in by_member.items() if is_terminated(enrs)}
+    return {cid for cid, enrs in by_member.items() if is_terminated(enrs, today)}
 
 
 def get_terminated_center_ids(db_path: str) -> set[int]:

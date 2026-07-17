@@ -92,7 +92,7 @@ def build_export_rows(contacts, enrollments, auths, emergency, today) -> list[li
     Pure (no DB), so it is unit-testable.
     """
     from db.members import terminated_ids_from_rows
-    terminated = terminated_ids_from_rows(enrollments)
+    terminated = terminated_ids_from_rows(enrollments, today)
     enroll_by_member: dict[int, date] = {}
     for cid, start, _end in enrollments:
         if cid is None or start is None:
