@@ -305,7 +305,8 @@ DELETE_AUTHORIZATION = "DELETE FROM [Authorization] WHERE [ID]=?"
 
 UPDATE_AUTHORIZATION = (
     "UPDATE [Authorization] SET [auth_start]=?, [auth_end]=?, "
-    "[auth_days]=?, [Health Plan]=?, [Member ID]=?, [auth_number]=? WHERE [ID]=?"
+    "[auth_days]=?, [Health Plan]=?, [Member ID]=?, [auth_number]=?, "
+    "[effective_start]=NULL, [effective_end]=NULL WHERE [ID]=?"
 )
 
 AUTHORIZATION_SELECT = (
@@ -331,7 +332,8 @@ DELETE_TRANSPORT_AUTH = "DELETE FROM [TransportAuthorization] WHERE [ID]=?"
 
 UPDATE_TRANSPORT_AUTH = (
     "UPDATE [TransportAuthorization] SET [auth_start]=?, [auth_end]=?, "
-    "[auth_days]=?, [Health Plan]=?, [Member ID]=?, [auth_number]=? WHERE [ID]=?"
+    "[auth_days]=?, [Health Plan]=?, [Member ID]=?, [auth_number]=?, "
+    "[effective_start]=NULL, [effective_end]=NULL WHERE [ID]=?"
 )
 
 TRANSPORT_AUTH_SELECT = (
@@ -1525,7 +1527,12 @@ def update_authorization(
     auth_number: str = "",
 ) -> None:
     """Update an existing authorization's dates, days, plan, member id, and
-    auth number."""
+    auth number. Also clears effective_start/effective_end: a non-null
+    effective window overrides the auth dates when deciding which auth is in
+    effect today, so leaving one behind after a date edit strands the row on
+    its pre-edit period (empty day chips despite an "Active" pill). NULL makes
+    the effective window follow the edited auth dates, matching how the Auths
+    tab and wizard insert new rows."""
     _execute_write(db_path, UPDATE_AUTHORIZATION, (
         auth_start, auth_end, encode_auth_days(auth_days), health_plan,
         member_id, auth_number, record_id,
@@ -1570,7 +1577,9 @@ def update_transport_authorization(
     member_id: str = "",
     auth_number: str = "",
 ) -> None:
-    """Update a transport auth's dates, days, plan, member id, and auth number."""
+    """Update a transport auth's dates, days, plan, member id, and auth number.
+    Clears effective_start/effective_end for the same reason as
+    update_authorization: the effective window must follow the edited dates."""
     _execute_write(db_path, UPDATE_TRANSPORT_AUTH, (
         auth_start, auth_end, encode_auth_days(auth_days), health_plan,
         member_id, auth_number, record_id,

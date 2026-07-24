@@ -20,7 +20,8 @@ def test_update_transport_auth_targets_correct_columns():
     from db.members import UPDATE_TRANSPORT_AUTH
     assert "UPDATE [TransportAuthorization]" in UPDATE_TRANSPORT_AUTH
     for col in ("[auth_start]=?", "[auth_end]=?", "[auth_days]=?",
-                "[Health Plan]=?", "[Member ID]=?", "[auth_number]=?"):
+                "[Health Plan]=?", "[Member ID]=?", "[auth_number]=?",
+                "[effective_start]=NULL", "[effective_end]=NULL"):
         assert col in UPDATE_TRANSPORT_AUTH
     assert "WHERE [ID]=?" in UPDATE_TRANSPORT_AUTH
 
