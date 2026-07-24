@@ -1011,21 +1011,31 @@ class MemberTabsWidget(QWidget):
         # the Info tab's save/discard/dirty tracking can reference it.
         header = QHBoxLayout()
         header.setSpacing(14)
-        header.addWidget(self._make_photo_label(),
-                         alignment=Qt.AlignmentFlag.AlignTop)
+        photo_col = QVBoxLayout()
+        photo_col.setSpacing(4)
+        photo_col.addWidget(self._make_photo_label(),
+                            alignment=Qt.AlignmentFlag.AlignHCenter)
+        cid = str(self._center_id)
+        id_label = QLabel(
+            f"<span style='font-size:17px; font-weight:700; color:#5b7cf4'>"
+            f"ID {cid}</span>")
+        id_label.setTextFormat(Qt.TextFormat.RichText)
+        # Let staff highlight + copy the ID.
+        id_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        photo_col.addWidget(id_label, alignment=Qt.AlignmentFlag.AlignHCenter)
+        photo_col.addStretch()
+        header.addLayout(photo_col)
 
         right = QVBoxLayout()
         right.setSpacing(6)
 
         top_row = QHBoxLayout()
         name = f"{self._member.get('last_name', '')}, {self._member.get('first_name', '')}"
-        cid = str(self._center_id)
         name_label = QLabel(
-            f"<span style='font-size:16px; font-weight:700'>{name}</span><br>"
-            f"<span style='font-size:13px; font-weight:700; color:#5b7cf4'>"
-            f"ID {cid}</span>")
+            f"<span style='font-size:16px; font-weight:700'>{name}</span>")
         name_label.setTextFormat(Qt.TextFormat.RichText)
-        # Let staff highlight + copy the ID (and name).
+        # Let staff highlight + copy the name.
         name_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         top_row.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignVCenter)
