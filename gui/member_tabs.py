@@ -1170,8 +1170,11 @@ class MemberTabsWidget(QWidget):
         id_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         photo_col.addWidget(id_label, alignment=Qt.AlignmentFlag.AlignHCenter)
-        photo_col.addStretch()
         header.addLayout(photo_col)
+        # Top-align via setAlignment, NOT photo_col.addStretch(): an expanding
+        # spacer makes the whole header layout report itself as vertically
+        # expanding, so it steals half the window's height from the tabs below.
+        header.setAlignment(photo_col, Qt.AlignmentFlag.AlignTop)
 
         right = QVBoxLayout()
         right.setSpacing(6)
