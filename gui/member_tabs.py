@@ -511,7 +511,7 @@ class WeekdayChips(QWidget):
 
 
 class _PhotoLabel(QLabel):
-    """An 80x80 photo label that emits `clicked` when pressed (left button)."""
+    """A PHOTO_SIZE photo label that emits `clicked` when pressed (left button)."""
 
     clicked = pyqtSignal()
 
@@ -684,29 +684,36 @@ class _ViewEditLineEdit(QLineEdit):
 # live inside the .accdb, which has a 2 GB ceiling).
 MAX_DOC_WARN_MB = 10
 
-# Decoded 80x80 member photos, keyed by center_id: (QPixmap, has_photo). Reading
-# and decoding the JPEG is the slowest part of opening a member after the DB
-# read, so cache it across opens. Invalidated when a photo is changed in-app.
+# Header photo edge length in px (square, shown in a circle).
+PHOTO_SIZE = 108
+
+# Decoded PHOTO_SIZE member photos, keyed by center_id: (QPixmap, has_photo).
+# Reading and decoding the JPEG is the slowest part of opening a member after
+# the DB read, so cache it across opens. Invalidated when a photo is changed
+# in-app.
 _PHOTO_CACHE: dict = {}
 _PLACEHOLDER_PIX = None
 
 
 def _placeholder_photo():
-    """The generic 80×80 avatar placeholder, drawn once and shared by all
+    """The generic PHOTO_SIZE avatar placeholder, drawn once and shared by all
     members (it's identical for everyone)."""
     global _PLACEHOLDER_PIX
     if _PLACEHOLDER_PIX is None:
         from PyQt6.QtGui import QPixmap, QPainter, QColor, QBrush
-        pix = QPixmap(80, 80)
+        s = PHOTO_SIZE
+        pix = QPixmap(s, s)
         pix.fill(Qt.GlobalColor.transparent)
         p = QPainter(pix)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setBrush(QBrush(QColor("#3a3a3a")))
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawEllipse(0, 0, 80, 80)
+        p.drawEllipse(0, 0, s, s)
         p.setBrush(QBrush(QColor("#888888")))
-        p.drawEllipse(28, 12, 24, 24)
-        p.drawEllipse(12, 46, 56, 40)
+        # Head and torso, proportional to the old 80px art (28,12,24,24 /
+        # 12,46,56,40).
+        p.drawEllipse(int(s * .35), int(s * .15), int(s * .30), int(s * .30))
+        p.drawEllipse(int(s * .15), int(s * .575), int(s * .70), int(s * .50))
         p.end()
         _PLACEHOLDER_PIX = pix
     return _PLACEHOLDER_PIX
@@ -855,12 +862,13 @@ class MemberTabsWidget(QWidget):
             self._tab_events.refresh()
 
     def _make_photo_label(self) -> QLabel:
-        """Return an 80×80 clickable label showing the member photo. Clicking it
-        opens a file picker to set/replace the photo."""
+        """Return a PHOTO_SIZE clickable label showing the member photo.
+        Clicking it opens a file picker to set/replace the photo."""
         from db.members import get_member_photo
         self._photo_label = _PhotoLabel()
-        self._photo_label.setFixedSize(80, 80)
-        self._photo_label.setStyleSheet("border-radius: 40px; overflow: hidden;")
+        self._photo_label.setFixedSize(PHOTO_SIZE, PHOTO_SIZE)
+        self._photo_label.setStyleSheet(
+            f"border-radius: {PHOTO_SIZE // 2}px; overflow: hidden;")
         self._photo_label.clicked.connect(self._change_photo)
         cached = _PHOTO_CACHE.get(self._center_id)
         if cached is not None:
@@ -900,14 +908,15 @@ class MemberTabsWidget(QWidget):
         from PyQt6.QtCore import Qt as QtCore
         self._has_photo = bool(photo_bytes)
         if photo_bytes:
+            s = PHOTO_SIZE
             pix = QPixmap()
             pix.loadFromData(photo_bytes)
-            pix = pix.scaled(80, 80, QtCore.AspectRatioMode.KeepAspectRatioByExpanding,
+            pix = pix.scaled(s, s, QtCore.AspectRatioMode.KeepAspectRatioByExpanding,
                              QtCore.TransformationMode.SmoothTransformation)
-            if pix.width() > 80 or pix.height() > 80:
-                x = (pix.width() - 80) // 2
-                y = (pix.height() - 80) // 2
-                pix = pix.copy(x, y, 80, 80)
+            if pix.width() > s or pix.height() > s:
+                x = (pix.width() - s) // 2
+                y = (pix.height() - s) // 2
+                pix = pix.copy(x, y, s, s)
         else:
             pix = _placeholder_photo()
         self._photo_label.setPixmap(pix)
