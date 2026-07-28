@@ -68,6 +68,21 @@ def log_warning(text: str) -> None:
         pass
 
 
+def log_perf(text: str) -> None:
+    """Append a one-line timing entry to today's logs/clicks_<date>.txt.
+
+    Used by the member-click timer so click-to-paint times can be compared
+    across computers in the field. Never raises.
+    """
+    try:
+        now = datetime.now()
+        path = os.path.join(log_dir(), f"clicks_{now:%Y-%m-%d}.txt")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"{now:%H:%M:%S} {text}\n")
+    except Exception:
+        pass
+
+
 def install(parent=None) -> None:
     """Route unhandled exceptions to a crash log + dialog, then exit."""
     def handler(exc_type, exc_value, exc_tb):

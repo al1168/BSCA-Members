@@ -289,6 +289,25 @@ def test_terminate_enrollment_sets_end_to_today():
         delete_enrollment(new_id, TEST_DB)
 
 
+def test_terminate_enrollment_accepts_explicit_date():
+    from datetime import date
+    from db.members import (
+        get_all_members, insert_enrollment, terminate_enrollment, delete_enrollment,
+    )
+    from monthly_schedule.db import get_enrollments
+
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    before = {e["id"] for e in get_enrollments(cid, TEST_DB)}
+    insert_enrollment(cid, date(2020, 1, 1), None, TEST_DB)
+    new_id = ({e["id"] for e in get_enrollments(cid, TEST_DB)} - before).pop()
+    try:
+        terminate_enrollment(new_id, TEST_DB, date(2025, 3, 15))
+        row = next(e for e in get_enrollments(cid, TEST_DB) if e["id"] == new_id)
+        assert row["end_date"] == date(2025, 3, 15)
+    finally:
+        delete_enrollment(new_id, TEST_DB)
+
+
 def test_insert_authorization_persists_health_plan():
     from datetime import date
     from db.members import (
@@ -431,8 +450,12 @@ def test_update_authorization_round_trips_changes():
     )
     cid = get_all_members(TEST_DB)[0]["center_id"]
     before = {a["id"] for a in get_authorizations(cid, TEST_DB)}
+    # Seed an effective window that disagrees with the auth dates — the edit
+    # must clear it, or the row stays stranded on the pre-edit period (empty
+    # day chips despite an "Active" status pill).
     insert_authorization(
-        cid, date(2026, 1, 1), date(2026, 6, 30), {1, 2}, None, None, "AE", TEST_DB,
+        cid, date(2026, 1, 1), date(2026, 6, 30), {1, 2},
+        date(2026, 8, 1), date(2027, 6, 30), "AE", TEST_DB,
     )
     new_id = ({a["id"] for a in get_authorizations(cid, TEST_DB)} - before).pop()
     try:
@@ -446,6 +469,9 @@ def test_update_authorization_round_trips_changes():
         assert row["auth_days"] == "3,4,5"
         assert row["health_plan"] == "HF"
         assert row["member_id"] == "M-UPD-2"
+        # effective_* were cleared, so the mapper falls back to the auth dates.
+        assert row["effective_start"] == date(2026, 2, 1)
+        assert row["effective_end"] == date(2026, 7, 31)
     finally:
         delete_authorization(new_id, TEST_DB)
 

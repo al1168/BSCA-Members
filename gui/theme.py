@@ -326,7 +326,7 @@ QToolBar#main_toolbar {{
     spacing: 6px;
 }}
 QPushButton#btn_export, QPushButton#btn_expiring_report,
-QPushButton#btn_birthday_report {{
+QPushButton#btn_birthday_report, QPushButton#btn_bookmarks {{
     background-color: transparent;
     color: {t['text2']};
     border: 1px solid {t['border']};
@@ -336,9 +336,30 @@ QPushButton#btn_birthday_report {{
     font-weight: 600;
 }}
 QPushButton#btn_export:hover, QPushButton#btn_expiring_report:hover,
-QPushButton#btn_birthday_report:hover {{
+QPushButton#btn_birthday_report:hover, QPushButton#btn_bookmarks:hover {{
     background-color: {t['raised']};
     color: {t['text']};
+}}
+/* Member-header bookmark toggle: quiet outline until the member is
+   bookmarked, then accent-tinted (the [marked] property drives the state). */
+QPushButton#btn_bookmark {{
+    background-color: transparent;
+    color: {t['text2']};
+    border: 1px solid {t['border']};
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 600;
+}}
+QPushButton#btn_bookmark:hover {{
+    background-color: {t['accent_bg']};
+    color: {t['accent_text']};
+    border-color: {t['accent']};
+}}
+QPushButton#btn_bookmark[marked="true"] {{
+    background-color: {t['accent_bg']};
+    color: {t['accent_text']};
+    border-color: {t['accent']};
 }}
 /* Toolbar notifications bell: quiet until something needs attention;
    red-tinted when any authorization has expired. */

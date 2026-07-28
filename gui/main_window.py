@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QStackedWidget, QApplication, QMessageBox, QSizePolicy,
     QStyledItemDelegate, QStyle, QStyleOptionViewItem,
 )
-from PyQt6.QtCore import Qt, QEvent
+from PyQt6.QtCore import Qt, QEvent, QObject
 from PyQt6.QtGui import (
     QTextDocument, QAbstractTextDocumentLayout, QShortcut, QKeySequence,
 )
@@ -114,6 +114,35 @@ class _MemberItemDelegate(QStyledItemDelegate):
         painter.restore()
 
 
+class _FirstPaintLogger(QObject):
+    """Logs how long a member click took, measured to the profile's first
+    paint (what the user actually experiences), then uninstalls itself.
+
+    Lines land in logs/clicks_<date>.txt via crash_log.log_perf so per-click
+    times can be compared across computers in the field.
+    """
+
+    def __init__(self, widget, t0: float, center_id):
+        super().__init__(widget)          # dies with the widget
+        self._t0 = t0
+        self._center_id = center_id
+        widget.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.Paint:
+            obj.removeEventFilter(self)
+            import time
+            import crash_log
+            total = (time.perf_counter() - self._t0) * 1000
+            load = getattr(obj, "perf_load_ms", 0.0)
+            build = getattr(obj, "perf_build_ms", 0.0)
+            paint = max(0.0, total - load - build)
+            crash_log.log_perf(
+                f"center {self._center_id}: click-to-paint {total:.0f} ms "
+                f"(db {load:.0f} + ui {build:.0f} + paint {paint:.0f})")
+        return False
+
+
 class MainWindow(QMainWindow):
     def __init__(self, settings: dict, settings_path: str):
         super().__init__()
@@ -176,6 +205,16 @@ class MainWindow(QMainWindow):
 
         self._member_list = QListWidget()
         self._member_list.currentRowChanged.connect(self._on_member_selected)
+        # Coalesce rapid selection changes (fast clicking, holding an arrow
+        # key): each change restarts this short timer and only the row the
+        # user lands on gets its profile built. Without it every intermediate
+        # member is loaded in full, which freezes the app ("Not responding")
+        # when clicks arrive faster than profiles can build.
+        from PyQt6.QtCore import QTimer
+        self._select_timer = QTimer(self)
+        self._select_timer.setSingleShot(True)
+        self._select_timer.setInterval(80)
+        self._select_timer.timeout.connect(self._load_selected_member)
         self._member_delegate = _MemberItemDelegate(self._member_list)
         self._member_list.setItemDelegate(self._member_delegate)
         self._refresh_list_theme()
@@ -240,6 +279,16 @@ class MainWindow(QMainWindow):
             "current auth, and emergency contact")
         btn_export.clicked.connect(self._export_members)
         toolbar.addWidget(btn_export)
+
+        # Members the user bookmarked (stored per-user in %APPDATA%), with a
+        # live count. Clicking a row in the popup jumps to that member.
+        self._btn_bookmarks = QPushButton()
+        self._btn_bookmarks.setObjectName("btn_bookmarks")
+        self._btn_bookmarks.setToolTip(
+            "Members you bookmarked, with your notes")
+        self._btn_bookmarks.clicked.connect(self._open_bookmarks)
+        toolbar.addWidget(self._btn_bookmarks)
+        self._update_bookmark_count()
 
         # Bell with a live count of expiring/expired auths for active members.
         # Lives in the toolbar so it's visible whichever profile is open.
@@ -425,6 +474,14 @@ class MainWindow(QMainWindow):
     def _on_member_selected(self, row: int):
         if row < 0:
             return
+        import time
+        self._click_t0 = time.perf_counter()
+        self._select_timer.start()      # restarting coalesces click bursts
+
+    def _load_selected_member(self):
+        row = self._member_list.currentRow()
+        if row < 0:
+            return
         if not self._ok_to_leave_current():
             self._member_list.blockSignals(True)
             self._member_list.setCurrentRow(-1)
@@ -470,6 +527,11 @@ class MainWindow(QMainWindow):
         self._member_list.blockSignals(False)
 
     def _show_member(self, center_id: int):
+        import time
+        # Set by _on_member_selected on a list click; other entry points
+        # (quick search, back-from-events) start the clock here instead.
+        t0 = getattr(self, "_click_t0", None) or time.perf_counter()
+        self._click_t0 = None
         self._last_center_id = center_id
         from gui.member_tabs import MemberTabsWidget
         db_path = self._settings.get("db_path", "")
@@ -479,7 +541,9 @@ class MainWindow(QMainWindow):
         widget = MemberTabsWidget(center_id, db_path, events_path, api_key,
                                   show_row_ids)
         widget.members_changed.connect(self._refresh_terminated_marks)
+        widget.bookmarks_changed.connect(self._update_bookmark_count)
         self._set_detail(widget)
+        _FirstPaintLogger(widget, t0, center_id)
 
     def _refresh_terminated_marks(self):
         """Re-read which members are terminated and update the sidebar marks in
@@ -543,6 +607,32 @@ class MainWindow(QMainWindow):
         panel.member_chosen.connect(self._open_member_auths)
         self._notif_panel = panel              # keep a reference while shown
         panel.open_under(self._btn_notif)
+
+    def _update_bookmark_count(self):
+        """Refresh the toolbar Bookmarks button's saved-count suffix."""
+        from bookmarks import load_bookmarks
+        n = len(load_bookmarks())
+        self._btn_bookmarks.setText(
+            f"🔖  Bookmarks ({n})" if n else "🔖  Bookmarks")
+
+    def _on_bookmarks_edited(self):
+        """A bookmark was removed from the panel: refresh the toolbar count
+        and, when that member's profile is open, its header 🔖 button — so the
+        profile never keeps saying 'Bookmarked' after an ✕ in the list."""
+        self._update_bookmark_count()
+        current = (self._detail_stack.widget(1)
+                   if self._detail_stack.count() > 1 else None)
+        if current is not None and hasattr(current, "_sync_bookmark_button"):
+            current._sync_bookmark_button()
+
+    def _open_bookmarks(self):
+        from bookmarks import load_bookmarks
+        from gui.bookmarks_panel import BookmarksPanel
+        panel = BookmarksPanel(load_bookmarks(), self)
+        panel.member_chosen.connect(self._jump_to_member)
+        panel.bookmarks_edited.connect(self._on_bookmarks_edited)
+        self._bookmarks_panel = panel          # keep a reference while shown
+        panel.open_under(self._btn_bookmarks)
 
     def _open_member_auths(self, center_id):
         """From a notification row: open the member on their Auths tab so the

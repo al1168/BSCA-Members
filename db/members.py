@@ -374,6 +374,11 @@ INSERT_ABSENCE = (
 
 DELETE_ABSENCE = "DELETE FROM [Absences] WHERE [ID]=?"
 
+UPDATE_ABSENCE = (
+    "UPDATE [Absences] SET [Leave Type]=?, [Start_Date]=?, [End_Date]=? "
+    "WHERE [ID]=?"
+)
+
 INSERT_ONE_OFF_AVAILABILITY = (
     "INSERT INTO [OneOffAvailability] ([Center ID], [date], "
     "[avail_start], [avail_end], [Notes]) VALUES (?, ?, ?, ?, ?)"
@@ -1492,9 +1497,12 @@ def get_terminated_center_ids(db_path: str) -> set[int]:
         conn.close()
 
 
-def terminate_enrollment(record_id: int, db_path: str) -> None:
-    """Set an enrollment's end date to today (used by the Terminate button)."""
-    _execute_write(db_path, UPDATE_ENROLLMENT_END, (date.today(), record_id))
+def terminate_enrollment(record_id: int, db_path: str,
+                         end_date: date | None = None) -> None:
+    """Set an enrollment's end date (used by the Terminate button). Defaults
+    to today when no date is given, e.g. when notified of a termination late."""
+    _execute_write(db_path, UPDATE_ENROLLMENT_END,
+                   (end_date or date.today(), record_id))
 
 
 def insert_authorization(
@@ -1688,6 +1696,16 @@ def insert_absence(
     db_path: str,
 ) -> None:
     _execute_write(db_path, INSERT_ABSENCE, (center_id, leave_type, start, end))
+
+
+def update_absence(
+    record_id: int,
+    leave_type: str,
+    start: date,
+    end: date,
+    db_path: str,
+) -> None:
+    _execute_write(db_path, UPDATE_ABSENCE, (leave_type, start, end, record_id))
 
 
 def delete_absence(record_id: int, db_path: str) -> None:

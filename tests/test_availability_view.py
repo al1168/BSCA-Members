@@ -97,10 +97,8 @@ def test_theme_has_avail_day_styles(qapp):
         assert "avail_day" in t
 
 
-# ── table renders sorted + grayed, with status pills ───────────────────────
-def test_table_sorts_grays_and_tags(qapp):
-    from PyQt6.QtGui import QColor
-    from PyQt6.QtWidgets import QLabel
+# ── table hides expired rows (kept in the DB as history) ───────────────────
+def test_table_hides_expired_rows_shows_active_as_text(qapp):
     import gui.member_tabs as mt
     w = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
     w._availability = [
@@ -113,17 +111,37 @@ def test_table_sorts_grays_and_tags(qapp):
     tab = w._make_avail_tab()            # keep ref so the table isn't GC'd
     t = w._avail_table
 
-    assert t.item(0, 0).text() == "2"    # active row floated to top
-    assert t.item(1, 0).text() == "1"    # expired sank to bottom
-    assert t.item(1, 1).foreground().color() == QColor(mt.EXPIRED_FG)
-    assert t.item(0, 1).foreground().color() != QColor(mt.EXPIRED_FG)
+    # Only the active row is shown; the expired (capped) row stays out of view.
+    assert t.rowCount() == 1
+    assert t.item(0, 0).text() == "2"
 
-    def status_name(row):
-        cell = t.cellWidget(row, 6)
-        for lbl in cell.findChildren(QLabel):
-            if lbl.objectName() in ("active_chip", "expired_chip"):
-                return lbl.objectName()
-        return None
+    # Active renders as plain centered text (no pill).
+    assert t.cellWidget(0, 6) is None
+    assert t.item(0, 6).text() == "Active"
 
-    assert status_name(0) == "active_chip"
-    assert status_name(1) == "expired_chip"
+
+# ── Delete enabled only for a selected Upcoming row ────────────────────────
+def test_delete_button_only_for_upcoming_rows(qapp):
+    from datetime import date, timedelta
+    from PyQt6.QtWidgets import QPushButton
+    import gui.member_tabs as mt
+    today = date.today()
+    w = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
+    w._availability = [
+        _av(1, 1, "08:00", "16:00", today - timedelta(days=30), None),   # active
+        _av(2, 2, "08:00", "16:00", today + timedelta(days=30), None),   # upcoming
+    ]
+    w._authorizations = []
+    w._center_id = 1
+    w._db_path = "x"
+    tab = w._make_avail_tab()
+    t = w._avail_table
+    btn_del = next(b for b in tab.findChildren(QPushButton)
+                   if b.text() == "Delete Selected")
+
+    assert btn_del.isEnabled() is False              # nothing selected
+    by_id = {t.item(r, 0).text(): r for r in range(t.rowCount())}
+    t.selectRow(by_id["1"])                          # active row
+    assert btn_del.isEnabled() is False
+    t.selectRow(by_id["2"])                          # upcoming row
+    assert btn_del.isEnabled() is True

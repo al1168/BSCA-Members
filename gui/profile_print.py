@@ -18,6 +18,9 @@ _LABEL = "#6b7280"
 _VALUE = "#111827"
 _RULE = "#d8dce6"
 _PHOTO_URL = "profile://photo"
+# Compact type scale so the sheet always fits one printed page.
+_BODY_PT = "10.5pt"
+_TITLE_PT = "11pt"
 
 
 def _esc(value) -> str:
@@ -44,7 +47,7 @@ def _fields_grid(pairs, cols: int = 2) -> str:
         cells = []
         for label, value in pairs[i:i + cols]:
             cells.append(
-                f'<td width="{col_w}%" style="font-size:12pt;">'
+                f'<td width="{col_w}%" style="font-size:{_BODY_PT};">'
                 f'<span style="color:{_LABEL};">{_html.escape(label)}</span>'
                 f'&nbsp;&nbsp;'
                 f'<span style="color:{_VALUE};">{_esc(value)}</span></td>'
@@ -52,13 +55,13 @@ def _fields_grid(pairs, cols: int = 2) -> str:
         while len(cells) < cols:          # pad the last row for even columns
             cells.append("<td></td>")
         rows.append("<tr>" + "".join(cells) + "</tr>")
-    return f'<table width="100%" cellspacing="0" cellpadding="5">{"".join(rows)}</table>'
+    return f'<table width="100%" cellspacing="0" cellpadding="3">{"".join(rows)}</table>'
 
 
 def _section(title: str, body_html: str) -> str:
     return (
-        f'<p style="margin-top:18px; margin-bottom:2px; color:{_ACCENT}; '
-        f'font-size:13pt;"><b>{_html.escape(title.upper())}</b></p>'
+        f'<p style="margin-top:10px; margin-bottom:1px; color:{_ACCENT}; '
+        f'font-size:{_TITLE_PT};"><b>{_html.escape(title.upper())}</b></p>'
         f'<hr color="{_RULE}">'
         f'{body_html}'
     )
@@ -89,17 +92,17 @@ def build_profile_html(
     dob = _date_only(m.get("dob"))
 
     photo_cell = (
-        f'<td width="150" valign="top">'
-        f'<img src="{_PHOTO_URL}" width="132" height="132"></td>'
+        f'<td width="120" valign="top">'
+        f'<img src="{_PHOTO_URL}" width="108" height="108"></td>'
         if include_photo else ""
     )
     # Header: photo (left) + name and a single meta line, left-aligned.
     header = (
-        f'<table width="100%" cellspacing="0" cellpadding="6">'
+        f'<table width="100%" cellspacing="0" cellpadding="4">'
         f'<tr>{photo_cell}'
         f'<td valign="middle">'
-        f'<span style="font-size:22pt; color:{_VALUE};"><b>{name}</b></span><br>'
-        f'<span style="color:{_LABEL}; font-size:12pt;">'
+        f'<span style="font-size:17pt; color:{_VALUE};"><b>{name}</b></span><br>'
+        f'<span style="color:{_LABEL}; font-size:{_BODY_PT};">'
         f'Center ID {_esc(m.get("center_id"))}'
         f' &nbsp;·&nbsp; Health Plan {_esc(m.get("health_plan"))}'
         f' &nbsp;·&nbsp; DOB {_esc(dob)}'
@@ -139,30 +142,30 @@ def build_profile_html(
             ("TRANS Auth", active_auth.get("trans_auth")),
         ], cols=2)
     else:
-        authorization = (f'<p style="color:{_LABEL}; font-size:12pt;">'
+        authorization = (f'<p style="color:{_LABEL}; font-size:{_BODY_PT};">'
                          f'— No active authorization —</p>')
 
     if emergency_contacts:
         ec_rows = "".join(
             f'<tr>'
-            f'<td width="36%" style="color:{_VALUE}; font-size:12pt;">'
+            f'<td width="36%" style="color:{_VALUE}; font-size:{_BODY_PT};">'
             f'{_esc(ec.get("full_name"))}</td>'
-            f'<td style="color:{_VALUE}; font-size:12pt;">{_esc(format_phone(ec.get("phone")))}</td>'
-            f'<td style="color:{_VALUE}; font-size:12pt;">'
+            f'<td style="color:{_VALUE}; font-size:{_BODY_PT};">{_esc(format_phone(ec.get("phone")))}</td>'
+            f'<td style="color:{_VALUE}; font-size:{_BODY_PT};">'
             f'{_esc(ec.get("relationship"))}</td>'
             f'</tr>'
             for ec in emergency_contacts
         )
         emergency = (
-            f'<table width="100%" cellspacing="0" cellpadding="5">'
+            f'<table width="100%" cellspacing="0" cellpadding="3">'
             f'<tr>'
-            f'<td width="36%" style="color:{_LABEL}; font-size:12pt;"><b>Name</b></td>'
-            f'<td style="color:{_LABEL}; font-size:12pt;"><b>Phone</b></td>'
-            f'<td style="color:{_LABEL}; font-size:12pt;"><b>Relationship</b></td>'
+            f'<td width="36%" style="color:{_LABEL}; font-size:{_BODY_PT};"><b>Name</b></td>'
+            f'<td style="color:{_LABEL}; font-size:{_BODY_PT};"><b>Phone</b></td>'
+            f'<td style="color:{_LABEL}; font-size:{_BODY_PT};"><b>Relationship</b></td>'
             f'</tr>{ec_rows}</table>'
         )
     else:
-        emergency = (f'<p style="color:{_LABEL}; font-size:12pt;">'
+        emergency = (f'<p style="color:{_LABEL}; font-size:{_BODY_PT};">'
                      f'— No emergency contacts on file —</p>')
 
     sections = [
@@ -177,7 +180,7 @@ def build_profile_html(
     # Left-aligned, full-width (the page margins supply the slight frame).
     return (
         f'<html><body>'
-        f'<p style="margin:0 0 6px 0; color:{_ACCENT}; font-size:13pt;">'
+        f'<p style="margin:0 0 4px 0; color:{_ACCENT}; font-size:{_TITLE_PT};">'
         f'<b>MEMBER PROFILE</b></p>'
         f'{"".join(sections)}'
         f'</body></html>'
@@ -210,8 +213,9 @@ def open_profile_print_preview(
     ))
 
     printer = QPrinter(QPrinter.PrinterMode.HighResolution)
-    # A slight, even margin so the sheet looks framed without wasting space.
-    printer.setPageMargins(QMarginsF(10, 10, 10, 10),
+    # Slim, even margins — enough to look framed while keeping the whole
+    # profile on a single page.
+    printer.setPageMargins(QMarginsF(8, 8, 8, 8),
                            QPageLayout.Unit.Millimeter)
 
     preview = QPrintPreviewDialog(printer, parent)

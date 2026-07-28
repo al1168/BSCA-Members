@@ -716,6 +716,9 @@ class MemberTabsWidget(QWidget):
     # Emitted when this member's enrollments change (add/terminate/delete), so
     # the main window can refresh the sidebar's terminated marks.
     members_changed = pyqtSignal()
+    # Emitted when this member is bookmarked/unbookmarked, so the main window
+    # can refresh the toolbar Bookmarks count.
+    bookmarks_changed = pyqtSignal()
 
     def __init__(self, center_id: int, db_path: str, events_path: str,
                  api_key: str = "", show_row_ids: bool = False, parent=None):
@@ -726,8 +729,14 @@ class MemberTabsWidget(QWidget):
         self._api_key = api_key or ""
         self._show_row_ids = show_row_ids
         self._member = None
+        from time import perf_counter
+        t0 = perf_counter()
         self._load_data()
+        t1 = perf_counter()
         self._build_ui()
+        # Stage timings for the click-to-paint perf log (see MainWindow).
+        self.perf_load_ms = (t1 - t0) * 1000
+        self.perf_build_ms = (perf_counter() - t1) * 1000
         self._dirty = False
         self._setup_dirty_tracking()
 
@@ -763,6 +772,19 @@ class MemberTabsWidget(QWidget):
             self._center_id, self._db_path)
         self._overlay_current_auth()
 
+    def _header_plan(self) -> str:
+        """The plan for the pill next to the member's name: only the
+        in-effect-today authorization's plan (falling back to Contacts when
+        that auth row has no plan of its own). No active authorization — e.g.
+        only an upcoming one — means no pill, so a stale or defaulted
+        Contacts.[Health Plan] never shows as if it were active."""
+        from db.members import current_authorization
+        current = current_authorization(self._authorizations)
+        if not current:
+            return ""
+        return ((current.get("health_plan") or "").strip()
+                or (self._member.get("health_plan") or "").strip())
+
     def _refresh_header_plan(self):
         """Rebuild the header plan badge to match the member's current plan,
         so adding/editing an auth updates the header without reopening."""
@@ -772,7 +794,7 @@ class MemberTabsWidget(QWidget):
             self._header_top_row.removeWidget(self._header_plan_badge)
             self._header_plan_badge.deleteLater()
             self._header_plan_badge = None
-        badge = make_plan_badge(self._member.get("health_plan", ""))
+        badge = make_plan_badge(self._header_plan())
         if badge is not None:
             self._header_top_row.insertWidget(   # right after the name label
                 1, badge, alignment=Qt.AlignmentFlag.AlignVCenter)
@@ -846,13 +868,20 @@ class MemberTabsWidget(QWidget):
             self._photo_label.setPixmap(pix)
         else:
             # Show the placeholder immediately (cheap) and load the real photo —
-            # the slow part (DAO read + JPEG decode) — just after the member opens,
-            # so the click isn't blocked on it.
+            # the slow part (a DAO read that can take 300 ms+ over the network)
+            # — from paintEvent, AFTER the profile is on screen. A singleShot(0)
+            # here fires before the first paint, so it would delay the whole
+            # profile by the photo fetch.
             self._has_photo = False
             self._photo_label.setPixmap(_placeholder_photo())
+            self._photo_pending = True
+        return self._photo_label
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self.__dict__.pop("_photo_pending", False):
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(0, self._load_photo_async)
-        return self._photo_label
 
     def _load_photo_async(self):
         from db.members import get_member_photo
@@ -1000,6 +1029,123 @@ class MemberTabsWidget(QWidget):
             active_auth=self._print_active_auth(),
         )
 
+    # ── Bookmarks ──────────────────────────────────────────────────────────
+
+    def _display_name(self) -> str:
+        return (f"{self._member.get('last_name', '')}, "
+                f"{self._member.get('first_name', '')}")
+
+    def _sync_bookmark_button(self):
+        """Match the header button's label/style to whether this member is
+        currently bookmarked (the [marked] property drives the QSS state)."""
+        from bookmarks import load_bookmarks, find_bookmark
+        marked = find_bookmark(load_bookmarks(), self._center_id) is not None
+        b = self._btn_bookmark
+        b.setText("🔖 Bookmarked" if marked else "🔖 Bookmark")
+        b.setToolTip("Edit this member's bookmark" if marked
+                     else "Bookmark this member with an optional note")
+        b.setProperty("marked", marked)
+        b.style().unpolish(b)
+        b.style().polish(b)
+
+    def _open_bookmark_dialog(self):
+        """Popup to save (or update/remove) this member's bookmark, with an
+        optional note capped at NOTE_MAX_LEN so the list renders compactly."""
+        from PyQt6.QtWidgets import QDialog, QPlainTextEdit
+        from bookmarks import (
+            NOTE_MAX_LEN, load_bookmarks, find_bookmark, upsert_bookmark,
+            remove_bookmark, save_bookmarks,
+        )
+        from gui.theme import current_tokens
+
+        t = current_tokens()
+        existing = find_bookmark(load_bookmarks(), self._center_id)
+        REMOVE = 2                      # third exit code besides accept/reject
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Bookmark Member")
+        dlg.setMinimumWidth(400)
+        root = QVBoxLayout(dlg)
+        root.setSpacing(8)
+
+        who = QLabel(
+            f"<span style='font-weight:700'>{self._display_name()}</span>"
+            f"&nbsp;·&nbsp;<span style='font-weight:600; "
+            f"color:{t['accent_text']}'>ID {self._center_id}</span>")
+        who.setTextFormat(Qt.TextFormat.RichText)
+        root.addWidget(who)
+
+        note_label = QLabel("Note (optional)")
+        note_label.setObjectName("field_label")
+        root.addWidget(note_label)
+
+        note_edit = QPlainTextEdit()
+        note_edit.setPlaceholderText(
+            "Why are you bookmarking this member? e.g. Follow up on auth renewal")
+        note_edit.setFixedHeight(64)
+        if existing:
+            note_edit.setPlainText(existing.get("note", "") or "")
+        root.addWidget(note_edit)
+
+        counter = QLabel()
+        counter.setAlignment(Qt.AlignmentFlag.AlignRight)
+        root.addWidget(counter)
+
+        def sync_counter():
+            text = note_edit.toPlainText()
+            if len(text) > NOTE_MAX_LEN:   # hard cap: trim and restore cursor
+                pos = min(note_edit.textCursor().position(), NOTE_MAX_LEN)
+                note_edit.blockSignals(True)
+                note_edit.setPlainText(text[:NOTE_MAX_LEN])
+                cur = note_edit.textCursor()
+                cur.setPosition(pos)
+                note_edit.setTextCursor(cur)
+                note_edit.blockSignals(False)
+                text = note_edit.toPlainText()
+            at_limit = len(text) >= NOTE_MAX_LEN
+            counter.setStyleSheet(
+                f"font-size:11px; color:"
+                f"{t['error_text'] if at_limit else t['text3']};")
+            counter.setText(f"{len(text)} / {NOTE_MAX_LEN}")
+        note_edit.textChanged.connect(sync_counter)
+        sync_counter()
+
+        btn_row = QHBoxLayout()
+        if existing:
+            btn_remove = QPushButton("Remove bookmark")
+            btn_remove.setObjectName("btn_row_delete")
+            btn_remove.clicked.connect(lambda: dlg.done(REMOVE))
+            btn_row.addWidget(btn_remove)
+        btn_row.addStretch()
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_row.addWidget(btn_cancel)
+        btn_save = QPushButton("Update bookmark" if existing else "🔖 Bookmark")
+        btn_save.setObjectName("btn_row_add")
+        btn_save.setDefault(True)
+        btn_save.clicked.connect(dlg.accept)
+        btn_row.addWidget(btn_save)
+        root.addLayout(btn_row)
+
+        code = dlg.exec()
+        if code not in (QDialog.DialogCode.Accepted, REMOVE):
+            return
+        try:
+            marks = load_bookmarks()
+            if code == REMOVE:
+                marks = remove_bookmark(marks, self._center_id)
+            else:
+                marks = upsert_bookmark(marks, self._center_id,
+                                        self._display_name(),
+                                        note_edit.toPlainText())
+            save_bookmarks(marks)
+        except OSError as exc:
+            QMessageBox.warning(self, "Bookmarks",
+                                f"Could not save bookmarks:\n{exc}")
+            return
+        self._sync_bookmark_button()
+        self.bookmarks_changed.emit()
+
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 10, 20, 8)
@@ -1042,7 +1188,7 @@ class MemberTabsWidget(QWidget):
         # Kept as attributes so the badge can be refreshed in place when an auth
         # change moves which plan is currently in effect.
         self._header_top_row = top_row
-        self._header_plan_badge = make_plan_badge(self._member.get("health_plan", ""))
+        self._header_plan_badge = make_plan_badge(self._header_plan())
         if self._header_plan_badge is not None:
             top_row.addWidget(self._header_plan_badge,
                               alignment=Qt.AlignmentFlag.AlignVCenter)
@@ -1070,6 +1216,13 @@ class MemberTabsWidget(QWidget):
         self._emergency_badge.setMaximumHeight(26)
         self._emergency_badge.setVisible(False)
         top_row.addWidget(self._emergency_badge,
+                          alignment=Qt.AlignmentFlag.AlignVCenter)
+        self._btn_bookmark = QPushButton()
+        self._btn_bookmark.setObjectName("btn_bookmark")
+        self._btn_bookmark.setMaximumHeight(26)
+        self._btn_bookmark.clicked.connect(self._open_bookmark_dialog)
+        self._sync_bookmark_button()
+        top_row.addWidget(self._btn_bookmark,
                           alignment=Qt.AlignmentFlag.AlignVCenter)
         btn_print = QPushButton("🖨 Print")
         btn_print.setObjectName("btn_print")
@@ -1105,33 +1258,29 @@ class MemberTabsWidget(QWidget):
         self._init_notes_visibility(
             bool((self._member.get("notes") or "").strip()))
 
-        # Tabs
+        # Tabs. Only Info — the tab that actually appears — is built now;
+        # the others are placeholders filled in on first view
+        # (_ensure_tab_built), so opening a member costs one tab, not eight.
         self._tabs = QTabWidget()
         layout.addWidget(self._tabs)
 
         self._tab_info = self._make_info_tab()
-        self._tab_enrollments = self._make_enrollments_tab()
-        self._tab_auths = self._make_auths_tab()
-        self._tab_transport = self._make_transport_tab()
-        self._tab_avail = self._make_avail_tab()
-        self._tab_unavail = self._make_unavailable_tab()
-        self._tab_absences = self._make_absences_tab()
-
         self._tabs.addTab(self._tab_info, "Info")
-        self._tabs.addTab(self._tab_enrollments, "Enrollments")
-        self._tabs.addTab(self._tab_auths,
-            "Auths ⚠" if warn else "Authorizations")
-        self._tabs.addTab(self._tab_transport, "Transportation")
-        self._tabs.addTab(self._tab_avail, "Time Slot Availability")
-        self._tabs.addTab(self._tab_unavail, "Availability Override")
-        self._tabs.addTab(self._tab_absences, "Absences")
 
-        # Events tab added after (Task 11 wires it in)
-        from gui.events_view import EventsTableWidget
-        self._tab_events = EventsTableWidget(
-            self._events_path, center_id=self._center_id, show_header=False
-        )
-        self._tabs.addTab(self._tab_events, "Events")
+        self._lazy_tabs = {}
+        for title, attr, builder in (
+            ("Enrollments", "_tab_enrollments", self._make_enrollments_tab),
+            ("Auths ⚠" if warn else "Authorizations", "_tab_auths",
+             self._make_auths_tab),
+            ("Transportation", "_tab_transport", self._make_transport_tab),
+            ("Time Slot Availability", "_tab_avail", self._make_avail_tab),
+            ("Availability Override", "_tab_unavail",
+             self._make_unavailable_tab),
+            ("Absences", "_tab_absences", self._make_absences_tab),
+            ("Events", "_tab_events", self._make_events_tab),
+        ):
+            index = self._tabs.addTab(QWidget(), title)
+            self._lazy_tabs[index] = (attr, builder)
 
         # Guard leaving the Info tab with unsaved edits (see _on_tab_changed).
         # Connected last so building/adding the tabs above doesn't trigger it.
@@ -1177,7 +1326,34 @@ class MemberTabsWidget(QWidget):
                 self._tabs.setCurrentIndex(prev)
                 self._tabs.blockSignals(False)
                 return
+        self._ensure_tab_built(index)
         self._prev_tab_index = index
+
+    def _ensure_tab_built(self, index: int) -> None:
+        """Swap a lazy tab's placeholder for its real content on first view.
+
+        Signals are blocked during the swap: _refresh_tab removes the current
+        tab, which would otherwise re-enter _on_tab_changed and cascade-build
+        the neighbouring tabs."""
+        # __dict__.get, not hasattr: tests drive this on __new__-built widgets
+        # where PyQt attribute lookup raises RuntimeError for missing attrs.
+        lazy = self.__dict__.get("_lazy_tabs")
+        entry = lazy.pop(index, None) if lazy else None
+        if entry is None:
+            return
+        attr, builder = entry
+        widget = builder()
+        setattr(self, attr, widget)
+        self._tabs.blockSignals(True)
+        try:
+            self._refresh_tab(index, widget)
+        finally:
+            self._tabs.blockSignals(False)
+
+    def _make_events_tab(self) -> QWidget:
+        from gui.events_view import EventsTableWidget
+        return EventsTableWidget(
+            self._events_path, center_id=self._center_id, show_header=False)
 
     # ── Info tab (Task 9) ──────────────────────────────────────────────────
 
@@ -2066,26 +2242,50 @@ class MemberTabsWidget(QWidget):
                 show_db_error(self, exc)
 
     def _terminate_enrollment(self, record_id: int):
+        from PyQt6.QtWidgets import QDialog, QFormLayout, QLabel, QDialogButtonBox
         from datetime import date
         from db.members import terminate_enrollment
         from monthly_schedule.db import get_enrollments
 
-        today = date.today()
-        reply = QMessageBox.question(
-            self, "Terminate Enrollment",
-            f"Terminate this enrollment? The end date will be set to today "
-            f"({today.isoformat()}). This can't be undone.",
-        )
-        if reply != QMessageBox.StandardButton.Yes:
+        entry = next((e for e in self._enrollments if e["id"] == record_id), None)
+        start = _as_date(entry.get("start_date")) if entry else None
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Terminate Enrollment")
+        form = QFormLayout(dlg)
+        form.addRow(QLabel("Terminate this enrollment? This can't be undone."))
+        end = DateLineEdit()
+        end.set_pydate(date.today())
+        form.addRow("Termination Date:", end)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
+                                QDialogButtonBox.StandardButton.Cancel)
+        btns.rejected.connect(dlg.reject)
+        form.addRow(btns)
+
+        def on_accept():
+            if not end.flag_validity(required=True):
+                QMessageBox.warning(dlg, "Validation",
+                    "Enter a valid Termination Date (MM/DD/YYYY).")
+                return
+            if start and end.to_pydate() < start:
+                QMessageBox.warning(dlg, "Validation",
+                    f"Termination Date can't be before the enrollment start "
+                    f"({start.isoformat()}).")
+                return
+            dlg.accept()
+        btns.accepted.connect(on_accept)
+
+        if not dlg.exec():
             return
+        end_date = end.to_pydate()
         try:
-            terminate_enrollment(record_id, self._db_path)
+            terminate_enrollment(record_id, self._db_path, end_date)
             self._enrollments = get_enrollments(self._center_id, self._db_path)
             self._refresh_tab(1, self._make_enrollments_tab())
             self._refresh_terminated_badge()
             self.members_changed.emit()
             self._log_event("ENROLL",
-                            f"Enrollment terminated: end set to {today.isoformat()}")
+                            f"Enrollment terminated: end set to {end_date.isoformat()}")
         except Exception as exc:
             show_db_error(self, exc)
 
@@ -3109,6 +3309,52 @@ class MemberTabsWidget(QWidget):
         outer.addLayout(row)
         return box
 
+    def _make_hha_note_card(self):
+        """Info card beside the availability table showing Contacts.[HHA], so
+        schedule edits can be made against the HHA constraints without leaving
+        the tab. None when the member has no HHA text."""
+        from PyQt6.QtWidgets import QFrame
+        from gui.theme import current_tokens
+        member = self.__dict__.get("_member") or {}
+        text = (member.get("hha") or "").strip()
+        if not text:
+            return None
+        t = current_tokens()
+        card = QFrame()
+        card.setObjectName("hha_note_card")
+        card.setStyleSheet(
+            f"#hha_note_card {{ background: {t['accent_bg']}; "
+            f"border: 1px solid {t['accent']}; border-radius: 7px; }}")
+        card.setMinimumWidth(260)
+        card.setMaximumWidth(400)
+        row = QHBoxLayout(card)
+        row.setContentsMargins(16, 14, 16, 14)
+        row.setSpacing(11)
+        icon = QLabel("i")
+        icon.setFixedSize(18, 18)
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon.setStyleSheet(
+            f"background: {t['accent']}; color: white; border-radius: 9px; "
+            f"font-size: 12px; font-weight: 700;")
+        row.addWidget(icon, alignment=Qt.AlignmentFlag.AlignTop)
+        col = QVBoxLayout()
+        col.setSpacing(5)
+        title = QLabel("HHA Note")
+        title.setStyleSheet(
+            f"color: {t['accent_text']}; font-size: 13px; font-weight: 700; "
+            f"background: transparent; border: none;")
+        col.addWidget(title)
+        body = QLabel(text)
+        body.setWordWrap(True)
+        body.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        body.setStyleSheet(
+            f"color: {t['accent_text']}; font-size: 13px; "
+            f"background: transparent; border: none;")
+        col.addWidget(body)
+        row.addLayout(col, 1)
+        return card
+
     def _make_avail_tab(self) -> QWidget:
         from datetime import date
         from PyQt6.QtWidgets import (
@@ -3126,11 +3372,17 @@ class MemberTabsWidget(QWidget):
 
         layout.addWidget(self._make_current_schedule_strip(today))
 
+        # Expired rows (e.g. a window capped when a scheduled change took
+        # effect) stay in the database as history but are hidden here: the
+        # table shows only what's in effect now or queued for later.
+        visible = [a for a in sort_avail_for_table(self._availability, today)
+                   if avail_status(a, today) != "expired"]
+
         # Trailing "" spacer column soaks up the leftover width as a grayed strip.
         columns = ["ID", "Day", "Start", "End", "Effective From", "Effective To",
                    "Status", "Action", ""]
         SPACER_COL = len(columns) - 1
-        table = QTableWidget(len(self._availability), len(columns))
+        table = QTableWidget(len(visible), len(columns))
         table.setHorizontalHeaderLabels(columns)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -3142,8 +3394,10 @@ class MemberTabsWidget(QWidget):
         table.verticalHeader().setDefaultSectionSize(40)  # roomier rows; pills uncramped
 
         status_chips = []
-        for r, a in enumerate(sort_avail_for_table(self._availability, today)):
+        row_statuses = []
+        for r, a in enumerate(visible):
             status = avail_status(a, today)
+            row_statuses.append(status)
             eff_end = a.get("effective_end_date")
 
             table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
@@ -3154,16 +3408,18 @@ class MemberTabsWidget(QWidget):
             table.setItem(r, 4, QTableWidgetItem(str(a["effective_start_date"])))
             table.setItem(r, 5, QTableWidgetItem(str(eff_end) if eff_end else "—"))
 
-            # Compact status pill centered in its column, like the Auth tab:
-            # green Active / amber Upcoming (a scheduled change) / red Expired.
-            _label = {"active": "Active", "upcoming": "Upcoming",
-                      "expired": "Expired"}[status]
-            _obj = {"active": "active_chip", "upcoming": "upcoming_chip",
-                    "expired": "expired_chip"}[status]
-            chip = QLabel(_label)
-            chip.setObjectName(_obj)
-            status_chips.append(chip)
-            table.setCellWidget(r, 6, _centered_cell(chip))
+            # Status column: Active is plain text (a pill on every row drew the
+            # eye too much); Upcoming (a scheduled change) keeps its amber pill
+            # so the exception stands out. Expired rows are filtered out above.
+            if status == "active":
+                active_item = QTableWidgetItem("Active")
+                active_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(r, 6, active_item)
+            else:
+                chip = QLabel("Upcoming")
+                chip.setObjectName("upcoming_chip")
+                status_chips.append(chip)
+                table.setCellWidget(r, 6, _centered_cell(chip))
 
             btn = QPushButton("Edit")
             btn.setObjectName("btn_edit")
@@ -3174,10 +3430,6 @@ class MemberTabsWidget(QWidget):
             spacer.setFlags(Qt.ItemFlag.NoItemFlags)
             spacer.setBackground(QColor(120, 124, 140, 18))
             table.setItem(r, SPACER_COL, spacer)
-
-            if status == "expired":
-                for col in (0, 1, 2, 3, 4, 5):
-                    table.item(r, col).setForeground(QColor(EXPIRED_FG))
 
         _fit_pill_column(table, 6, status_chips, floor=96)
 
@@ -3198,10 +3450,29 @@ class MemberTabsWidget(QWidget):
         btn_sched.clicked.connect(self._open_scheduled_changes)
         btn_del = QPushButton("Delete Selected")
         btn_del.clicked.connect(lambda: self._delete_avail(table))
-        self._bind_delete_button(table, btn_del)
+        # Only Upcoming rows (queued changes) may be deleted: active and expired
+        # rows are the schedule history the calendar depends on.
+        btn_del.setObjectName("btn_row_delete")
+        btn_del.setToolTip("Only Upcoming (not-yet-effective) rows can be deleted")
+
+        def _sync_delete():
+            rows = [ix.row() for ix in table.selectionModel().selectedRows()]
+            btn_del.setEnabled(bool(rows) and all(
+                r < len(row_statuses) and row_statuses[r] == "upcoming"
+                for r in rows))
+        table.itemSelectionChanged.connect(_sync_delete)
+        _sync_delete()
 
         layout.addLayout(self._add_bar(btn_sched))   # primary action at top-right
-        layout.addWidget(table)
+        # Table on the left; the HHA note card (when present) sits beside it so
+        # times can be edited against the constraints written in Contacts.[HHA].
+        body_row = QHBoxLayout()
+        body_row.setSpacing(16)
+        body_row.addWidget(table, 1)
+        note_card = self._make_hha_note_card()
+        if note_card is not None:
+            body_row.addWidget(note_card, alignment=Qt.AlignmentFlag.AlignTop)
+        layout.addLayout(body_row)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -3832,34 +4103,81 @@ class MemberTabsWidget(QWidget):
     # ── Absences tab ───────────────────────────────────────────────────────
 
     def _make_absences_tab(self) -> QWidget:
-        rows = [
-            [a["id"], a["leave_type"], str(a["start_date"]), str(a["end_date"])]
-            for a in self._absences
-        ]
-        w, self._abs_table = self._make_table_tab(
-            ["ID", "Leave Type", "Start", "End"],
-            rows, self._add_absence, self._delete_absence,
+        from PyQt6.QtWidgets import (
+            QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView,
         )
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(0, 12, 0, 0)
+
+        columns = ["ID", "Leave Type", "Start", "End", "Action"]
+        table = QTableWidget(len(self._absences), len(columns))
+        table.setHorizontalHeaderLabels(columns)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        hdr = table.horizontalHeader()
+        hdr.setStretchLastSection(False)
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(34)
+
+        for r, a in enumerate(self._absences):
+            table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
+            table.setItem(r, 1, QTableWidgetItem(a["leave_type"] or ""))
+            table.setItem(r, 2, QTableWidgetItem(str(a["start_date"])))
+            table.setItem(r, 3, QTableWidgetItem(str(a["end_date"])))
+            btn = QPushButton("Edit")
+            btn.setObjectName("btn_edit")
+            btn.clicked.connect(lambda _=False, ab=a: self._edit_absence(ab))
+            table.setCellWidget(r, 4, btn)
+
+        self._apply_id_column(table)
+        set_table_empty_state(table, "Nothing here yet — click + Add.")
+        self._abs_table = table
+
+        btn_add = QPushButton("+ Add")
+        btn_add.clicked.connect(self._add_absence)
+        btn_del = QPushButton("Delete Selected")
+        btn_del.clicked.connect(lambda: self._delete_absence(table))
+        self._style_crud_buttons(table, btn_add, btn_del)
+
+        layout.addLayout(self._add_bar(btn_add))   # Add at top-right
+        layout.addWidget(table)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(btn_del)
+        layout.addLayout(btn_row)
         return w
 
-    def _add_absence(self):
+    def _open_absence_dialog(self, existing: dict | None = None):
+        """Add/Edit dialog: leave type + date range. Returns a dict with
+        leave_type, start, end — or None if cancelled."""
         from PyQt6.QtWidgets import (
             QDialog, QFormLayout, QComboBox, QDialogButtonBox,
         )
         from datetime import date
-        from db.members import insert_absence, LEAVE_TYPES
-        from monthly_schedule.db import get_absences
+        from db.members import LEAVE_TYPES
 
         dlg = QDialog(self)
-        dlg.setWindowTitle("Add Absence")
+        dlg.setWindowTitle("Edit Absence" if existing else "Add Absence")
         form = QFormLayout(dlg)
 
         leave_combo = QComboBox()
         leave_combo.addItems(LEAVE_TYPES)
         start = DateLineEdit()
-        start.set_pydate(date.today())
         end = DateLineEdit()
-        end.set_pydate(date.today())
+        if existing:
+            idx = leave_combo.findText(existing.get("leave_type") or "")
+            if idx >= 0:
+                leave_combo.setCurrentIndex(idx)
+            start.set_pydate(existing.get("start_date") or date.today())
+            end.set_pydate(existing.get("end_date") or date.today())
+        else:
+            start.set_pydate(date.today())
+            end.set_pydate(date.today())
 
         form.addRow("Leave Type:", leave_combo)
         form.addRow("Start Date:", start)
@@ -3883,20 +4201,51 @@ class MemberTabsWidget(QWidget):
             dlg.accept()
         btns.accepted.connect(on_accept)
 
-        if dlg.exec():
-            lt = leave_combo.currentText()
-            s = start.to_pydate()
-            e = end.to_pydate()
-            if not self._confirm_unauthorized_day(
-                    weekdays_in_range(s, e), "Add this absence"):
-                return
-            try:
-                insert_absence(self._center_id, lt, s, e, self._db_path)
-                self._absences = get_absences(self._center_id, self._db_path)
-                self._refresh_tab(6, self._make_absences_tab())
-                self._log_event("ABS", f"Absence added: {lt} · {s} – {e}")
-            except Exception as exc:
-                show_db_error(self, exc)
+        if not dlg.exec():
+            return None
+        return {
+            "leave_type": leave_combo.currentText(),
+            "start": start.to_pydate(),
+            "end": end.to_pydate(),
+        }
+
+    def _add_absence(self):
+        from db.members import insert_absence
+        from monthly_schedule.db import get_absences
+
+        result = self._open_absence_dialog()
+        if not result:
+            return
+        lt, s, e = result["leave_type"], result["start"], result["end"]
+        if not self._confirm_unauthorized_day(
+                weekdays_in_range(s, e), "Add this absence"):
+            return
+        try:
+            insert_absence(self._center_id, lt, s, e, self._db_path)
+            self._absences = get_absences(self._center_id, self._db_path)
+            self._refresh_tab(6, self._make_absences_tab())
+            self._log_event("ABS", f"Absence added: {lt} · {s} – {e}")
+        except Exception as exc:
+            show_db_error(self, exc)
+
+    def _edit_absence(self, entry: dict):
+        from db.members import update_absence
+        from monthly_schedule.db import get_absences
+
+        result = self._open_absence_dialog(existing=entry)
+        if not result:
+            return
+        lt, s, e = result["leave_type"], result["start"], result["end"]
+        if not self._confirm_unauthorized_day(
+                weekdays_in_range(s, e), "Save this absence"):
+            return
+        try:
+            update_absence(entry["id"], lt, s, e, self._db_path)
+            self._absences = get_absences(self._center_id, self._db_path)
+            self._refresh_tab(6, self._make_absences_tab())
+            self._log_event("ABS", f"Absence edited: {lt} · {s} – {e}")
+        except Exception as exc:
+            show_db_error(self, exc)
 
     def _delete_absence(self, table):
         row = table.currentRow()

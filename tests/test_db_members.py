@@ -49,6 +49,15 @@ def test_insert_absence_targets_correct_table():
         assert col in INSERT_ABSENCE
 
 
+def test_update_absence_targets_correct_columns():
+    from db.members import UPDATE_ABSENCE
+    assert "UPDATE [Absences]" in UPDATE_ABSENCE
+    assert "[Leave Type]=?" in UPDATE_ABSENCE
+    assert "[Start_Date]=?" in UPDATE_ABSENCE
+    assert "[End_Date]=?" in UPDATE_ABSENCE
+    assert "WHERE [ID]=?" in UPDATE_ABSENCE
+
+
 def test_update_availability_targets_correct_columns():
     from db.members import UPDATE_AVAILABILITY
     assert "UPDATE [Availability]" in UPDATE_AVAILABILITY

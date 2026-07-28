@@ -98,14 +98,17 @@ def test_avail_tab_marks_future_row_upcoming(qapp):
     w._db_path = "x"
     tab = w._make_avail_tab()            # keep ref so the table isn't GC'd
     t = w._avail_table
-    chips = set()
+    chips, texts = set(), set()
     for r in range(t.rowCount()):
         cell = t.cellWidget(r, 6)
+        if cell is None:                 # Active renders as plain text, no pill
+            texts.add(t.item(r, 6).text())
+            continue
         for lbl in cell.findChildren(QLabel):
             if lbl.objectName():
                 chips.add(lbl.objectName())
     assert "upcoming_chip" in chips      # the future change reads as Upcoming
-    assert "active_chip" in chips        # the current window reads as Active
+    assert "Active" in texts             # the current window reads as Active
 
 
 def test_avail_tab_uses_scheduled_changes_as_add(qapp):
