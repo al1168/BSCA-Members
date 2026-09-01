@@ -600,7 +600,9 @@ class MainWindow(QMainWindow):
         show_row_ids = self._settings.get("show_row_ids", False)
         widget = MemberTabsWidget(center_id, db_path, events_path, api_key,
                                   show_row_ids,
-                                  alt_id_key=self._alt_id_key())
+                                  alt_id_key=self._alt_id_key(),
+                                  settings=self._settings,
+                                  settings_path=self._settings_path)
         widget.members_changed.connect(self._refresh_terminated_marks)
         widget.members_changed.connect(self._refresh_search_corpus)
         widget.bookmarks_changed.connect(self._update_bookmark_count)

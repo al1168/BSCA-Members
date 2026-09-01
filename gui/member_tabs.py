@@ -575,6 +575,23 @@ def _pencil_icon():
     return _PENCIL_ICON
 
 
+def apply_field_style(widget, cfg: dict) -> None:
+    """Apply a layout field's styling (bold/size/highlight) to its widget via
+    dynamic properties matched by theme QSS. Composite widgets (the address
+    autocomplete) style their inner line edit."""
+    from PyQt6.QtWidgets import QLineEdit
+    target = widget if isinstance(widget, QLineEdit) \
+        else widget.findChild(QLineEdit)
+    if target is None:
+        return
+    target.setProperty("fbold", "true" if cfg.get("bold") else "false")
+    target.setProperty("fsize", cfg.get("size", "normal"))
+    target.setProperty("hl", cfg.get("color", "none"))
+    style = target.style()
+    style.unpolish(target)
+    style.polish(target)
+
+
 class _ViewEditLineEdit(QLineEdit):
     """A field that reads as flat, selectable text (highlight + copy) and only
     becomes editable when the user clicks its pencil (shown on hover).
@@ -759,7 +776,8 @@ class MemberTabsWidget(QWidget):
 
     def __init__(self, center_id: int, db_path: str, events_path: str,
                  api_key: str = "", show_row_ids: bool = False, parent=None,
-                 alt_id_key: bytes | None = None):
+                 alt_id_key: bytes | None = None,
+                 settings: dict | None = None, settings_path: str = ""):
         super().__init__(parent)
         self._center_id = center_id
         self._db_path = db_path
@@ -770,6 +788,12 @@ class MemberTabsWidget(QWidget):
         # widget displays decrypted values and encrypts edits before saving.
         # self._member["alt_id"] always holds the stored (cipher) value.
         self._alt_id_key = alt_id_key
+        # Customizable Info tab: the layout dict lives in the per-machine
+        # settings JSON; without settings (tests, tools) the default is used.
+        from gui.info_layout import normalize
+        self._settings = settings
+        self._settings_path = settings_path
+        self._layout_cfg = normalize((settings or {}).get("info_tab_layout"))
         self._member = None
         from time import perf_counter
         t0 = perf_counter()
@@ -1657,9 +1681,29 @@ class MemberTabsWidget(QWidget):
         enroll_start = self._enrollment_start(self._enrollments)
         enroll_lbl = _ViewEditLineEdit(str(enroll_start) if enroll_start else "—",
                                        editable=False)
-        schedule_card = self._build_schedule_card()
 
-        # ── Dense sectioned grid: 3 field columns, no card chrome ──────────
+        # ── Layout-driven sectioned grid (see gui/info_layout.py) ──────────
+        from gui.info_layout import (
+            normalize, placements, FIELD_LABELS_BY_KEY,
+        )
+        layout_cfg = normalize(self.__dict__.get("_layout_cfg"))
+        self._layout_cfg = layout_cfg
+
+        widgets = {
+            "first_name": self._info_first, "last_name": self._info_last,
+            "chinese_name": self._info_chinese, "gender": self._info_gender,
+            "dob": self._info_dob, "ssn": self._info_ssn,
+            "center_id": self._info_cid, "enrollment_start": enroll_lbl,
+            "language": self._info_language, "alt_id": self._info_alt_id,
+            "address": self._info_address, "home_tell": self._info_home_tell,
+            "cell": self._info_cell, "emergency": self._info_emergency,
+            "health_plan": self._info_plan,
+            "member_id": self._info_member_id,
+            "medicaid": self._info_medicaid, "medicare": self._info_medicare,
+            "hospital": self._info_hospital, "pcp": self._info_pcp,
+            "hha": self._info_hha, "case_manager": self._info_case_manager,
+        }
+
         grid = QGridLayout()
         grid.setContentsMargins(4, 4, 8, 4)
         grid.setHorizontalSpacing(16)
@@ -1677,74 +1721,63 @@ class MemberTabsWidget(QWidget):
             grid.addWidget(h, state["row"], 0, 1, 6)
             state["row"] += 1
 
-        def cell(slot: int, label_text: str, widget, wspan: int = 1):
-            lab = QLabel(label_text)
-            lab.setObjectName("field_label")
-            grid.addWidget(lab, state["row"], slot * 2,
-                           Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            grid.addWidget(widget, state["row"], slot * 2 + 1, 1, wspan * 2 - 1)
+        self._schedule_card = None
+        placed_keys = set()
+        for block in layout_cfg["blocks"]:
+            if block["type"] == "schedule":
+                if block.get("visible", True):
+                    self._schedule_card = self._build_schedule_card()
+                    grid.addWidget(self._schedule_card,
+                                   state["row"], 0, 1, 6)
+                    state["row"] += 1
+            elif block["type"] == "emergency":
+                # Box + fill always happen (the header badge and live
+                # contact edits go through them); placing is optional.
+                self._emergency_box = QWidget()
+                ebox = QVBoxLayout(self._emergency_box)
+                ebox.setContentsMargins(0, 0, 0, 0)
+                if block.get("visible", True):
+                    section("Emergency")
+                    grid.addWidget(self._emergency_box,
+                                   state["row"], 0, 1, 6)
+                    state["row"] += 1
+                self._fill_emergency_box()
+            else:
+                placed = placements(block["fields"])
+                if not placed:
+                    continue          # empty/all-hidden section: no header
+                section(block["title"])
+                base = state["row"]
+                last_row = 0
+                for cfg, row, slot, span in placed:
+                    widget = widgets[cfg["key"]]
+                    placed_keys.add(cfg["key"])
+                    lab = QLabel(FIELD_LABELS_BY_KEY[cfg["key"]])
+                    lab.setObjectName("field_label")
+                    grid.addWidget(
+                        lab, base + row, slot * 2,
+                        Qt.AlignmentFlag.AlignRight
+                        | Qt.AlignmentFlag.AlignVCenter)
+                    grid.addWidget(widget, base + row, slot * 2 + 1,
+                                   1, span * 2 - 1)
+                    apply_field_style(widget, cfg)
+                    last_row = row
+                state["row"] = base + last_row + 1
 
-        section("Identity")
-        cell(0, "First Name", self._info_first)
-        cell(1, "Last Name", self._info_last)
-        cell(2, "Chinese Name", self._info_chinese)
-        state["row"] += 1
-        cell(0, "Gender", self._info_gender)
-        cell(1, "DOB", self._info_dob)
-        cell(2, "SSN", self._info_ssn)
-        state["row"] += 1
-        cell(0, "Center ID", self._info_cid)
-        cell(1, "Enrollment Start", enroll_lbl)
-        cell(2, "Language Spoken", self._info_language)
-        state["row"] += 1
-        cell(0, "Alt ID", self._info_alt_id)
-        state["row"] += 1
+        # Hidden fields: widget exists and holds its value (saving reads every
+        # widget) but is never placed.
+        for key, widget in widgets.items():
+            if key not in placed_keys:
+                widget.setVisible(False)
 
-        section("Contact")
-        cell(0, "Address", self._info_address, wspan=3)
-        state["row"] += 1
-        cell(0, "Home Phone", self._info_home_tell)
-        cell(1, "Cell", self._info_cell)
-        state["row"] += 1
-
-        section("Medical")
-        cell(0, "Health Plan", self._info_plan)
-        cell(1, "Member ID", self._info_member_id)
-        cell(2, "Medicaid", self._info_medicaid)
-        state["row"] += 1
-        cell(0, "Medicare", self._info_medicare)
-        cell(1, "Hospital", self._info_hospital)
-        state["row"] += 1
-        # PCP and HHA can hold long, address-like values — give each the full
-        # row width so the text is visible instead of truncated in a column.
-        cell(0, "PCP", self._info_pcp, wspan=3)
-        state["row"] += 1
-        cell(0, "HHA", self._info_hha, wspan=3)
-        state["row"] += 1
-
-        section("Care")
-        cell(0, "Case Manager", self._info_case_manager)
-        state["row"] += 1
-
-        section("Emergency")
-        self._emergency_box = QWidget()
-        ebox = QVBoxLayout(self._emergency_box)
-        ebox.setContentsMargins(0, 0, 0, 0)
-        grid.addWidget(self._emergency_box, state["row"], 0, 1, 6)
-        state["row"] += 1
-        self._fill_emergency_box()
+        grid.setRowStretch(state["row"], 1)
 
         # ── Assemble (scroll area is a safety net; content fits unscrolled) ─
         content = QWidget()
-        cvbox = QVBoxLayout(content)
-        cvbox.setContentsMargins(0, 4, 0, 4)
-        cvbox.setSpacing(10)
-        cvbox.addWidget(schedule_card)
-        cvbox.addLayout(grid)
-        cvbox.addStretch()
-        # Kept so the Schedule card can be rebuilt in place when an auth changes.
-        self._schedule_card = schedule_card
-        self._info_content_layout = cvbox
+        content.setLayout(grid)
+        # Kept so the Schedule card can be rebuilt in place when an auth
+        # changes (replaceWidget preserves the grid position).
+        self._info_content_layout = grid
 
         scroll = QScrollArea()
         scroll.setWidget(content)
