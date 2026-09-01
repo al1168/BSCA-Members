@@ -2257,11 +2257,12 @@ class MemberTabsWidget(QWidget):
         # (built once in _build_ui, not _make_info_tab), so a __new__-built
         # test widget that only ever calls _make_info_tab() never has it. A
         # rebuilt Info tab re-runs this method against the same surviving
-        # header widget, so this connects a second lambda that calls
-        # _set_dirty(True) — a harmless duplicate, not a functional bug.
+        # header widget, so the connection is armed only once — otherwise
+        # repeated layout applies would stack another lambda onto it forever.
         notes = self.__dict__.get("_info_notes")
-        if notes is not None:
+        if notes is not None and not self.__dict__.get("_notes_dirty_armed"):
             notes.textChanged.connect(lambda: self._set_dirty(True))
+            self._notes_dirty_armed = True
 
     def is_dirty(self) -> bool:
         return self._dirty
