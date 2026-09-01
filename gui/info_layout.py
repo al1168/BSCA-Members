@@ -105,3 +105,89 @@ def placements(fields, include_hidden=False):
             row += 1
             slot = 0
     return out
+
+
+def _clean_field(raw, defaults):
+    """One saved field entry -> a complete, clamped field dict."""
+    d = dict(defaults)
+    if isinstance(raw, dict):
+        try:
+            span = int(raw.get("span", d["span"]))
+        except (TypeError, ValueError):
+            span = d["span"]
+        d["span"] = max(1, min(NCOLS, span))
+        d["bold"] = bool(raw.get("bold", d["bold"]))
+        if raw.get("size") in SIZES:
+            d["size"] = raw["size"]
+        if raw.get("color") in COLORS:
+            d["color"] = raw["color"]
+        d["visible"] = bool(raw.get("visible", d["visible"]))
+    return d
+
+
+def normalize(layout) -> dict:
+    """A saved layout -> a complete, valid layout. Unknown/duplicate field
+    keys are dropped, registry fields the layout lacks are appended to their
+    default-titled section (fallback: last section, or a new 'Other'),
+    schedule/emergency blocks appear exactly once, values are clamped.
+    Unusable input degrades to default_layout(); never raises."""
+    default = default_layout()
+    if not isinstance(layout, dict) or not isinstance(layout.get("blocks"), list):
+        return default
+    defaults_by_key, default_section_of = {}, {}
+    for block in default["blocks"]:
+        if block["type"] == "section":
+            for f in block["fields"]:
+                defaults_by_key[f["key"]] = f
+                default_section_of[f["key"]] = block["title"]
+
+    blocks, seen_keys, seen_special = [], set(), set()
+    for raw in layout["blocks"]:
+        if not isinstance(raw, dict):
+            continue
+        btype = raw.get("type")
+        if btype in ("schedule", "emergency"):
+            if btype not in seen_special:
+                seen_special.add(btype)
+                blocks.append({"type": btype,
+                               "visible": bool(raw.get("visible", True))})
+        elif btype == "section":
+            fields = []
+            for rf in raw.get("fields") or []:
+                key = rf.get("key") if isinstance(rf, dict) else None
+                if key in defaults_by_key and key not in seen_keys:
+                    seen_keys.add(key)
+                    f = _clean_field(rf, defaults_by_key[key])
+                    f["key"] = key
+                    fields.append(f)
+            title = raw.get("title")
+            blocks.append({
+                "type": "section",
+                "title": title.strip() if isinstance(title, str)
+                and title.strip() else "Section",
+                "fields": fields,
+            })
+
+    sections_by_title = {}
+    for b in blocks:
+        if b["type"] == "section" and b["title"] not in sections_by_title:
+            sections_by_title[b["title"]] = b
+    for key, _label in FIELD_REGISTRY:
+        if key in seen_keys:
+            continue
+        home = sections_by_title.get(default_section_of[key])
+        if home is None:
+            section_blocks = [b for b in blocks if b["type"] == "section"]
+            if section_blocks:
+                home = section_blocks[-1]
+            else:
+                home = {"type": "section", "title": "Other", "fields": []}
+                blocks.append(home)
+                sections_by_title["Other"] = home
+        home["fields"].append(dict(defaults_by_key[key]))
+
+    if "schedule" not in seen_special:
+        blocks.insert(0, {"type": "schedule", "visible": True})
+    if "emergency" not in seen_special:
+        blocks.append({"type": "emergency", "visible": True})
+    return {"version": 1, "blocks": blocks}
