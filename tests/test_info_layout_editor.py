@@ -70,3 +70,73 @@ def test_real_mouse_click_on_preview_cell_does_not_crash(qapp):
     # And again on a cell of the rebuilt preview (fresh widget map).
     QTest.mouseClick(dlg._preview_cells["cell"], Qt.MouseButton.LeftButton)
     assert dlg._selection == ("field", "cell")
+
+
+# ── properties panel drives the model ──────────────────────────────────────
+
+def _dlg(qapp):
+    from gui.info_layout_editor import InfoLayoutEditor
+    return InfoLayoutEditor(None, MEMBER)
+
+
+def test_field_props_change_model(qapp):
+    from gui.info_layout import find_field
+    dlg = _dlg(qapp)
+    dlg._select(("field", "dob"))
+    dlg._set_prop("bold", True)
+    dlg._set_prop("span", 2)
+    dlg._set_prop("color", "amber")
+    dlg._set_prop("visible", False)
+    bi, fi = find_field(dlg._layout, "dob")
+    f = dlg._layout["blocks"][bi]["fields"][fi]
+    assert (f["bold"], f["span"], f["color"], f["visible"]) \
+        == (True, 2, "amber", False)
+
+
+def test_move_field_to_other_section(qapp):
+    from gui.info_layout import find_field
+    dlg = _dlg(qapp)
+    dlg._select(("field", "dob"))
+    contact_bi = [i for i, b in enumerate(dlg._layout["blocks"])
+                  if b.get("title") == "Contact"][0]
+    dlg._move_to_section(contact_bi)
+    assert find_field(dlg._layout, "dob")[0] == contact_bi
+    assert dlg._selection == ("field", "dob")   # selection survives
+
+
+def test_section_ops(qapp):
+    dlg = _dlg(qapp)
+    identity_bi = [i for i, b in enumerate(dlg._layout["blocks"])
+                   if b.get("title") == "Identity"][0]
+    dlg._select(("block", identity_bi))
+    dlg._rename("My Stuff")
+    assert dlg._layout["blocks"][identity_bi]["title"] == "My Stuff"
+    n_before = len(dlg._layout["blocks"])
+    dlg._add_section()
+    assert len(dlg._layout["blocks"]) == n_before + 1
+    dlg._delete_section()   # deletes "My Stuff"; fields migrate
+    titles = [b.get("title") for b in dlg._layout["blocks"]
+              if b["type"] == "section"]
+    assert "My Stuff" not in titles
+    all_keys = [f["key"] for b in dlg._layout["blocks"]
+                if b["type"] == "section" for f in b["fields"]]
+    assert "dob" in all_keys   # nothing lost
+
+
+def test_block_move_and_visibility(qapp):
+    dlg = _dlg(qapp)
+    dlg._select(("block", 0))          # schedule card
+    dlg._set_block_visible(False)
+    assert dlg._layout["blocks"][0]["visible"] is False
+    dlg._move_selected_block(1)
+    assert dlg._layout["blocks"][1]["type"] == "schedule"
+    assert dlg._selection == ("block", 1)
+
+
+def test_result_layout_is_normalized(qapp):
+    from gui.info_layout import normalize
+    dlg = _dlg(qapp)
+    dlg._select(("field", "dob"))
+    dlg._set_prop("bold", True)
+    out = dlg.result_layout()
+    assert out == normalize(out)
