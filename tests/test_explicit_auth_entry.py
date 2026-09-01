@@ -311,3 +311,13 @@ def test_wizard_error_outline_clears_on_edit(qapp):
     assert s.auth_number.property("error") is False
     s.plan_type.setCurrentText("MAP")
     assert s.plan_type.property("error") is False
+
+
+def test_wizard_next_message_matches_new_skip_rule(qapp):
+    """The Next-blocked message must not claim unchecking days skips the
+    step — under the explicit-entry rule it doesn't."""
+    import inspect
+    import gui.wizard.wizard as wz
+    src = inspect.getsource(wz)
+    assert "uncheck all days" not in src
+    assert "clear all of it to skip" in src

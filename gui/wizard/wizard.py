@@ -136,8 +136,10 @@ class AddMemberWizard(QDialog):
         if self._current == 2:
             if not self._step_auths.validate():
                 QMessageBox.warning(self, "Validation",
-                    "Enter valid Auth Start and Auth End dates (MM/DD/YYYY), "
-                    "or uncheck all days to skip this step.")
+                    "Complete the authorization — valid Auth Start and Auth "
+                    "End dates (MM/DD/YYYY), at least one day, a plan type, "
+                    "and an auth number — or clear all of it to skip this "
+                    "step.")
                 return
             data = self._collect_all()
             self._step_review.populate(data)
