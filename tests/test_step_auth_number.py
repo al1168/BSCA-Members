@@ -30,13 +30,15 @@ def test_auth_number_blank_when_unset(qapp):
     assert data["authorization"]["auth_number"] == ""
 
 
-def test_auth_number_ignored_when_step_skipped(qapp):
-    # No days checked -> the whole authorization is skipped, number or not.
+def test_auth_number_alone_engages_the_step(qapp):
+    # Typing an auth number without checking days no longer silently
+    # discards it: the step is engaged and must be completed to pass
+    # validation (explicit-entry rule, 2026-09-01 spec).
     from gui.wizard.step_auths import StepAuths
     w = StepAuths()
     w.auth_number.setText("A-999")
-    data = w.collect()
-    assert data["authorization"] is None
+    assert w.is_skipped() is False
+    assert w.validate() is False        # incomplete -> blocked, not dropped
 
 
 def test_review_shows_auth_number(qapp):

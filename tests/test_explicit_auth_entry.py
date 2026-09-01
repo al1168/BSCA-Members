@@ -224,3 +224,90 @@ def test_new_dialog_error_outline_clears_on_edit(qapp, monkeypatch):
     assert fixed["plan"] is False
     assert fixed["ptype"] is False
     assert fixed["num"] is False
+
+
+# ── wizard auth step ───────────────────────────────────────────────────────
+
+def _step(qapp):
+    from gui.wizard.step_auths import StepAuths
+    return StepAuths()
+
+
+def test_wizard_dates_start_empty(qapp):
+    s = _step(qapp)
+    assert s.auth_start.text() == ""
+    assert s.auth_end.text() == ""
+
+
+def test_wizard_skipped_only_when_nothing_entered(qapp):
+    s = _step(qapp)
+    assert s.is_skipped() is True
+    # Each kind of entry individually engages the step.
+    s.auth_start.setText("01/01/2026")
+    assert s.is_skipped() is False
+    s.auth_start.setText("")
+    s.auth_number.setText("A-1")
+    assert s.is_skipped() is False
+    s.auth_number.setText("")
+    s.plan_type.setCurrentText("MAP")
+    assert s.is_skipped() is False
+    s.plan_type.setCurrentText("")
+    s._day_checks[3].setChecked(True)
+    assert s.is_skipped() is False
+
+
+def test_wizard_empty_step_validates_and_collects_none(qapp):
+    s = _step(qapp)
+    assert s.validate() is True
+    assert s.collect()["authorization"] is None
+
+
+def test_wizard_engaged_step_requires_everything(qapp):
+    s = _step(qapp)
+    s._day_checks[1].setChecked(True)          # engaged, rest missing
+    assert s.validate() is False
+    assert s.auth_start.property("error") is True
+    assert s.auth_end.property("error") is True
+    assert s.plan_type.property("error") is True
+    assert s.auth_number.property("error") is True
+
+
+def test_wizard_engaged_without_days_fails(qapp):
+    s = _step(qapp)
+    s.auth_start.setText("01/01/2026")
+    s.auth_end.setText("12/31/2026")
+    s.plan_type.setCurrentText("MLTC")
+    s.auth_number.setText("A-9")
+    assert s.is_skipped() is False
+    assert s.validate() is False               # no day checked
+
+
+def test_wizard_complete_step_validates_and_collects(qapp):
+    s = _step(qapp)
+    s.auth_start.setText("01/01/2026")
+    s.auth_end.setText("12/31/2026")
+    s._day_checks[1].setChecked(True)
+    s._day_checks[3].setChecked(True)
+    s.plan_type.setCurrentText("MAP")
+    s.auth_number.setText("A-9")
+    assert s.validate() is True
+    auth = s.collect()["authorization"]
+    assert auth == {
+        "auth_start": date(2026, 1, 1),
+        "auth_end": date(2026, 12, 31),
+        "auth_days": {1, 3},
+        "auth_number": "A-9",
+        "plan_type": "MAP",
+    }
+
+
+def test_wizard_error_outline_clears_on_edit(qapp):
+    s = _step(qapp)
+    s._day_checks[1].setChecked(True)
+    s.validate()                               # paints everything red
+    assert s.auth_number.property("error") is True
+    from PyQt6.QtTest import QTest
+    QTest.keyClicks(s.auth_number, "A")        # typing clears the outline
+    assert s.auth_number.property("error") is False
+    s.plan_type.setCurrentText("MAP")
+    assert s.plan_type.property("error") is False

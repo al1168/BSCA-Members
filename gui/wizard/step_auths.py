@@ -52,7 +52,8 @@ class StepAuths(QWidget):
         warning = QLabel(
             "⚠  This step is optional. You can skip it and add authorizations "
             "and availability later, but the member won't appear on schedules "
-            "until this information is filled in."
+            "until this information is filled in. If you start an "
+            "authorization, every field of it is required before continuing."
         )
         warning.setWordWrap(True)
         warning.setObjectName("wizard_warning")
@@ -71,11 +72,10 @@ class StepAuths(QWidget):
         title_auth.setStyleSheet("font-weight:600; font-size:11px;")
         auth_layout.addRow(title_auth)
 
-        today = date.today()
+        # Dates start empty: an authorization here is an explicit act (the
+        # whole step can still be skipped by leaving everything blank).
         self.auth_start = DateLineEdit()
-        self.auth_start.set_pydate(today)
         self.auth_end = DateLineEdit()
-        self.auth_end.set_pydate(today.replace(year=today.year + 1))
         auth_layout.addRow("Auth Start:", self.auth_start)
         auth_layout.addRow("Auth End:", self.auth_end)
 
@@ -93,14 +93,20 @@ class StepAuths(QWidget):
             days_grid.addWidget(cb, i // 4, i % 4)   # 4 per row -> Mon-Thu / Fri-Sun
         auth_layout.addRow("Days:", days_widget)
 
-        # Plan type (MAP/MLTC); the blank first entry keeps it optional.
+        # Plan type (MAP/MLTC). The blank first entry is the untouched state
+        # that keeps the whole step skippable; once the step is engaged,
+        # validate() requires a real choice.
         from db.members import PLAN_TYPES
         self.plan_type = QComboBox()
         self.plan_type.addItems(PLAN_TYPES)
+        self.plan_type.currentIndexChanged.connect(
+            lambda _i: set_widget_error(self.plan_type, False))
         auth_layout.addRow("Plan Type:", self.plan_type)
 
         self.auth_number = QLineEdit()
-        self.auth_number.setPlaceholderText("Authorization number (optional)")
+        self.auth_number.setPlaceholderText("Authorization number")
+        self.auth_number.textEdited.connect(
+            lambda _t: set_widget_error(self.auth_number, False))
         auth_layout.addRow("Auth #:", self.auth_number)
 
         # ── Transportation (optional) ────────────────────────────
@@ -198,15 +204,31 @@ class StepAuths(QWidget):
             return default
 
     def is_skipped(self) -> bool:
-        return not any(cb.isChecked() for cb in self._day_checks.values())
+        """The step counts as skipped only when nothing at all was entered —
+        typing a date or number without checking days no longer silently
+        discards the entry."""
+        return (not any(cb.isChecked() for cb in self._day_checks.values())
+                and not self.auth_start.text().strip()
+                and not self.auth_end.text().strip()
+                and not self.auth_number.text().strip()
+                and not self.plan_type.currentText())
 
     def validate(self) -> bool:
-        """Auth dates (when not skipped) and any added availability times must be
-        valid. Flags the bad fields red."""
+        """When the step is engaged, every authorization field is required:
+        both dates, at least one day, a plan type, and an auth number. Added
+        availability times must always be valid. Flags the bad fields red."""
         ok = True
         if not self.is_skipped():
             ok = self.auth_start.flag_validity(required=True) and ok
             ok = self.auth_end.flag_validity(required=True) and ok
+            ok = any(cb.isChecked()
+                     for cb in self._day_checks.values()) and ok
+            plan_ok = bool(self.plan_type.currentText())
+            set_widget_error(self.plan_type, not plan_ok)
+            ok = plan_ok and ok
+            num_ok = bool(self.auth_number.text().strip())
+            set_widget_error(self.auth_number, not num_ok)
+            ok = num_ok and ok
         for r in self._avail_rows:
             for field in (r["t_start"], r["t_end"]):
                 valid = field.is_valid()
