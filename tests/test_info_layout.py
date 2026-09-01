@@ -165,3 +165,14 @@ def test_normalize_no_sections_creates_other():
     lay = normalize({"version": 1, "blocks": [{"type": "schedule"}]})
     sections = [b for b in lay["blocks"] if b["type"] == "section"]
     assert len(sections) == 1 and sections[0]["title"] == "Other"
+
+
+def test_normalize_survives_non_list_fields():
+    from gui.info_layout import normalize, FIELD_REGISTRY
+    lay = normalize({"version": 1, "blocks": [
+        {"type": "section", "title": "X", "fields": 5},
+        {"type": "section", "title": "Y", "fields": True},
+    ]})
+    all_keys = [f["key"] for b in lay["blocks"] if b["type"] == "section"
+                for f in b["fields"]]
+    assert sorted(all_keys) == sorted(k for k, _ in FIELD_REGISTRY)

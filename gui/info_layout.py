@@ -153,7 +153,8 @@ def normalize(layout) -> dict:
                                "visible": bool(raw.get("visible", True))})
         elif btype == "section":
             fields = []
-            for rf in raw.get("fields") or []:
+            raw_fields = raw.get("fields")
+            for rf in (raw_fields if isinstance(raw_fields, list) else []):
                 key = rf.get("key") if isinstance(rf, dict) else None
                 if key in defaults_by_key and key not in seen_keys:
                     seen_keys.add(key)
