@@ -273,3 +273,49 @@ def test_delete_last_remaining_section_refused():
     delete_section(lay, 2)
     delete_section(lay, 1)   # only section left: no-op
     assert any(b["type"] == "section" for b in lay["blocks"])
+
+
+# ── font sizes: widened value sizes + global label size ────────────────────
+
+def test_size_constants():
+    from gui.info_layout import SIZES, LABEL_SIZES
+    assert SIZES == ("small", "normal", "large", "xlarge")
+    assert LABEL_SIZES == ("small", "normal", "large")
+
+
+def test_default_layout_has_normal_label_size():
+    from gui.info_layout import default_layout
+    assert default_layout()["label_size"] == "normal"
+
+
+def test_normalize_keeps_new_size_values():
+    from gui.info_layout import normalize
+    lay = normalize({"version": 1, "blocks": [
+        {"type": "section", "title": "A", "fields": [
+            {"key": "dob", "size": "xlarge"},
+            {"key": "ssn", "size": "small"},
+            {"key": "cell", "size": "huge"},          # junk -> normal
+        ]},
+    ]})
+    by_key = {f["key"]: f for b in lay["blocks"] if b["type"] == "section"
+              for f in b["fields"]}
+    assert by_key["dob"]["size"] == "xlarge"
+    assert by_key["ssn"]["size"] == "small"
+    assert by_key["cell"]["size"] == "normal"
+
+
+def test_normalize_clamps_label_size():
+    from gui.info_layout import normalize, default_layout
+    base = {"version": 1, "blocks": default_layout()["blocks"]}
+    assert normalize(base)["label_size"] == "normal"          # absent
+    assert normalize({**base, "label_size": "large"})["label_size"] == "large"
+    assert normalize({**base, "label_size": "giant"})["label_size"] == "normal"
+    assert normalize({**base, "label_size": 7})["label_size"] == "normal"
+
+
+def test_label_size_roundtrips():
+    import json
+    from gui.info_layout import normalize, default_layout
+    lay = default_layout()
+    lay["label_size"] = "small"
+    assert normalize(json.loads(json.dumps(lay)))["label_size"] == "small"

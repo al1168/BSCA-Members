@@ -50,7 +50,10 @@ FIELD_REGISTRY = (
 FIELD_LABELS_BY_KEY = dict(FIELD_REGISTRY)
 
 NCOLS = 3
-SIZES = ("normal", "large")
+# Value text sizes -> 11/13/16/20px ("normal" is the un-ruled 13px base).
+SIZES = ("small", "normal", "large", "xlarge")
+# Global field-label sizes -> 9/11/13px ("normal" is the un-ruled 11px base).
+LABEL_SIZES = ("small", "normal", "large")
 COLORS = ("none", "amber", "blue", "green", "red")
 
 
@@ -61,7 +64,7 @@ def _field(key, span=1, visible=True):
 
 def default_layout() -> dict:
     """The classic Info tab, expressed as a layout dict."""
-    return {"version": 1, "blocks": [
+    return {"version": 1, "label_size": "normal", "blocks": [
         {"type": "schedule", "visible": True},
         {"type": "section", "title": "Identity", "fields": [
             _field("first_name"), _field("last_name"), _field("chinese_name"),
@@ -129,7 +132,7 @@ def normalize(layout) -> dict:
     """A saved layout -> a complete, valid layout. Unknown/duplicate field
     keys are dropped, registry fields the layout lacks are appended to their
     default-titled section (fallback: last section, or a new 'Other'),
-    schedule/emergency blocks appear exactly once, values are clamped.
+    schedule/emergency blocks appear exactly once, values are clamped, and the global `label_size` is clamped to LABEL_SIZES.
     Unusable input degrades to default_layout(); never raises."""
     default = default_layout()
     if not isinstance(layout, dict) or not isinstance(layout.get("blocks"), list):
@@ -191,7 +194,10 @@ def normalize(layout) -> dict:
         blocks.insert(0, {"type": "schedule", "visible": True})
     if "emergency" not in seen_special:
         blocks.append({"type": "emergency", "visible": True})
-    return {"version": 1, "blocks": blocks}
+    label_size = layout.get("label_size")
+    if label_size not in LABEL_SIZES:
+        label_size = "normal"
+    return {"version": 1, "label_size": label_size, "blocks": blocks}
 
 
 # ── mutation helpers (the editor dialog operates through these) ────────────
