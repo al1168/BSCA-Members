@@ -248,6 +248,24 @@ QLineEdit#info_field, QLineEdit#info_field:read-only {{
     font-weight: 600;          /* bolder values so they read clearly */
     padding: 3px 2px;
 }}
+/* Customizable layout styling for Info fields (dynamic properties set from
+   the saved layout — see gui/info_layout.py). Placed before the state rules
+   ([changed]/[empty]/[editing]/[error]) so those later, equal-specificity
+   states keep winning their background/border while bold/large persist. */
+QLineEdit#info_field[fbold="true"] {{ font-weight: 800; }}
+QLineEdit#info_field[fsize="large"] {{ font-size: 16px; }}
+QLineEdit#info_field[hl="amber"], QLineEdit#info_field[hl="amber"]:read-only {{
+    background-color: {t['hl_amber']}; border-radius: 4px; padding: 3px 6px;
+}}
+QLineEdit#info_field[hl="blue"], QLineEdit#info_field[hl="blue"]:read-only {{
+    background-color: {t['hl_blue']}; border-radius: 4px; padding: 3px 6px;
+}}
+QLineEdit#info_field[hl="green"], QLineEdit#info_field[hl="green"]:read-only {{
+    background-color: {t['hl_green']}; border-radius: 4px; padding: 3px 6px;
+}}
+QLineEdit#info_field[hl="red"], QLineEdit#info_field[hl="red"]:read-only {{
+    background-color: {t['hl_red']}; border-radius: 4px; padding: 3px 6px;
+}}
 QLineEdit#info_field[changed="true"],
 QLineEdit#info_field[changed="true"]:read-only {{
     border-left: 2px solid {t['accent']};
