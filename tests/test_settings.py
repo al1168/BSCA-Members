@@ -87,3 +87,38 @@ def test_result_settings_returns_key_while_masked(qtbot):
     # Masking is display-only; the field still holds (and saves) the real key.
     dlg = _dialog(qtbot, "KEY123")
     assert dlg.result_settings()["google_api_key"] == "KEY123"
+
+
+# ── Alt ID password: session-only, never persisted ─────────────────────────
+def _dialog_pw(qtbot, password):
+    from gui.settings_dialog import SettingsDialog
+    dlg = SettingsDialog({"db_path": "", "events_db_path": "", "theme": "dark",
+                          "google_api_key": ""}, alt_id_password=password)
+    qtbot.addWidget(dlg)
+    return dlg
+
+
+def test_alt_password_masked_and_locked_when_present(qtbot):
+    from PyQt6.QtWidgets import QLineEdit
+    dlg = _dialog_pw(qtbot, "hunter2")
+    assert dlg._altpw.echoMode() == QLineEdit.EchoMode.Password
+    assert dlg._altpw.isReadOnly() is True
+    assert dlg._altpw_edit_btn.text() == "Edit"
+
+
+def test_alt_password_editable_when_empty(qtbot):
+    from PyQt6.QtWidgets import QLineEdit
+    dlg = _dialog_pw(qtbot, "")
+    assert dlg._altpw.isReadOnly() is False
+    assert dlg._altpw.echoMode() == QLineEdit.EchoMode.Normal
+
+
+def test_alt_password_never_in_result_settings(qtbot):
+    dlg = _dialog_pw(qtbot, "hunter2")
+    assert "alt_id_password" not in dlg.result_settings()
+
+
+def test_alt_password_returned_verbatim(qtbot):
+    # No strip: the password must match the encryptor tool byte-for-byte.
+    dlg = _dialog_pw(qtbot, " spaced pw ")
+    assert dlg.result_alt_id_password() == " spaced pw "

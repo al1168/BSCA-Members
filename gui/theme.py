@@ -326,7 +326,8 @@ QToolBar#main_toolbar {{
     spacing: 6px;
 }}
 QPushButton#btn_export, QPushButton#btn_expiring_report,
-QPushButton#btn_birthday_report, QPushButton#btn_bookmarks {{
+QPushButton#btn_birthday_report, QPushButton#btn_absence_report,
+QPushButton#btn_bookmarks {{
     background-color: transparent;
     color: {t['text2']};
     border: 1px solid {t['border']};
@@ -336,7 +337,8 @@ QPushButton#btn_birthday_report, QPushButton#btn_bookmarks {{
     font-weight: 600;
 }}
 QPushButton#btn_export:hover, QPushButton#btn_expiring_report:hover,
-QPushButton#btn_birthday_report:hover, QPushButton#btn_bookmarks:hover {{
+QPushButton#btn_birthday_report:hover, QPushButton#btn_absence_report:hover,
+QPushButton#btn_bookmarks:hover {{
     background-color: {t['raised']};
     color: {t['text']};
 }}
@@ -628,6 +630,23 @@ QLabel#warning_badge {{
     font-size: 10px;
     font-weight: 500;
 }}
+QLabel#alt_id_label {{
+    color: {t['text2']};
+    font-size: 12px;
+    font-weight: 600;
+}}
+QPushButton#alt_id_add {{
+    background: transparent;
+    border: none;
+    color: {t['text2']};
+    font-size: 12px;
+    font-weight: 600;
+    padding: 0px;
+}}
+QPushButton#alt_id_add:hover {{
+    color: {t['accent']};
+    text-decoration: underline;
+}}
 QLabel#terminated_badge {{
     background-color: {t['error']};
     color: #f4f6fd;
@@ -763,6 +782,12 @@ QTableWidget {{
 }}
 QTableWidget::item {{
     padding: 6px 10px;
+}}
+/* Wrapper around a centered pill/button in a table cell. Transparent so the
+   row's own background (e.g. the Availability tab's authorized-day tint) shows
+   through instead of the fill it would otherwise inherit from QTableWidget. */
+QWidget#pill_cell {{
+    background: transparent;
 }}
 QTableWidget::item:selected {{
     background-color: {t['accent_bg']};

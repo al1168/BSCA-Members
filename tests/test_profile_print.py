@@ -23,7 +23,7 @@ def _member(**over):
         "home_tell": "212-555-0100", "cell": "646-555-0199",
         "address": "1 Main St, NY", "emergency": "", "pcp": "Dr. Smith",
         "hospital": "Mt Sinai", "hha": "ABC HHA", "notes": "Prefers AM.",
-        "gender": "F", "admission_date": "1/2/2026",
+        "gender": "F", "admission_date": "1/2/2026", "alt_id": 987654,
     }
     m.update(over)
     return m
@@ -81,6 +81,12 @@ def test_lists_emergency_contacts():
     assert "John Doe" in html
     assert "(917)-555-0000" in html
     assert "Son" in html
+
+
+def test_excludes_alt_id():
+    html = build_profile_html(_member(), [], "2026-01-01")
+    assert "987654" not in html
+    assert "Alt ID" not in html
 
 
 def test_excludes_notes_and_printed_date():

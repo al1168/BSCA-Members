@@ -15,7 +15,6 @@ from monthly_schedule.db import (
     map_enrollment_row,
     map_authorization_row,
     map_availability_row,
-    map_absence_row,
 )
 
 # Selectable health plans. "Aetna" (== AE) and "Anthem" (== BCBS) are dropped as
@@ -23,14 +22,25 @@ from monthly_schedule.db import (
 # still render a badge.
 HEALTH_PLANS = ("AE", "BCBS", "ES", "HC", "HF", "HOF", "VCM")
 
+# Authorization [Plan Type] values. The leading blank keeps legacy rows (which
+# predate the column) editable without silently forcing a value on them.
+PLAN_TYPES = ("", "MAP", "MLTC")
+
 LEAVE_TYPES = (
     "Vacation", "Medical", "Hospitalization",
     "Family Emergency", "Holiday", "Other",
 )
 
 ALL_MEMBERS_QUERY = (
-    "SELECT [Center ID], [Last Name], [First Name], [Health Plan], [DOB] "
-    "FROM [Contacts] ORDER BY [Last Name], [First Name]"
+    "SELECT [Center ID], [Last Name], [First Name], [Health Plan], [DOB], "
+    "[alt_id] FROM [Contacts] ORDER BY [Last Name], [First Name]"
+)
+
+HEALTH_PLANS_CONTACTS_QUERY = (
+    "SELECT DISTINCT [Health Plan] FROM [Contacts]"
+)
+HEALTH_PLANS_AUTHS_QUERY = (
+    "SELECT DISTINCT [Health Plan] FROM [Authorization]"
 )
 
 INSERT_CONTACT = (
@@ -93,6 +103,13 @@ def format_ssn(value) -> str:
 def is_valid_ssn(value) -> bool:
     s = "" if value is None else str(value).strip()
     return s == "" or bool(_SSN_RE.match(s))
+
+
+def is_valid_alt_id(value) -> bool:
+    """Optional alternative member id: empty, or an integer that fits an
+    Access Long (digits only, <= 2147483647)."""
+    s = "" if value is None else str(value).strip()
+    return s == "" or (s.isdigit() and int(s) <= 2_147_483_647)
 
 
 def format_medicaid(value) -> str:
@@ -277,12 +294,15 @@ def format_dob_display(value) -> str:
 
 SET_LONG_LAT = "UPDATE [Contacts] SET [Long Lat]=? WHERE [Center ID]=?"
 
+SET_ALT_ID = "UPDATE [Contacts] SET [alt_id]=? WHERE [Center ID]=?"
+
 UPDATE_CONTACT = (
     "UPDATE [Contacts] SET "
     "[Last Name]=?, [First Name]=?, [Chinese Name]=?, [Gender]=?, [DOB]=?, "
     "[Member ID]=?, [Health Plan]=?, [Medicaid]=?, [Medicare]=?, [SSN]=?, "
     "[Language]=?, [Case Manager]=?, [Home Tell]=?, [Cell]=?, [Address]=?, "
-    "[Emergency]=?, [PCP]=?, [Hospital]=?, [HHA]=?, [Admission Date]=?, [Notes]=? "
+    "[Emergency]=?, [PCP]=?, [Hospital]=?, [HHA]=?, [Admission Date]=?, "
+    "[Notes]=?, [alt_id]=? "
     "WHERE [Center ID]=?"
 )
 
@@ -293,12 +313,15 @@ INSERT_ENROLLMENT = (
 
 DELETE_ENROLLMENT = "DELETE FROM [Enrollment] WHERE [ID]=?"
 UPDATE_ENROLLMENT_END = "UPDATE [Enrollment] SET [end_date]=? WHERE [ID]=?"
+UPDATE_ENROLLMENT = (
+    "UPDATE [Enrollment] SET [start_date]=?, [end_date]=? WHERE [ID]=?"
+)
 
 INSERT_AUTHORIZATION = (
     "INSERT INTO [Authorization] ([Center ID], [auth_start], [auth_end], "
     "[effective_start], [effective_end], [auth_days], [Health Plan], [created_at], "
-    "[Member ID], [auth_number]) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "[Member ID], [auth_number], [Plan Type]) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 
 DELETE_AUTHORIZATION = "DELETE FROM [Authorization] WHERE [ID]=?"
@@ -306,13 +329,14 @@ DELETE_AUTHORIZATION = "DELETE FROM [Authorization] WHERE [ID]=?"
 UPDATE_AUTHORIZATION = (
     "UPDATE [Authorization] SET [auth_start]=?, [auth_end]=?, "
     "[auth_days]=?, [Health Plan]=?, [Member ID]=?, [auth_number]=?, "
+    "[Plan Type]=?, "
     "[effective_start]=NULL, [effective_end]=NULL WHERE [ID]=?"
 )
 
 AUTHORIZATION_SELECT = (
     "SELECT [ID],[Center ID],[auth_start],[auth_end],"
     "[effective_start],[effective_end],[auth_days],[Health Plan],[created_at],"
-    "[Member ID],[auth_number] "
+    "[Member ID],[auth_number],[Plan Type] "
     "FROM [Authorization] WHERE [Center ID]=?"
 )
 
@@ -368,15 +392,25 @@ UPDATE_AVAILABILITY = (
 )
 
 INSERT_ABSENCE = (
-    "INSERT INTO [Absences] ([Center ID], [Leave Type], [Start_Date], [End_Date]) "
-    "VALUES (?, ?, ?, ?)"
+    "INSERT INTO [Absences] ([Center ID], [Leave Type], [Start_Date], "
+    "[End_Date], [Notes]) VALUES (?, ?, ?, ?, ?)"
 )
 
 DELETE_ABSENCE = "DELETE FROM [Absences] WHERE [ID]=?"
 
 UPDATE_ABSENCE = (
-    "UPDATE [Absences] SET [Leave Type]=?, [Start_Date]=?, [End_Date]=? "
-    "WHERE [ID]=?"
+    "UPDATE [Absences] SET [Leave Type]=?, [Start_Date]=?, [End_Date]=?, "
+    "[Notes]=? WHERE [ID]=?"
+)
+
+ABSENCES_SELECT = (
+    "SELECT [ID],[Center ID],[Leave Type],[Start_Date],[End_Date],[Notes] "
+    "FROM [Absences] WHERE [Center ID]=?"
+)
+
+ABSENCES_ALL_SELECT = (
+    "SELECT [Center ID],[Leave Type],[Start_Date],[End_Date],[Notes] "
+    "FROM [Absences]"
 )
 
 INSERT_ONE_OFF_AVAILABILITY = (
@@ -455,6 +489,18 @@ def map_one_off_availability_row(row) -> dict:
         "date": _access_date(row[2]),
         "avail_start": _access_hhmm(row[3]),
         "avail_end": _access_hhmm(row[4]),
+        "notes": row[5] or "",
+    }
+
+
+def map_absence_row(row) -> dict:
+    """Map an Absences row; [Notes] MEMO -> str ('' when null)."""
+    return {
+        "id": int(row[0]),
+        "center_id": int(row[1]),
+        "leave_type": row[2],
+        "start_date": _access_date(row[3]),
+        "end_date": _access_date(row[4]),
         "notes": row[5] or "",
     }
 
@@ -633,6 +679,7 @@ def get_all_members(db_path: str) -> list[dict]:
                 "first_name": row[2] or "",
                 "health_plan": row[3] or "",
                 "dob": _access_date(row[4]),
+                "alt_id": int(row[5]) if row[5] is not None else None,
             }
             for row in cursor.fetchall()
             if row[0] is not None  # skip Contacts rows with NULL Center ID
@@ -871,7 +918,7 @@ def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dic
             "SELECT [Center ID],[Last Name],[First Name],[Chinese Name],[DOB],"
             "[Health Plan],[Member ID],[Medicaid],[Medicare],[SSN],[Language],"
             "[Case Manager],[Home Tell],[Cell],[Address],[Emergency],[PCP],"
-            "[Hospital],[HHA],[Notes],[Gender],[Admission Date] "
+            "[Hospital],[HHA],[Notes],[Gender],[Admission Date],[alt_id] "
             "FROM [Contacts] WHERE [Center ID]=?",
             center_id,
         )
@@ -900,6 +947,7 @@ def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dic
                 "notes":          row[19] or "",
                 "gender":         row[20] or "",
                 "admission_date": str(row[21]) if row[21] else "",
+                "alt_id":         int(row[22]) if row[22] is not None else None,
             }
         else:
             member = {}
@@ -922,11 +970,7 @@ def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dic
         )
         availability = [map_availability_row(r) for r in c.fetchall()]
 
-        c.execute(
-            "SELECT [ID],[Center ID],[Leave Type],[Start_Date],[End_Date] "
-            "FROM [Absences] WHERE [Center ID]=?",
-            center_id,
-        )
+        c.execute(ABSENCES_SELECT, center_id)
         absences = [map_absence_row(r) for r in c.fetchall()]
 
         c.execute(ONE_OFF_AVAILABILITY_SELECT, center_id)
@@ -958,12 +1002,15 @@ def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dic
 
 def _map_auth_row(row) -> dict:
     """bsca-core maps 7 columns by index; add the local [Health Plan] (row[7])
-    and [created_at] (row[8], a datetime or None for legacy rows)."""
+    and [created_at] (row[8], a datetime or None for legacy rows). [Plan Type]
+    (row[11]) exists only on [Authorization] — transport rows are one column
+    shorter, hence the length guard."""
     d = map_authorization_row(row)
     d["health_plan"] = row[7] or ""
     d["created_at"] = row[8]
     d["member_id"] = row[9]
     d["auth_number"] = row[10]
+    d["plan_type"] = (row[11] or "") if len(row) > 11 else ""
     return d
 
 
@@ -1003,6 +1050,46 @@ def get_member_auth_ends(db_path: str, _retry: bool = True) -> list[tuple]:
         _drop_read_connection(db_path)
         if _retry:
             return get_member_auth_ends(db_path, _retry=False)
+        raise
+
+
+def get_health_plans(db_path: str, _retry: bool = True) -> list[str]:
+    """Distinct health plans present in the DB (Contacts + Authorization),
+    sorted, for the add-member wizard's dropdown. Falls back to the static
+    HEALTH_PLANS tuple when the DB has none or can't be read — an empty
+    dropdown would block member creation entirely."""
+    import pyodbc
+    conn = _read_connection(db_path)
+    try:
+        c = conn.cursor()
+        plans = set()
+        for query in (HEALTH_PLANS_CONTACTS_QUERY, HEALTH_PLANS_AUTHS_QUERY):
+            for row in c.execute(query).fetchall():
+                value = ("" if row[0] is None else str(row[0])).strip()
+                if value:
+                    plans.add(value)
+    except pyodbc.Error:
+        _drop_read_connection(db_path)
+        if _retry:
+            return get_health_plans(db_path, _retry=False)
+        return list(HEALTH_PLANS)
+    return sorted(plans, key=str.upper) or list(HEALTH_PLANS)
+
+
+def get_all_absences(db_path: str, _retry: bool = True) -> list[tuple]:
+    """All (center_id, leave_type, start, end, notes) rows from [Absences]
+    in one query, for the monthly absences report. Cached read connection
+    with the same stale-connection retry as get_member_context."""
+    import pyodbc
+    conn = _read_connection(db_path)
+    try:
+        c = conn.cursor()
+        c.execute(ABSENCES_ALL_SELECT)
+        return [(r[0], r[1], r[2], r[3], r[4]) for r in c.fetchall()]
+    except pyodbc.Error:
+        _drop_read_connection(db_path)
+        if _retry:
+            return get_all_absences(db_path, _retry=False)
         raise
 
 
@@ -1098,12 +1185,14 @@ def get_auth_edges(db_path: str, _retry: bool = True) -> list[dict]:
 # some of them; missing ones make features fail with raw ODBC errors, so the
 # main window checks once per database and lists anything absent up front.
 REQUIRED_SCHEMA = {
-    "Contacts": ["Center ID", "Last Name", "First Name", "Health Plan", "DOB"],
+    "Contacts": ["Center ID", "Last Name", "First Name", "Health Plan", "DOB",
+                 "alt_id"],
     "Enrollment": ["Center ID", "start_date", "end_date"],
     "Authorization": ["Center ID", "auth_start", "auth_end", "auth_days",
-                      "Health Plan", "created_at", "Member ID", "auth_number"],
+                      "Health Plan", "created_at", "Member ID", "auth_number",
+                      "Plan Type"],
     "Availability": ["Center ID", "Day Of Week", "avail_start", "avail_end"],
-    "Absences": ["Center ID", "Leave Type", "Start_Date", "End_Date"],
+    "Absences": ["Center ID", "Leave Type", "Start_Date", "End_Date", "Notes"],
     "OneOffAvailability": ["Center ID", "date", "avail_start", "avail_end"],
     "EmergencyContact": ["Center ID", "Full Name", "Phone Number"],
     "TransportAuthorization": ["Center ID", "auth_start", "auth_end"],
@@ -1164,6 +1253,24 @@ def get_one_off_availability(center_id: int, db_path: str,
         _drop_read_connection(db_path)
         if _retry:
             return get_one_off_availability(center_id, db_path, _retry=False)
+        raise
+
+
+def get_absences(center_id: int, db_path: str,
+                 _retry: bool = True) -> list[dict]:
+    """Absences for a member incl. Notes (cached read connection). Supersedes
+    monthly_schedule.db.get_absences, whose row mapper drops [Notes].
+    Mirrors get_member_context's stale-connection retry."""
+    import pyodbc
+    conn = _read_connection(db_path)
+    try:
+        c = conn.cursor()
+        c.execute(ABSENCES_SELECT, center_id)
+        return [map_absence_row(r) for r in c.fetchall()]
+    except pyodbc.Error:
+        _drop_read_connection(db_path)
+        if _retry:
+            return get_absences(center_id, db_path, _retry=False)
         raise
 
 
@@ -1344,6 +1451,7 @@ def insert_member(
                     datetime.now(),
                     member_id,   # seed the auth's Member ID from the member's
                     authorization.get("auth_number", "") or "",
+                    authorization.get("plan_type", "") or "",
                 ),
             )
             # Optional transportation auth: mirrors the care auth's dates/days,
@@ -1387,6 +1495,11 @@ def set_member_long_lat(center_id: int, long_lat: str, db_path: str) -> None:
     _execute_write(db_path, SET_LONG_LAT, (long_lat, center_id))
 
 
+def set_member_alt_id(center_id: int, alt_id: int | None, db_path: str) -> None:
+    """Persist a member's alternative id (None clears it)."""
+    _execute_write(db_path, SET_ALT_ID, (alt_id, center_id))
+
+
 def update_contact(
     center_id: int,
     last_name: str,
@@ -1411,12 +1524,15 @@ def update_contact(
     admission_date: str,
     notes: str,
     db_path: str,
+    *,
+    alt_id: int | None,
 ) -> None:
     _execute_write(db_path, UPDATE_CONTACT, (
         last_name, first_name, chinese_name, gender, dob,
         member_id, health_plan, medicaid, medicare, ssn,
         language, case_manager, home_tell, cell, address,
         emergency, pcp, hospital, hha, admission_date, notes,
+        alt_id,
         center_id,
     ))
 
@@ -1427,6 +1543,11 @@ def insert_enrollment(center_id: int, start: date, end: date | None, db_path: st
 
 def delete_enrollment(record_id: int, db_path: str) -> None:
     _execute_write(db_path, DELETE_ENROLLMENT, (record_id,))
+
+
+def update_enrollment(record_id: int, start: date, end: date | None,
+                      db_path: str) -> None:
+    _execute_write(db_path, UPDATE_ENROLLMENT, (start, end, record_id))
 
 
 def is_terminated(enrollments: list[dict], today=None) -> bool:
@@ -1516,11 +1637,12 @@ def insert_authorization(
     db_path: str,
     member_id: str = "",
     auth_number: str = "",
+    plan_type: str = "",
 ) -> None:
     _execute_write(db_path, INSERT_AUTHORIZATION, (
         center_id, auth_start, auth_end, effective_start, effective_end,
         encode_auth_days(auth_days), health_plan, datetime.now(), member_id,
-        auth_number,
+        auth_number, plan_type,
     ))
 
 
@@ -1533,9 +1655,10 @@ def update_authorization(
     db_path: str,
     member_id: str = "",
     auth_number: str = "",
+    plan_type: str = "",
 ) -> None:
-    """Update an existing authorization's dates, days, plan, member id, and
-    auth number. Also clears effective_start/effective_end: a non-null
+    """Update an existing authorization's dates, days, plan, member id,
+    auth number, and plan type. Also clears effective_start/effective_end: a non-null
     effective window overrides the auth dates when deciding which auth is in
     effect today, so leaving one behind after a date edit strands the row on
     its pre-edit period (empty day chips despite an "Active" pill). NULL makes
@@ -1543,7 +1666,7 @@ def update_authorization(
     tab and wizard insert new rows."""
     _execute_write(db_path, UPDATE_AUTHORIZATION, (
         auth_start, auth_end, encode_auth_days(auth_days), health_plan,
-        member_id, auth_number, record_id,
+        member_id, auth_number, plan_type, record_id,
     ))
 
 
@@ -1693,9 +1816,11 @@ def insert_absence(
     leave_type: str,
     start: date,
     end: date,
+    notes: str,
     db_path: str,
 ) -> None:
-    _execute_write(db_path, INSERT_ABSENCE, (center_id, leave_type, start, end))
+    _execute_write(db_path, INSERT_ABSENCE,
+                   (center_id, leave_type, start, end, notes))
 
 
 def update_absence(
@@ -1703,9 +1828,11 @@ def update_absence(
     leave_type: str,
     start: date,
     end: date,
+    notes: str,
     db_path: str,
 ) -> None:
-    _execute_write(db_path, UPDATE_ABSENCE, (leave_type, start, end, record_id))
+    _execute_write(db_path, UPDATE_ABSENCE,
+                   (leave_type, start, end, notes, record_id))
 
 
 def delete_absence(record_id: int, db_path: str) -> None:

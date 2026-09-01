@@ -11,14 +11,14 @@ from db.export import (
 )
 
 
-def member(cid, last, first, dob):
+def member(cid, last, first, dob, alt_id=None):
     return {"center_id": cid, "last_name": last, "first_name": first,
-            "health_plan": "HF", "dob": dob}
+            "health_plan": "HF", "dob": dob, "alt_id": alt_id}
 
 
 MEMBERS = [
-    member(1, "Chan", "Mei", date(1950, 6, 20)),
-    member(2, "Lu", "Wei", "1948-06-04"),            # ISO text DOB
+    member(1, "Chan", "Mei", date(1950, 6, 20), alt_id=987654321),
+    member(2, "Lu", "Wei", "1948-06-04"),            # ISO text DOB, no alt id
     member(3, "Wong", "Ka", "6/4/1952"),             # M/D/YYYY text DOB
     member(4, "Li", "Jun", datetime(1955, 6, 9)),    # terminated below
     member(5, "Ng", "Sam", date(1960, 7, 1)),        # July, not June
@@ -35,6 +35,10 @@ def test_month_filter_sorted_by_day_then_name():
         (1, date(1950, 6, 20)),
     ]
     assert rows[0]["name"] == "Lu, Wei"
+    # Alt id carried through as-is: the corpus value is already the display
+    # value (decrypted when a session password is set).
+    assert rows[0]["alt_id"] is None
+    assert rows[2]["alt_id"] == 987654321
 
 
 def test_terminated_and_unparseable_excluded():
@@ -51,15 +55,18 @@ def test_xlsx_round_trip(tmp_path):
 
     ws = load_workbook(str(path)).active
     assert [c.value for c in ws[1]] == BIRTHDAY_COLUMNS
+    assert BIRTHDAY_COLUMNS[1] == "Alt ID"           # next to Center Id
     assert ws.title == "Birthdays June"
     first = [c.value for c in ws[2]]
-    assert first[0] == 2 and first[1] == "Lu, Wei"
-    assert first[2].date() == date(1948, 6, 4)
-    assert first[3] is None                          # empty Sign column
-    assert first[4] is None                          # empty Date column
-    assert ws.cell(row=2, column=3).number_format == "MM/DD/YYYY"
+    assert first[0] == 2 and first[2] == "Lu, Wei"
+    assert first[1] is None                          # no alt id -> blank
+    assert first[3].date() == date(1948, 6, 4)
+    assert first[4] is None                          # empty Sign column
+    assert first[5] is None                          # empty Date column
+    assert ws.cell(row=5, column=2).value == 987654321   # Chan, day 20
+    assert ws.cell(row=2, column=4).number_format == "MM/DD/YYYY"
     # Same ruled record-sheet treatment as the expiring report.
-    for col in range(1, 6):
+    for col in range(1, 7):
         assert ws.cell(row=2, column=col).border.bottom.style == "thin"
     assert ws.page_setup.scale == 100
     assert ws.print_title_rows in ("1:1", "$1:$1")

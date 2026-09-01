@@ -402,9 +402,10 @@ def sec_live_clicks(n_clicks: int):
         return
     try:
         # found_index=0: connect refuses an ambiguous match, and users (and
-        # test runs) sometimes have more than one Care Manager open
+        # test runs) sometimes have more than one Care Manager open.
+        # Leading .* also matches older builds titled "Bowery Care Manager".
         app = Application(backend="uia").connect(
-            title_re="Bowery Care Manager.*", timeout=3, found_index=0)
+            title_re=".*Care Manager.*", timeout=3, found_index=0)
         win = app.top_window()
     except Exception:
         say("  Care Manager is not running - section skipped.")

@@ -28,6 +28,20 @@ def test_summary_empty_when_no_changes():
     assert build_change_summary({"first_name": "Mary"}, {"first_name": "Mary"}) == []
 
 
+def test_summary_handles_int_and_none_alt_id():
+    """alt_id is int | None in member dicts; the summary must stringify it
+    rather than crash on non-string values."""
+    from gui.member_tabs import build_change_summary
+    assert build_change_summary({"alt_id": 123}, {"alt_id": 456}) == \
+        ["Alt ID: 123 → 456"]
+    assert build_change_summary({"alt_id": None}, {"alt_id": 123}) == \
+        ["Alt ID: (empty) → 123"]
+    assert build_change_summary({"alt_id": 123}, {"alt_id": None}) == \
+        ["Alt ID: 123 → (empty)"]
+    assert build_change_summary({"alt_id": 123}, {"alt_id": 123}) == []
+    assert build_change_summary({"alt_id": None}, {"alt_id": None}) == []
+
+
 def test_summary_ignores_whitespace_and_newline_normalization():
     """Regression: stored values may have trailing spaces (Access) and CRLF
     notes, while widget read-back is stripped with LF. An untouched form must

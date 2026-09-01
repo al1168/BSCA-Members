@@ -7,11 +7,14 @@ from PyQt6.QtCore import Qt
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, settings: dict, parent=None):
+    def __init__(self, settings: dict, parent=None, alt_id_password: str = ""):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumWidth(480)
         self._settings = dict(settings)
+        # Session-only secret: shown/edited here but NEVER part of
+        # result_settings(), so it can't reach the settings JSON on disk.
+        self._alt_id_password = alt_id_password
         self._build_ui()
 
     def _build_ui(self):
@@ -55,6 +58,24 @@ class SettingsDialog(QDialog):
         form.addRow("Google API key:", api_row)
         # An existing key opens locked + masked; an empty one opens ready to type.
         self._set_api_locked(bool(self._settings.get("google_api_key", "")))
+
+        # Alt ID password: decrypts the encrypted alt_id column for this
+        # session only — deliberately kept out of result_settings() so it is
+        # never written to disk. Same lock pattern as the API key.
+        altpw_row = QWidget()
+        altpw_hl = QHBoxLayout(altpw_row)
+        altpw_hl.setContentsMargins(0, 0, 0, 0)
+        self._altpw = QLineEdit(self._alt_id_password)
+        self._altpw.setPlaceholderText("Session only — never saved to disk")
+        self._altpw.setToolTip(
+            "Enter the password you were given, if any. It applies to this "
+            "session only. Leave empty otherwise.")
+        self._altpw_edit_btn = QPushButton("Edit")
+        self._altpw_edit_btn.clicked.connect(self._toggle_altpw_edit)
+        altpw_hl.addWidget(self._altpw)
+        altpw_hl.addWidget(self._altpw_edit_btn)
+        form.addRow("Session password:", altpw_row)
+        self._set_altpw_locked(bool(self._alt_id_password))
 
         # Theme
         theme_row = QWidget()
@@ -105,6 +126,18 @@ class SettingsDialog(QDialog):
         if was_locked:                 # just unlocked -> ready to edit
             self._api_key.setFocus()
 
+    def _set_altpw_locked(self, locked: bool):
+        self._altpw.setReadOnly(locked)
+        self._altpw.setEchoMode(
+            QLineEdit.EchoMode.Password if locked else QLineEdit.EchoMode.Normal)
+        self._altpw_edit_btn.setText("Edit" if locked else "Hide")
+
+    def _toggle_altpw_edit(self):
+        was_locked = self._altpw.isReadOnly()
+        self._set_altpw_locked(not was_locked)
+        if was_locked:
+            self._altpw.setFocus()
+
     def _browse_db(self):
         path, _ = QFileDialog.getOpenFileName(
             self, "Select Database", "", "Access Databases (*.accdb *.mdb)"
@@ -120,6 +153,8 @@ class SettingsDialog(QDialog):
             self._events_path.setText(path)
 
     def result_settings(self) -> dict:
+        # The alt-id password is intentionally absent: this dict is persisted
+        # to the settings JSON, and the password must stay session-only.
         return {
             "db_path": self._db_path.text().strip(),
             "events_db_path": self._events_path.text().strip(),
@@ -127,3 +162,7 @@ class SettingsDialog(QDialog):
             "google_api_key": self._api_key.text().strip(),
             "show_row_ids": self._show_row_ids.isChecked(),
         }
+
+    def result_alt_id_password(self) -> str:
+        # Verbatim (no strip) — must match the encryptor tool byte-for-byte.
+        return self._altpw.text()

@@ -286,7 +286,7 @@ def write_expiring_xlsx(path: str, rows: list[dict], month_label: str) -> None:
         widths=(9, 24, 11, 12, 42), center_cols={1, 3, 4})
 
 
-BIRTHDAY_COLUMNS = ["Center Id", "Name", "Birthday", "Sign", "Date"]
+BIRTHDAY_COLUMNS = ["Center Id", "Alt ID", "Name", "Birthday", "Sign", "Date"]
 
 
 def members_with_birthday_in_month(members, terminated_ids,
@@ -306,6 +306,9 @@ def members_with_birthday_in_month(members, terminated_ids,
             continue
         rows.append({
             "center_id": cid,
+            # The corpus value is already the display value (decrypted at
+            # load when a session password is set), so it passes through.
+            "alt_id": m.get("alt_id"),
             "name": f"{m.get('last_name', '')}, {m.get('first_name', '')}",
             "dob": dob,
         })
@@ -318,8 +321,58 @@ def write_birthday_xlsx(path: str, rows: list[dict], month_label: str) -> None:
     by hand)."""
     _write_record_sheet(
         path, f"Birthdays {month_label}", BIRTHDAY_COLUMNS,
-        [[r["center_id"], r["name"], r["dob"], "", ""] for r in rows],
-        widths=(10, 28, 14, 34, 13), center_cols={1, 3})
+        [[r["center_id"], r["alt_id"], r["name"], r["dob"], "", ""]
+         for r in rows],
+        widths=(10, 12, 28, 14, 24, 13), center_cols={1, 2, 4})
+
+
+ABSENCE_COLUMNS = ["Center Id", "Name", "Leave Type", "Start Date",
+                   "End Date", "Notes"]
+
+
+def member_absences_in_month(members, terminated_ids, absence_rows,
+                             year: int, month: int) -> list[dict]:
+    """Active members' absences overlapping the given month — one row per
+    absence, so a member out twice appears twice. A missing end date means
+    the absence is still ongoing, so it matches every month from its start
+    on. Sorted by start date then name. Pure (no DB) — unit-testable.
+
+    absence_rows: (center_id, leave_type, start, end, notes) tuples from
+    get_all_absences.
+    """
+    import calendar as _cal
+    first = date(year, month, 1)
+    last = date(year, month, _cal.monthrange(year, month)[1])
+    by_id = {m["center_id"]: m for m in members}
+    rows = []
+    for cid, leave_type, start, end, notes in absence_rows:
+        if cid is None or int(cid) in terminated_ids:
+            continue
+        m = by_id.get(int(cid))
+        if m is None:
+            continue
+        start, end = _access_date(start), _access_date(end)
+        if start is None or start > last or (end is not None and end < first):
+            continue
+        rows.append({
+            "center_id": int(cid),
+            "name": f"{m.get('last_name', '')}, {m.get('first_name', '')}",
+            "leave_type": leave_type or "",
+            "start": start,
+            "end": end,
+            "notes": notes or "",
+        })
+    rows.sort(key=lambda r: (r["start"], r["name"].lower()))
+    return rows
+
+
+def write_absence_xlsx(path: str, rows: list[dict], month_label: str) -> None:
+    """The absences record sheet; open-ended absences leave End Date blank."""
+    _write_record_sheet(
+        path, f"Absences {month_label}", ABSENCE_COLUMNS,
+        [[r["center_id"], r["name"], r["leave_type"], r["start"], r["end"],
+          r["notes"]] for r in rows],
+        widths=(9, 24, 12, 12, 12, 29), center_cols={1, 4, 5})
 
 
 def export_members_xlsx(db_path: str, out_path: str, today=None) -> int:

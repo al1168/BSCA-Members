@@ -22,10 +22,11 @@ class QuickSearchDialog(QDialog):
     # Emitted with the chosen member's center_id when a result is picked.
     chosen = pyqtSignal(object)
 
-    def __init__(self, members, matcher, parent=None):
+    def __init__(self, members, matcher, parent=None, ranker=None):
         super().__init__(parent)
         self._members = members
         self._matcher = matcher
+        self._ranker = ranker   # optional (member, text) -> sort key
         self.chosen_center_id = None
         self._chosen_done = False
 
@@ -87,10 +88,13 @@ class QuickSearchDialog(QDialog):
     def _refresh(self, _text=""):
         text = self._search.text()
         self._list.clear()
-        shown = 0
-        for m in self._members:
-            if text.strip() and not self._matcher(m, text):
-                continue
+        if text.strip():
+            members = [m for m in self._members if self._matcher(m, text)]
+            if self._ranker is not None:
+                members.sort(key=lambda m: self._ranker(m, text))
+        else:
+            members = self._members
+        for m in members[:self.MAX_RESULTS]:
             label = (f"{m.get('last_name', '')}, {m.get('first_name', '')}"
                      f"      ·   {m.get('center_id', '')}")
             plan = m.get("health_plan")
@@ -99,9 +103,6 @@ class QuickSearchDialog(QDialog):
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, m.get("center_id"))
             self._list.addItem(item)
-            shown += 1
-            if shown >= self.MAX_RESULTS:
-                break
         if self._list.count():
             self._list.setCurrentRow(0)   # first hit selected so Enter just works
 

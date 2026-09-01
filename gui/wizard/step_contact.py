@@ -67,10 +67,14 @@ class DobLineEdit(QLineEdit):
 
 
 class StepContact(QWidget):
-    def __init__(self, api_key: str = "", center_id: int | None = None, parent=None):
+    def __init__(self, api_key: str = "", center_id: int | None = None,
+                 plans=None, parent=None):
         super().__init__(parent)
         self._api_key = api_key or ""
         self._suggested_center_id = center_id
+        # Plans found in the DB (see get_health_plans); the static tuple is
+        # only a fallback so the dropdown is never empty.
+        self._plans = list(plans) if plans else list(HEALTH_PLANS)
         self._error_label = QLabel("")
         self._error_label.setStyleSheet("color: #d05555; font-size: 11px;")
         self._build()
@@ -99,7 +103,7 @@ class StepContact(QWidget):
         self.gender.addItems(["", "M", "F"])
         self.health_plan = QComboBox()
         self.health_plan.addItem("")
-        self.health_plan.addItems(HEALTH_PLANS)
+        self.health_plan.addItems(self._plans)
         # Phone fields: type just digits; they auto-format to (xxx)-xxx-xxxx on
         # leaving the field, and outline red if the entry isn't 10 digits.
         self.home_tell = PhoneLineEdit()
@@ -122,9 +126,9 @@ class StepContact(QWidget):
         form.addRow("Last Name *", self.last_name)
         form.addRow("Center ID *", self.center_id)
         form.addRow("Member ID *", self.member_id)
-        form.addRow("Date of Birth *", self.dob)
-        form.addRow("Gender", self.gender)
         form.addRow("Health Plan *", self.health_plan)
+        form.addRow("Gender", self.gender)
+        form.addRow("Date of Birth *", self.dob)
         form.addRow("Home Phone", self.home_tell)
         form.addRow("Cell", self.cell)
         form.addRow("", phone_hint)

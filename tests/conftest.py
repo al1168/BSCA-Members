@@ -39,7 +39,10 @@ _CREATE_SQL = {
 # Columns that newer code queries but older test DB fixtures may lack:
 # {table: [(column, type), ...]}. Added if missing and dropped at session end.
 _ADD_COLUMNS = {
-    "Authorization": [("created_at", "DATETIME"), ("Member ID", "TEXT(255)")],
+    "Authorization": [("created_at", "DATETIME"), ("Member ID", "TEXT(255)"),
+                      ("Plan Type", "TEXT(255)")],
+    "Absences": [("Notes", "MEMO")],
+    "Contacts": [("alt_id", "LONG")],
 }
 
 

@@ -13,9 +13,9 @@ def qapp():
     yield app
 
 
-def _abs(id, lt, s, e):
+def _abs(id, lt, s, e, notes=""):
     return {"id": id, "center_id": 1, "leave_type": lt,
-            "start_date": s, "end_date": e}
+            "start_date": s, "end_date": e, "notes": notes}
 
 
 def _widget_with_absences(absences):
@@ -35,9 +35,9 @@ def test_absences_tab_has_action_column_with_edit_buttons(qapp):
     table = w._abs_table
     headers = [table.horizontalHeaderItem(c).text()
                for c in range(table.columnCount())]
-    assert headers == ["ID", "Leave Type", "Start", "End", "Action"]
+    assert headers == ["ID", "Leave Type", "Start", "End", "Notes", "Action"]
     for r in range(2):
-        btn = table.cellWidget(r, 4)
+        btn = table.cellWidget(r, 5)
         assert isinstance(btn, QPushButton) and btn.text() == "Edit"
 
 
@@ -50,5 +50,14 @@ def test_edit_button_passes_its_absence_entry(qapp):
     tab = w._make_absences_tab()          # keep the table's parent alive
     seen = []
     w._edit_absence = lambda entry: seen.append(entry)
-    w._abs_table.cellWidget(1, 4).click()
+    w._abs_table.cellWidget(1, 5).click()
     assert seen == [entries[1]]
+
+
+def test_absences_tab_shows_notes_column(qapp):
+    w = _widget_with_absences([
+        _abs(1, "Vacation", date(2026, 7, 1), date(2026, 7, 3),
+             notes="family trip"),
+    ])
+    tab = w._make_absences_tab()
+    assert w._abs_table.item(0, 4).text() == "family trip"

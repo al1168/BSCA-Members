@@ -93,6 +93,12 @@ class StepAuths(QWidget):
             days_grid.addWidget(cb, i // 4, i % 4)   # 4 per row -> Mon-Thu / Fri-Sun
         auth_layout.addRow("Days:", days_widget)
 
+        # Plan type (MAP/MLTC); the blank first entry keeps it optional.
+        from db.members import PLAN_TYPES
+        self.plan_type = QComboBox()
+        self.plan_type.addItems(PLAN_TYPES)
+        auth_layout.addRow("Plan Type:", self.plan_type)
+
         self.auth_number = QLineEdit()
         self.auth_number.setPlaceholderText("Authorization number (optional)")
         auth_layout.addRow("Auth #:", self.auth_number)
@@ -220,6 +226,7 @@ class StepAuths(QWidget):
                 "auth_days": {n for n, cb in self._day_checks.items()
                               if cb.isChecked()},
                 "auth_number": self.auth_number.text().strip(),
+                "plan_type": self.plan_type.currentText(),
             }
         # Availability: default Mon–Sun 8a–4p, with any added rows substituting
         # their weekday's default. Times come from the free-text field + AM/PM.

@@ -13,7 +13,8 @@ from db.members import (
 
 
 def test_all_members_query_selects_required_columns():
-    for col in ("[Center ID]", "[Last Name]", "[First Name]", "[Health Plan]"):
+    for col in ("[Center ID]", "[Last Name]", "[First Name]", "[Health Plan]",
+                "[alt_id]"):
         assert col in ALL_MEMBERS_QUERY
     assert "ORDER BY [Last Name]" in ALL_MEMBERS_QUERY
 
@@ -45,7 +46,8 @@ def test_insert_availability_targets_correct_table():
 
 def test_insert_absence_targets_correct_table():
     assert "INSERT INTO [Absences]" in INSERT_ABSENCE
-    for col in ("[Center ID]", "[Leave Type]", "[Start_Date]", "[End_Date]"):
+    for col in ("[Center ID]", "[Leave Type]", "[Start_Date]", "[End_Date]",
+                "[Notes]"):
         assert col in INSERT_ABSENCE
 
 
@@ -55,6 +57,7 @@ def test_update_absence_targets_correct_columns():
     assert "[Leave Type]=?" in UPDATE_ABSENCE
     assert "[Start_Date]=?" in UPDATE_ABSENCE
     assert "[End_Date]=?" in UPDATE_ABSENCE
+    assert "[Notes]=?" in UPDATE_ABSENCE
     assert "WHERE [ID]=?" in UPDATE_ABSENCE
 
 
@@ -87,6 +90,13 @@ def test_get_all_members_missing_db_raises(tmp_path):
         get_all_members(str(tmp_path / "nope.accdb"))
 
 
+def test_set_alt_id_targets_correct_column():
+    from db.members import SET_ALT_ID
+    assert "UPDATE [Contacts]" in SET_ALT_ID
+    assert "[alt_id]=?" in SET_ALT_ID
+    assert "WHERE [Center ID]=?" in SET_ALT_ID
+
+
 def test_update_contact_targets_all_editable_fields():
     from db.members import UPDATE_CONTACT
     for col in (
@@ -94,6 +104,7 @@ def test_update_contact_targets_all_editable_fields():
         "[Member ID]", "[Health Plan]", "[Medicaid]", "[Medicare]", "[SSN]",
         "[Language]", "[Case Manager]", "[Home Tell]", "[Cell]", "[Address]",
         "[Emergency]", "[PCP]", "[Hospital]", "[HHA]", "[Admission Date]", "[Notes]",
+        "[alt_id]",
     ):
         assert col in UPDATE_CONTACT, f"Missing column in UPDATE_CONTACT: {col}"
     assert "WHERE [Center ID]=?" in UPDATE_CONTACT
@@ -106,13 +117,22 @@ def test_update_enrollment_end_targets_correct_columns():
     assert "WHERE [ID]=?" in UPDATE_ENROLLMENT_END
 
 
+def test_update_enrollment_targets_correct_columns():
+    from db.members import UPDATE_ENROLLMENT
+    assert "UPDATE [Enrollment]" in UPDATE_ENROLLMENT
+    assert "[start_date]=?" in UPDATE_ENROLLMENT
+    assert "[end_date]=?" in UPDATE_ENROLLMENT
+    assert "WHERE [ID]=?" in UPDATE_ENROLLMENT
+
+
 def test_insert_authorization_includes_health_plan_created_at_member_id():
     from db.members import INSERT_AUTHORIZATION
     assert "[Health Plan]" in INSERT_AUTHORIZATION
     assert "[created_at]" in INSERT_AUTHORIZATION
     assert "[Member ID]" in INSERT_AUTHORIZATION
     assert "[auth_number]" in INSERT_AUTHORIZATION
-    assert INSERT_AUTHORIZATION.count("?") == 10
+    assert "[Plan Type]" in INSERT_AUTHORIZATION
+    assert INSERT_AUTHORIZATION.count("?") == 11
 
 
 def test_latest_authorization_picks_latest_start_then_id():

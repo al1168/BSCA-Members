@@ -8,6 +8,7 @@ from db.members import (
     format_ssn, is_valid_ssn,
     format_medicaid, is_valid_medicaid,
     format_medicare, is_valid_medicare,
+    is_valid_alt_id,
 )
 
 
@@ -31,6 +32,17 @@ def test_is_valid_ssn():
     assert is_valid_ssn("123-45-6789") is True
     assert is_valid_ssn("123456789") is False            # must be dashed form
     assert is_valid_ssn("12-345-6789") is False
+
+
+# ── Alt ID: optional, digits only, fits an Access Long ─────────────────────
+def test_is_valid_alt_id():
+    assert is_valid_alt_id("") is True                   # optional
+    assert is_valid_alt_id("12345") is True
+    assert is_valid_alt_id(" 12345 ") is True            # surrounding spaces ok
+    assert is_valid_alt_id("12a") is False
+    assert is_valid_alt_id("-5") is False                # no sign
+    assert is_valid_alt_id("2147483647") is True         # Access Long max
+    assert is_valid_alt_id("2147483648") is False        # overflows Long
 
 
 # ── Medicaid: AAdddddA ─────────────────────────────────────────────────────

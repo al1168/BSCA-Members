@@ -113,9 +113,17 @@ def test_expired_row_text_is_grayed(qapp, monkeypatch):
     assert table.item(current, 2).foreground().color() != QColor(mt.EXPIRED_FG)
 
 
+def _col(table, label):
+    for c in range(table.columnCount()):
+        it = table.horizontalHeaderItem(c)
+        if it is not None and it.text() == label:
+            return c
+    raise AssertionError(f"no column titled {label!r}")
+
+
 def _status_chip_name(table, row):
     from PyQt6.QtWidgets import QLabel
-    cell = table.cellWidget(row, 8)        # the dedicated Status column
+    cell = table.cellWidget(row, _col(table, "Status"))
     if cell is None:
         return None
     for lbl in cell.findChildren(QLabel):
@@ -149,4 +157,4 @@ def test_auth_number_column_shows_value(qapp, monkeypatch):
     w._db_path = "x"
     tab = w._make_auths_tab()           # keep ref so the table isn't GC'd
     t = w._auth_table
-    assert t.item(0, 6).text() == "AUTH-123"   # Auth Number column
+    assert t.item(0, _col(t, "Auth Number")).text() == "AUTH-123"

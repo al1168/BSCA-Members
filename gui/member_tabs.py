@@ -7,7 +7,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from db.members import (
     get_member_context, format_phone, format_date_only, format_dob_display,
     format_ssn, is_valid_ssn, format_medicaid, is_valid_medicaid,
-    format_medicare, is_valid_medicare,
+    format_medicare, is_valid_medicare, is_valid_alt_id,
     format_ssn_live, format_medicaid_live, format_medicare_live,
 )
 from gui.address_autocomplete import (
@@ -57,6 +57,7 @@ FIELD_LABELS = {
     "home_tell": "Home Phone", "cell": "Cell", "address": "Address",
     "emergency": "Emergency", "pcp": "PCP", "hospital": "Hospital",
     "hha": "HHA", "admission_date": "Admission Date", "notes": "Notes",
+    "alt_id": "Alt ID",
 }
 
 WEEKDAY_NAMES = {
@@ -104,19 +105,29 @@ def set_table_empty_state(table, text: str) -> None:
     table.setItem(0, first_visible, item)
 
 
-def _centered_cell(widget) -> QWidget:
+def _centered_cell(widget, vmargin: int = 4) -> QWidget:
     """Wrap a widget in a table cell that centers it horizontally, keeping it at
     its natural (compact) size rather than stretching it to fill the column.
 
     The widget is pinned to at least its own content size (width and height) so
     the centering stretches, a slightly narrow column, or a short row can never
-    squeeze it and clip its text."""
+    squeeze it and clip its text.
+
+    Beware the space actually available: the view sizes a cell widget to the
+    item's content rect, which the QSS 'QTableWidget::item' padding shrinks well
+    below the row height (a 40px row leaves ~27px). A taller widget needs a
+    smaller `vmargin` rather than more room — there is none.
+
+    The wrapper is transparent (see #pill_cell in the theme) so the row's own
+    background, including the Availability tab's authorized-day tint, shows
+    through instead of being punched out by the table's inherited fill."""
     hint = widget.sizeHint()
     widget.setMinimumWidth(hint.width())
     widget.setMinimumHeight(hint.height())
     cell = QWidget()
+    cell.setObjectName("pill_cell")
     box = QHBoxLayout(cell)
-    box.setContentsMargins(_PILL_CELL_HMARGIN, 4, _PILL_CELL_HMARGIN, 4)
+    box.setContentsMargins(_PILL_CELL_HMARGIN, vmargin, _PILL_CELL_HMARGIN, vmargin)
     box.setSpacing(0)
     box.addStretch()
     box.addWidget(widget)
@@ -234,9 +245,11 @@ def _normalize_value(v) -> str:
 
     Stored values may carry trailing whitespace (Access) and CRLF line
     endings (memo fields), while widget read-back is stripped with LF. Unify
-    both so cosmetic-only differences are not reported as changes.
+    both so cosmetic-only differences are not reported as changes. Non-string
+    values (e.g. alt_id ints) are stringified; None becomes ''.
     """
-    return (v or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    s = "" if v is None else str(v)
+    return s.replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
 def build_change_summary(old: dict, fields: dict) -> list[str]:
@@ -526,6 +539,23 @@ class _PhotoLabel(QLabel):
         super().mousePressEvent(e)
 
 
+class _AltIdLabel(QLabel):
+    """The red header alt-id label; emits `clicked` (left button) so clicking
+    it opens the edit dialog."""
+
+    clicked = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Click to edit the alt id")
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(e)
+
+
 _PENCIL_ICON = None
 
 
@@ -728,13 +758,18 @@ class MemberTabsWidget(QWidget):
     bookmarks_changed = pyqtSignal()
 
     def __init__(self, center_id: int, db_path: str, events_path: str,
-                 api_key: str = "", show_row_ids: bool = False, parent=None):
+                 api_key: str = "", show_row_ids: bool = False, parent=None,
+                 alt_id_key: bytes | None = None):
         super().__init__(parent)
         self._center_id = center_id
         self._db_path = db_path
         self._events_path = events_path
         self._api_key = api_key or ""
         self._show_row_ids = show_row_ids
+        # Session FPE key: alt_id is stored encrypted; with a key set, this
+        # widget displays decrypted values and encrypts edits before saving.
+        # self._member["alt_id"] always holds the stored (cipher) value.
+        self._alt_id_key = alt_id_key
         self._member = None
         from time import perf_counter
         t0 = perf_counter()
@@ -806,6 +841,106 @@ class MemberTabsWidget(QWidget):
             self._header_top_row.insertWidget(   # right after the name label
                 1, badge, alignment=Qt.AlignmentFlag.AlignVCenter)
             self._header_plan_badge = badge
+
+    def _display_alt_id(self):
+        """The alt id as shown to the user: decrypted when a session key is
+        set, the raw stored value otherwise (including values the key can't
+        decrypt). Read via __dict__ so it's safe on __new__-built test
+        widgets."""
+        from db.alt_id_crypto import decrypt_or_raw
+        return decrypt_or_raw(self.__dict__.get("_alt_id_key"),
+                              self._member.get("alt_id"))
+
+    def _refresh_alt_id_label(self):
+        """Show 'Alt ID n' in red under the Center ID when set; otherwise show
+        the '+ alt id' affordance instead. Called at build time and after any
+        alt-id save so the header updates without reopening the member."""
+        # Read via __dict__ so it's safe on the __new__-built widgets used in
+        # tests (a missing attr on an uninitialized QWidget raises, not False).
+        label = self.__dict__.get("_alt_id_label")
+        if label is None:
+            return
+        alt = self._display_alt_id()
+        label.setText("" if alt is None else f"Alt ID {alt}")
+        label.setVisible(alt is not None)
+        btn = self.__dict__.get("_alt_id_add_btn")
+        if btn is not None:
+            btn.setVisible(alt is None)
+
+    def _open_alt_id_dialog(self, existing: int | None = None):
+        """Small dialog to enter a numeric alternative id. Returns
+        (True, value) on save — value is None when the field was left blank
+        to clear an existing id — or (False, None) if cancelled."""
+        from PyQt6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Edit Alt ID" if existing is not None
+                           else "Add Alt ID")
+        form = QFormLayout(dlg)
+        edit = QLineEdit()
+        edit.setPlaceholderText("e.g. 12345")
+        if existing is not None:
+            edit.setText(str(existing))
+            edit.selectAll()
+        form.addRow("Alt ID:", edit)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Save |
+                                QDialogButtonBox.StandardButton.Cancel)
+        btns.rejected.connect(dlg.reject)
+        form.addRow(btns)
+
+        def on_accept():
+            t = edit.text().strip()
+            # Blank clears an existing id; when adding, a value is required.
+            if (not t and existing is None) or not is_valid_alt_id(t):
+                QMessageBox.warning(dlg, "Validation",
+                                    "Enter a numeric id (digits only).")
+                return
+            dlg.accept()
+        btns.accepted.connect(on_accept)
+
+        if not dlg.exec():
+            return (False, None)
+        t = edit.text().strip()
+        return (True, int(t) if t else None)
+
+    def _edit_alt_id(self):
+        """Add/edit dialog for the alt id, from the header's '+ alt id'
+        button or a click on the red alt-id label. The dialog works in
+        display (decrypted) values; the DB write is the stored form —
+        encrypted when a session key is set."""
+        from db.members import set_member_alt_id
+        from db.alt_id_crypto import encrypt_or_raw
+
+        existing_stored = self._member.get("alt_id")
+        saved, alt = self._open_alt_id_dialog(existing=self._display_alt_id())
+        if not saved:
+            return
+        stored = encrypt_or_raw(self.__dict__.get("_alt_id_key"), alt)
+        if stored == existing_stored:
+            return
+        try:
+            set_member_alt_id(self._center_id, stored, self._db_path)
+        except Exception as exc:
+            show_db_error(self, exc)
+            return
+        self._member["alt_id"] = stored
+        self._refresh_alt_id_label()
+        # Keep the Info tab field in sync (if built) without marking the form
+        # dirty — the value is already saved. The field shows display values.
+        info_field = self.__dict__.get("_info_alt_id")
+        if info_field is not None:
+            was_dirty = self.__dict__.get("_dirty", False)
+            info_field.setText("" if alt is None else str(alt))
+            info_field.set_baseline()
+            if not was_dirty:
+                self._set_dirty(False)
+        # Log the stored (cipher) value — the events log lives on disk, so
+        # logging the plaintext would defeat encryption at rest.
+        self._log_event("EDIT", "Alt ID cleared" if stored is None
+                        else f"Alt ID set: {stored}")
+        # The sidebar search matches over the main window's cached member
+        # list — tell it to refresh so the new alt id is searchable now.
+        self.members_changed.emit()
 
     def _refresh_terminated_badge(self):
         """Add or remove the header 'Terminated' badge to match the member's
@@ -1179,6 +1314,18 @@ class MemberTabsWidget(QWidget):
         id_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         photo_col.addWidget(id_label, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self._alt_id_label = _AltIdLabel()
+        self._alt_id_label.setObjectName("alt_id_label")
+        self._alt_id_label.clicked.connect(self._edit_alt_id)
+        photo_col.addWidget(self._alt_id_label,
+                            alignment=Qt.AlignmentFlag.AlignHCenter)
+        self._alt_id_add_btn = QPushButton("+ alt id")
+        self._alt_id_add_btn.setObjectName("alt_id_add")
+        self._alt_id_add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._alt_id_add_btn.clicked.connect(self._edit_alt_id)
+        photo_col.addWidget(self._alt_id_add_btn,
+                            alignment=Qt.AlignmentFlag.AlignHCenter)
+        self._refresh_alt_id_label()
         header.addLayout(photo_col)
         # Top-align via setAlignment, NOT photo_col.addStretch(): an expanding
         # spacer makes the whole header layout report itself as vertically
@@ -1500,6 +1647,9 @@ class MemberTabsWidget(QWidget):
         self._info_hospital = field("hospital")
         self._info_hha      = field("hha")
         self._info_language = field("language")
+        alt = self._display_alt_id()
+        self._info_alt_id = _ViewEditLineEdit(
+            "" if alt is None else str(alt), validator=is_valid_alt_id)
 
         self._info_case_manager   = field("case_manager")
         # Notes is built in the header (always-visible band), not here.
@@ -1546,6 +1696,8 @@ class MemberTabsWidget(QWidget):
         cell(0, "Center ID", self._info_cid)
         cell(1, "Enrollment Start", enroll_lbl)
         cell(2, "Language Spoken", self._info_language)
+        state["row"] += 1
+        cell(0, "Alt ID", self._info_alt_id)
         state["row"] += 1
 
         section("Contact")
@@ -1843,6 +1995,8 @@ class MemberTabsWidget(QWidget):
         self._info_cell.setText(format_phone(m.get("cell", "") or ""))
         self._info_emergency.setText(m.get("emergency", "") or "")
         self._info_case_manager.setText(m.get("case_manager", "") or "")
+        alt = self._display_alt_id()
+        self._info_alt_id.setText("" if alt is None else str(alt))
         self._info_notes.setPlainText(m.get("notes", "") or "")
 
     def _discard_info(self):
@@ -1859,6 +2013,7 @@ class MemberTabsWidget(QWidget):
             (self._info_ssn, is_valid_ssn, "SSN", "xxx-xx-xxxx"),
             (self._info_medicaid, is_valid_medicaid, "Medicaid", "AA12345B"),
             (self._info_medicare, is_valid_medicare, "Medicare", "MBI format"),
+            (self._info_alt_id, is_valid_alt_id, "Alt ID", "digits only"),
         ):
             if w.text().strip() and not valid_fn(w.text().strip()):
                 set_widget_error(w, True)
@@ -1893,9 +2048,25 @@ class MemberTabsWidget(QWidget):
             # value so saving the form never blanks it.
             "admission_date": old.get("admission_date", "") or "",
             "notes":          self._info_notes.toPlainText().strip(),
+            # Canonical int | None (validation above guarantees digits).
+            "alt_id":         (int(self._info_alt_id.text().strip())
+                               if self._info_alt_id.text().strip() else None),
         }
 
-        summary = build_change_summary(old, fields)
+        # The field holds the display (decrypted) value; the DB stores the
+        # encrypted form when a session key is set. FPE is deterministic, so
+        # an untouched value re-encrypts to the identical stored value and is
+        # correctly reported as "no change".
+        from db.alt_id_crypto import encrypt_or_raw
+        alt_plain = fields["alt_id"]
+        fields["alt_id"] = encrypt_or_raw(
+            self.__dict__.get("_alt_id_key"), alt_plain)
+
+        # Compare/summarize in display values so the confirm dialog never
+        # shows ciphertext (bijectivity keeps change detection equivalent).
+        summary = build_change_summary(
+            {**old, "alt_id": self._display_alt_id()},
+            {**fields, "alt_id": alt_plain})
         if not summary:
             self._set_dirty(False)
             return
@@ -1938,11 +2109,13 @@ class MemberTabsWidget(QWidget):
                 admission_date=fields["admission_date"],
                 notes=fields["notes"],
                 db_path=self._db_path,
+                alt_id=fields["alt_id"],
             )
             self._member.update(fields)
             # Refresh the shown values from what was saved so formatting (phone,
             # DOB) appears immediately, without revisiting the profile.
             self._populate_info_fields()
+            self._refresh_alt_id_label()
             for w in self.findChildren(_ViewEditLineEdit):
                 w.set_baseline()                 # saved values -> clear highlight
             self._set_dirty(False)
@@ -1951,6 +2124,8 @@ class MemberTabsWidget(QWidget):
                 from db.members import set_member_long_lat
                 set_member_long_lat(self._center_id, new_long_lat, self._db_path)
             self._log_event("EDIT", "; ".join(summary))
+            # Names / alt id feed the sidebar search — refresh its cached list.
+            self.members_changed.emit()
         except Exception as exc:
             show_db_error(self, exc, "Could Not Save Changes")
 
@@ -1975,7 +2150,7 @@ class MemberTabsWidget(QWidget):
             self._info_language, self._info_case_manager,
             self._info_home_tell, self._info_cell, self._info_address,
             self._info_emergency, self._info_pcp, self._info_hospital,
-            self._info_hha,
+            self._info_hha, self._info_alt_id,
         )
         for w in line_edits:
             w.textChanged.connect(lambda: self._set_dirty(True))
@@ -1986,20 +2161,24 @@ class MemberTabsWidget(QWidget):
 
     # ── Row-ID column visibility (debug setting) ────────────────────────────
 
+    # Bookkeeping columns the debug 'show row IDs' setting governs: the row ID
+    # plus the auto-stamped 'Created' timestamp, both noise for everyday use.
+    _DEBUG_COLUMNS = ("ID", "Created")
+
     def _apply_id_column(self, table) -> None:
-        """Hide the leftmost 'ID' column unless the debug 'show row IDs' setting
-        is on. The column's cells still populate, so row-id lookups (delete,
-        edit, select-by-id) keep working — it is only hidden from view. Called by
-        every table builder so refreshed tabs stay consistent. Tables without an
-        'ID' column (Info emergency, Events) are left untouched."""
+        """Hide the bookkeeping columns ('ID', 'Created') unless the debug
+        'show row IDs' setting is on. The columns' cells still populate, so
+        row-id lookups (delete, edit, select-by-id) keep working — they are only
+        hidden from view. Called by every table builder so refreshed tabs stay
+        consistent. Tables without these columns (Info emergency, Events) are
+        left untouched."""
         # Read via __dict__ so it's safe on the __new__-built widgets used in
         # tests (a missing attr would otherwise raise, not default).
         show = self.__dict__.get("_show_row_ids", False)
         for c in range(table.columnCount()):
             header = table.horizontalHeaderItem(c)
-            if header is not None and header.text() == "ID":
+            if header is not None and header.text() in self._DEBUG_COLUMNS:
                 table.setColumnHidden(c, not show)
-                return
 
     # Tables (one per tab) whose 'ID' column the debug toggle governs.
     _ID_TABLE_ATTRS = ("_enroll_table", "_auth_table", "_transport_table",
@@ -2013,6 +2192,21 @@ class MemberTabsWidget(QWidget):
             table = self.__dict__.get(name)
             if table is not None:
                 self._apply_id_column(table)
+
+    def set_alt_id_key(self, key: bytes | None) -> None:
+        """Apply a changed session alt-id password live: the header label and
+        Info field re-render with the new key's display values, without
+        rebuilding the tabs (so unsaved edits elsewhere survive)."""
+        self._alt_id_key = key
+        self._refresh_alt_id_label()
+        info_field = self.__dict__.get("_info_alt_id")
+        if info_field is not None:
+            was_dirty = self.__dict__.get("_dirty", False)
+            alt = self._display_alt_id()
+            info_field.setText("" if alt is None else str(alt))
+            info_field.set_baseline()
+            if not was_dirty:
+                self._set_dirty(False)
 
     # ── Table tab helper ───────────────────────────────────────────────────
 
@@ -2109,49 +2303,70 @@ class MemberTabsWidget(QWidget):
     # ── Enrollments tab ────────────────────────────────────────────────────
 
     def _make_enrollments_tab(self) -> QWidget:
-        from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView
+        from PyQt6.QtWidgets import (
+            QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView,
+        )
         from datetime import date
 
         w = QWidget()
         layout = QVBoxLayout(w)
         layout.setContentsMargins(0, 12, 0, 0)
 
-        columns = ["ID", "Start Date", "End Date", "Status"]
+        columns = ["ID", "Start Date", "End Date", "Status", "Action"]
         table = QTableWidget(len(self._enrollments), len(columns))
         table.setHorizontalHeaderLabels(columns)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        table.horizontalHeader().setStretchLastSection(True)
+        # Columns hug their content (dates stay compact, like the Auths tab);
+        # leftover width stays plain table background. Action is fixed below to
+        # fit the widest Edit/Terminate row (ResizeToContents mis-measures
+        # widget-only columns and clips the buttons).
+        hdr = table.horizontalHeader()
+        hdr.setStretchLastSection(False)
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
+        table.verticalHeader().setDefaultSectionSize(40)  # room for action buttons
 
         from db.members import enrollment_active, sort_enrollments_active_first
 
         today = date.today()
+        action_wraps = []
         # Active (in-effect) enrollments on top, ended ones below; each by start
         # date, most recent first.
         for r, e in enumerate(sort_enrollments_active_first(self._enrollments, today)):
             end = e["end_date"]
+            active = enrollment_active(e, today)
             table.setItem(r, 0, QTableWidgetItem(str(e["id"])))
             table.setItem(r, 1, QTableWidgetItem(str(e["start_date"])))
             table.setItem(r, 2, QTableWidgetItem(str(end) if end else "ongoing"))
-            if enrollment_active(e, today):
+            table.setItem(r, 3, QTableWidgetItem("Active" if active else "Ended"))
+            edit_btn = QPushButton("Edit")
+            edit_btn.setObjectName("btn_edit")
+            edit_btn.clicked.connect(
+                lambda _=False, entry=e: self._edit_enrollment(entry)
+            )
+            # Wrap so the buttons hug their text instead of stretching into
+            # full-width bars across the Action column.
+            wrap = QWidget()
+            hl = QHBoxLayout(wrap)
+            hl.setContentsMargins(6, 2, 6, 2)
+            hl.addWidget(edit_btn)
+            if active:
                 btn = QPushButton("Terminate…")
                 btn.setObjectName("btn_terminate")
                 btn.clicked.connect(
                     lambda _=False, rid=e["id"]: self._terminate_enrollment(rid)
                 )
-                # Wrap so the button hugs its text instead of stretching into a
-                # full-width red bar across the stretched Status column.
-                wrap = QWidget()
-                hl = QHBoxLayout(wrap)
-                hl.setContentsMargins(6, 2, 6, 2)
-                hl.addWidget(QLabel("Active"))
-                hl.addStretch()
                 hl.addWidget(btn)
-                table.setCellWidget(r, 3, wrap)
-            else:
-                table.setItem(r, 3, QTableWidgetItem("Ended"))
+            hl.addStretch()
+            table.setCellWidget(r, 4, wrap)
+            action_wraps.append(wrap)
+
+        # Fix Action to the widest row's real size hint (plus slack) so the
+        # buttons never clip; the empty-table floor keeps the header readable.
+        widest = max((w_.sizeHint().width() for w_ in action_wraps), default=0)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        table.setColumnWidth(4, max(widest + 36, 140))
 
         self._apply_id_column(table)
         set_table_empty_state(
@@ -2228,6 +2443,76 @@ class MemberTabsWidget(QWidget):
                 self._log_event("ENROLL", f"Enrollment added: {s} – {e or 'ongoing'}")
             except Exception as exc:
                 show_db_error(self, exc)
+
+    def _edit_enrollment(self, entry: dict):
+        from PyQt6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox
+        from datetime import date
+        from db.members import (
+            update_enrollment, enrollment_active, has_active_enrollment,
+        )
+        from monthly_schedule.db import get_enrollments
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Edit Enrollment")
+        form = QFormLayout(dlg)
+        start = DateLineEdit()
+        old_start = _as_date(entry.get("start_date"))
+        if old_start:
+            start.set_pydate(old_start)
+        end = DateLineEdit()        # blank = ongoing
+        old_end = _as_date(entry.get("end_date"))
+        if old_end:
+            end.set_pydate(old_end)
+        form.addRow("Start Date:", start)
+        form.addRow("End Date (blank = ongoing):", end)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
+                                QDialogButtonBox.StandardButton.Cancel)
+        btns.rejected.connect(dlg.reject)
+        form.addRow(btns)
+
+        def on_accept():
+            ok = start.flag_validity(required=True)
+            ok = end.flag_validity() and ok
+            if not ok:
+                QMessageBox.warning(dlg, "Validation",
+                    "Enter a valid Start Date (MM/DD/YYYY); leave End blank for "
+                    "ongoing.")
+                return
+            e = end.to_pydate()
+            if e and e < start.to_pydate():
+                QMessageBox.warning(dlg, "Validation",
+                    "End Date can't be before the Start Date.")
+                return
+            dlg.accept()
+        btns.accepted.connect(on_accept)
+
+        if not dlg.exec():
+            return
+        s = start.to_pydate()
+        e = end.to_pydate()         # None when blank (ongoing)
+        # A member can have only one active enrollment at a time. Block an edit
+        # that would make this one active alongside another in-effect enrollment.
+        today = date.today()
+        others = [x for x in self._enrollments if x["id"] != entry["id"]]
+        if enrollment_active({"end_date": e}, today) \
+                and has_active_enrollment(others, today):
+            QMessageBox.warning(
+                self, "Active enrollment exists",
+                "This member already has another active enrollment. Terminate "
+                "it before making this one active.")
+            return
+        try:
+            update_enrollment(entry["id"], s, e, self._db_path)
+            self._enrollments = get_enrollments(self._center_id, self._db_path)
+            self._refresh_tab(1, self._make_enrollments_tab())
+            self._refresh_terminated_badge()
+            self.members_changed.emit()
+            self._log_event(
+                "ENROLL",
+                f"Enrollment edited: {entry['start_date']} – "
+                f"{entry['end_date'] or 'ongoing'} → {s} – {e or 'ongoing'}")
+        except Exception as exc:
+            show_db_error(self, exc)
 
     def _delete_enrollment(self, table):
         row = table.currentRow()
@@ -2316,8 +2601,8 @@ class MemberTabsWidget(QWidget):
         layout.setContentsMargins(0, 12, 0, 0)
 
         columns = ["ID", "Auth Start", "Auth End", "Days", "Health Plan",
-                   "Member ID", "Auth Number", "Created", "Status", "Transport",
-                   "Document", "Action"]
+                   "Plan Type", "Member ID", "Auth Number", "Created", "Status",
+                   "Transport", "Document", "Action"]
         ci = {name: i for i, name in enumerate(columns)}
         table = QTableWidget(len(self._authorizations), len(columns))
         table.setHorizontalHeaderLabels(columns)
@@ -2383,6 +2668,9 @@ class MemberTabsWidget(QWidget):
             else:
                 table.setItem(r, ci["Health Plan"], QTableWidgetItem(""))
 
+            # Plan type (MAP/MLTC); blank for rows that predate the column.
+            table.setItem(r, ci["Plan Type"], QTableWidgetItem(a.get("plan_type") or ""))
+
             # Member ID (per-authorization); blank when unset.
             table.setItem(r, ci["Member ID"], QTableWidgetItem(a.get("member_id") or ""))
 
@@ -2441,8 +2729,8 @@ class MemberTabsWidget(QWidget):
                 continue
 
             # Expired rows are dimmed so the in-effect ones stand out.
-            for name in ("ID", "Auth Start", "Auth End", "Member ID",
-                         "Auth Number", "Created"):
+            for name in ("ID", "Auth Start", "Auth End", "Plan Type",
+                         "Member ID", "Auth Number", "Created"):
                 item = table.item(r, ci[name])
                 if item is not None:
                     item.setForeground(QColor(EXPIRED_FG))
@@ -2572,14 +2860,14 @@ class MemberTabsWidget(QWidget):
 
     def _open_auth_dialog(self, existing: dict | None = None) -> dict | None:
         """Build the Add/Edit Authorization dialog. Returns a dict with
-        auth_start, auth_end, days, health_plan, member_id — or None if cancelled.
-        Pre-fills from `existing` when editing."""
+        auth_start, auth_end, days, health_plan, plan_type, member_id — or None
+        if cancelled. Pre-fills from `existing` when editing."""
         from PyQt6.QtWidgets import (
             QDialog, QFormLayout, QDateEdit, QCheckBox, QComboBox,
             QHBoxLayout, QDialogButtonBox, QWidget, QLineEdit,
         )
         from PyQt6.QtCore import QDate
-        from db.members import HEALTH_PLANS
+        from db.members import HEALTH_PLANS, PLAN_TYPES
 
         dlg = QDialog(self)
         dlg.setWindowTitle("Edit Authorization" if existing else "Add Authorization")
@@ -2617,6 +2905,15 @@ class MemberTabsWidget(QWidget):
             if idx >= 0:
                 plan_combo.setCurrentIndex(idx)
 
+        # Plan type (MAP/MLTC); the blank entry covers rows that predate the
+        # column so editing one doesn't force a value onto it.
+        plan_type_combo = QComboBox()
+        plan_type_combo.addItems(PLAN_TYPES)
+        if existing:
+            idx = plan_type_combo.findText(existing.get("plan_type", "") or "")
+            if idx >= 0:
+                plan_type_combo.setCurrentIndex(idx)
+
         # Member ID per authorization; defaults to the member's current Member ID
         # for a new auth, or the auth's own value when editing.
         member_id_edit = QLineEdit(
@@ -2632,6 +2929,7 @@ class MemberTabsWidget(QWidget):
         form.addRow("Auth End:", auth_end)
         form.addRow("Days:", days_widget)
         form.addRow("Health Plan:", plan_combo)
+        form.addRow("Plan Type:", plan_type_combo)
         form.addRow("Member ID:", member_id_edit)
         form.addRow("Auth Number:", auth_number_edit)
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
@@ -2659,6 +2957,7 @@ class MemberTabsWidget(QWidget):
             "auth_end": auth_end.to_pydate(),
             "days": {n for n, cb in day_checks.items() if cb.isChecked()},
             "health_plan": plan_combo.currentText(),
+            "plan_type": plan_type_combo.currentText(),
             "member_id": member_id_edit.text().strip(),
             "auth_number": auth_number_edit.text().strip(),
         }
@@ -2694,6 +2993,7 @@ class MemberTabsWidget(QWidget):
                 result["days"], None, None, result["health_plan"], self._db_path,
                 member_id=result["member_id"],
                 auth_number=result["auth_number"],
+                plan_type=result["plan_type"],
             )
             self._after_auth_change(
                 f"Auth added: {result['auth_start']} – {result['auth_end']} · "
@@ -2717,6 +3017,7 @@ class MemberTabsWidget(QWidget):
                 result["days"], result["health_plan"], self._db_path,
                 member_id=result["member_id"],
                 auth_number=result["auth_number"],
+                plan_type=result["plan_type"],
             )
             self._after_auth_change(
                 f"Auth edited: {result['auth_start']} – {result['auth_end']} · "
@@ -3374,8 +3675,15 @@ class MemberTabsWidget(QWidget):
             QSizePolicy,
         )
         from PyQt6.QtGui import QColor
+        from gui.theme import current_tokens
         day_names = WEEKDAY_NAMES
         today = date.today()
+
+        # Same set the Current Schedule strip tints, so the strip and the rows
+        # below it can never disagree about which days are authorized. Empty
+        # when no auth is in effect, which simply leaves every row untinted.
+        auth_days = authorized_weekdays(self._authorizations, today)
+        auth_tint = QColor(current_tokens()["success_bg"])
 
         w = QWidget()
         layout = QVBoxLayout(w)
@@ -3403,9 +3711,11 @@ class MemberTabsWidget(QWidget):
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(SPACER_COL, QHeaderView.ResizeMode.Stretch)
         table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(40)  # roomier rows; pills uncramped
+        ROW_H = 40                    # roomier rows; pills uncramped
+        table.verticalHeader().setDefaultSectionSize(ROW_H)
 
         status_chips = []
+        edit_btns = []
         row_statuses = []
         for r, a in enumerate(visible):
             status = avail_status(a, today)
@@ -3436,14 +3746,40 @@ class MemberTabsWidget(QWidget):
             btn = QPushButton("Edit")
             btn.setObjectName("btn_edit")
             btn.clicked.connect(lambda _=False, av=a: self._edit_avail(av))
-            table.setCellWidget(r, 7, btn)
+            edit_btns.append(btn)
+            # Centered at its natural width (like the Upcoming chip) rather than
+            # filling the cell, so the authorized-day tint shows around it. A
+            # button's height hint is taller than a pill's and the cell is only
+            # ~27px, so it needs the tighter inset to fit without being clipped.
+            table.setCellWidget(r, 7, _centered_cell(btn, vmargin=2))
 
             spacer = QTableWidgetItem("")
             spacer.setFlags(Qt.ItemFlag.NoItemFlags)
             spacer.setBackground(QColor(120, 124, 140, 18))
             table.setItem(r, SPACER_COL, spacer)
 
+            # Authorized days get a light-green band across the whole row (the
+            # tint the strip's legend swatch advertises). Status and Action hold
+            # cell widgets, not items, so they need an empty backing item to
+            # paint under — widgets are transparent and draw on top of it. The
+            # trailing spacer keeps its own gray. Selection still wins: the QSS
+            # gives QTableWidget::item:selected its own background.
+            if a["day_of_week"] in auth_days:
+                for c in range(SPACER_COL):
+                    it = table.item(r, c)
+                    if it is None:
+                        it = QTableWidgetItem("")
+                        it.setFlags(Qt.ItemFlag.NoItemFlags)
+                        table.setItem(r, c, it)
+                    it.setBackground(auth_tint)
+                table.item(r, 1).setToolTip("Authorized day")
+
         _fit_pill_column(table, 6, status_chips, floor=96)
+        # Action gets a bit more air than ResizeToContents' tight hug around
+        # the Edit buttons.
+        edit_w = max((b.sizeHint().width() for b in edit_btns), default=0)
+        hdr.setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
+        table.setColumnWidth(7, max(edit_w + 2 * _PILL_CELL_HMARGIN + 24, 116))
 
         self._apply_id_column(table)
         set_table_empty_state(
@@ -4122,7 +4458,7 @@ class MemberTabsWidget(QWidget):
         layout = QVBoxLayout(w)
         layout.setContentsMargins(0, 12, 0, 0)
 
-        columns = ["ID", "Leave Type", "Start", "End", "Action"]
+        columns = ["ID", "Leave Type", "Start", "End", "Notes", "Action"]
         table = QTableWidget(len(self._absences), len(columns))
         table.setHorizontalHeaderLabels(columns)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -4130,8 +4466,8 @@ class MemberTabsWidget(QWidget):
         hdr = table.horizontalHeader()
         hdr.setStretchLastSection(False)
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(34)
 
@@ -4140,10 +4476,11 @@ class MemberTabsWidget(QWidget):
             table.setItem(r, 1, QTableWidgetItem(a["leave_type"] or ""))
             table.setItem(r, 2, QTableWidgetItem(str(a["start_date"])))
             table.setItem(r, 3, QTableWidgetItem(str(a["end_date"])))
+            table.setItem(r, 4, QTableWidgetItem(a.get("notes", "") or ""))
             btn = QPushButton("Edit")
             btn.setObjectName("btn_edit")
             btn.clicked.connect(lambda _=False, ab=a: self._edit_absence(ab))
-            table.setCellWidget(r, 4, btn)
+            table.setCellWidget(r, 5, btn)
 
         self._apply_id_column(table)
         set_table_empty_state(table, "Nothing here yet — click + Add.")
@@ -4165,10 +4502,10 @@ class MemberTabsWidget(QWidget):
         return w
 
     def _open_absence_dialog(self, existing: dict | None = None):
-        """Add/Edit dialog: leave type + date range. Returns a dict with
-        leave_type, start, end — or None if cancelled."""
+        """Add/Edit dialog: leave type + date range + notes. Returns a dict
+        with leave_type, start, end, notes — or None if cancelled."""
         from PyQt6.QtWidgets import (
-            QDialog, QFormLayout, QComboBox, QDialogButtonBox,
+            QDialog, QFormLayout, QComboBox, QPlainTextEdit, QDialogButtonBox,
         )
         from datetime import date
         from db.members import LEAVE_TYPES
@@ -4181,12 +4518,15 @@ class MemberTabsWidget(QWidget):
         leave_combo.addItems(LEAVE_TYPES)
         start = DateLineEdit()
         end = DateLineEdit()
+        notes_edit = QPlainTextEdit()
+        notes_edit.setFixedHeight(60)
         if existing:
             idx = leave_combo.findText(existing.get("leave_type") or "")
             if idx >= 0:
                 leave_combo.setCurrentIndex(idx)
             start.set_pydate(existing.get("start_date") or date.today())
             end.set_pydate(existing.get("end_date") or date.today())
+            notes_edit.setPlainText(existing.get("notes", "") or "")
         else:
             start.set_pydate(date.today())
             end.set_pydate(date.today())
@@ -4194,6 +4534,7 @@ class MemberTabsWidget(QWidget):
         form.addRow("Leave Type:", leave_combo)
         form.addRow("Start Date:", start)
         form.addRow("End Date:", end)
+        form.addRow("Notes:", notes_edit)
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
                                 QDialogButtonBox.StandardButton.Cancel)
         btns.rejected.connect(dlg.reject)
@@ -4219,11 +4560,11 @@ class MemberTabsWidget(QWidget):
             "leave_type": leave_combo.currentText(),
             "start": start.to_pydate(),
             "end": end.to_pydate(),
+            "notes": notes_edit.toPlainText().strip(),
         }
 
     def _add_absence(self):
-        from db.members import insert_absence
-        from monthly_schedule.db import get_absences
+        from db.members import insert_absence, get_absences
 
         result = self._open_absence_dialog()
         if not result:
@@ -4233,7 +4574,8 @@ class MemberTabsWidget(QWidget):
                 weekdays_in_range(s, e), "Add this absence"):
             return
         try:
-            insert_absence(self._center_id, lt, s, e, self._db_path)
+            insert_absence(self._center_id, lt, s, e, result["notes"],
+                           self._db_path)
             self._absences = get_absences(self._center_id, self._db_path)
             self._refresh_tab(6, self._make_absences_tab())
             self._log_event("ABS", f"Absence added: {lt} · {s} – {e}")
@@ -4241,8 +4583,7 @@ class MemberTabsWidget(QWidget):
             show_db_error(self, exc)
 
     def _edit_absence(self, entry: dict):
-        from db.members import update_absence
-        from monthly_schedule.db import get_absences
+        from db.members import update_absence, get_absences
 
         result = self._open_absence_dialog(existing=entry)
         if not result:
@@ -4252,7 +4593,8 @@ class MemberTabsWidget(QWidget):
                 weekdays_in_range(s, e), "Save this absence"):
             return
         try:
-            update_absence(entry["id"], lt, s, e, self._db_path)
+            update_absence(entry["id"], lt, s, e, result["notes"],
+                           self._db_path)
             self._absences = get_absences(self._center_id, self._db_path)
             self._refresh_tab(6, self._make_absences_tab())
             self._log_event("ABS", f"Absence edited: {lt} · {s} – {e}")
@@ -4266,8 +4608,7 @@ class MemberTabsWidget(QWidget):
         record_id = int(table.item(row, 0).text())
         if QMessageBox.question(self, "Confirm", "Delete this absence?") \
                 == QMessageBox.StandardButton.Yes:
-            from db.members import delete_absence
-            from monthly_schedule.db import get_absences
+            from db.members import delete_absence, get_absences
             entry = next((a for a in self._absences if a["id"] == record_id), None)
             try:
                 delete_absence(record_id, self._db_path)

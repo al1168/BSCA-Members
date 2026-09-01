@@ -25,6 +25,22 @@ def test_no_comma_substring(qapp):
     assert not matches_search(_m("Lee", "Bob"), "xyz")
 
 
+# ── alt id: substring match, same semantics as center id ───────────────────
+def test_alt_id_substring(qapp):
+    from gui.main_window import matches_search
+    m = {**_m("Lee", "Bob", 10000), "alt_id": 555123}
+    assert matches_search(m, "555123")                     # full alt id
+    assert matches_search(m, "5551")                       # substring
+    assert not matches_search(m, "9999")
+
+
+def test_alt_id_none_or_missing_is_safe(qapp):
+    from gui.main_window import matches_search
+    assert not matches_search({**_m("Lee", "Bob"), "alt_id": None}, "555")
+    assert not matches_search(_m("Lee", "Bob"), "555")     # key absent
+    assert matches_search({**_m("Lee", "Bob"), "alt_id": None}, "")  # empty q
+
+
 def test_empty_or_blank_query_matches_all(qapp):
     from gui.main_window import matches_search
     assert matches_search(_m("Lee", "Bob"), "")
@@ -88,3 +104,25 @@ def test_dob_search_edge_cases(qapp):
     from gui.main_window import matches_search
     assert not matches_search(_md(None), "1/5/2000")     # member has no DOB
     assert not matches_search(_md(date(2000, 1, 5)), "/")  # slash only, no digits
+
+
+# ── session decryption key: the corpus is searched by decrypted alt id ──────
+def test_decrypt_corpus_alt_ids(qapp):
+    from gui.main_window import decrypt_corpus_alt_ids, matches_search
+    from db.alt_id_crypto import derive_key, encrypt_alt_id
+    key = derive_key("test-pass")
+    members = [
+        {**_m("Lee", "Bob", 1), "alt_id": encrypt_alt_id(key, 4321)},
+        {**_m("Wong", "Ann", 2), "alt_id": None},
+    ]
+    decrypt_corpus_alt_ids(members, key)
+    assert members[0]["alt_id"] == 4321
+    assert members[1]["alt_id"] is None
+    assert matches_search(members[0], "4321")
+
+
+def test_decrypt_corpus_noop_without_key(qapp):
+    from gui.main_window import decrypt_corpus_alt_ids
+    members = [{**_m("Lee", "Bob", 1), "alt_id": 555}]
+    decrypt_corpus_alt_ids(members, None)
+    assert members[0]["alt_id"] == 555

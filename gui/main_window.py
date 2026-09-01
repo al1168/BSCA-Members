@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QEvent, QObject
 from PyQt6.QtGui import (
     QTextDocument, QAbstractTextDocumentLayout, QShortcut, QKeySequence,
+    QGuiApplication,
 )
 
 from settings import save_settings
@@ -54,8 +55,8 @@ def matches_search(member: dict, text: str) -> bool:
     before the first comma is an exact, case-insensitive last-name match, and
     the text after it is a first-name prefix (empty -> last-name only). A slash
     is the trigger for date-of-birth mode (e.g. '1/1/2000' or a prefix like
-    '1/1'). Otherwise, a substring match over last name, first name, and center
-    id.
+    '1/1'). Otherwise, a substring match over last name, first name, center
+    id, and alt id.
     """
     q = text.strip()
     if "," in q:
@@ -70,9 +71,53 @@ def matches_search(member: dict, text: str) -> bool:
     if "/" in q:
         return _dob_matches(member.get("dob"), q)
     ql = q.lower()
+    alt = member.get("alt_id")
     return (ql in (member.get("last_name") or "").lower()
             or ql in (member.get("first_name") or "").lower()
-            or ql in str(member.get("center_id", "")))
+            or ql in str(member.get("center_id", ""))
+            or (alt is not None and ql in str(alt)))
+
+
+def decrypt_corpus_alt_ids(members: list, key) -> None:
+    """Replace each corpus member's alt_id with its decrypted display value,
+    in place, so search/matching sees what the user sees when a session
+    decryption key is set. No-op when key is None. The DB itself always
+    keeps the ciphertext — this touches only the in-memory search corpus."""
+    if key is None:
+        return
+    from db.alt_id_crypto import decrypt_or_raw
+    for m in members:
+        m["alt_id"] = decrypt_or_raw(key, m.get("alt_id"))
+
+
+def search_rank_key(member: dict, text: str):
+    """Sort key ranking search results by relevance to `text`.
+
+    A digit-only query is an ID search: the member whose center id (or alt id)
+    equals the query sorts first, then id-prefix matches, then everything else,
+    numerically by center id within each tier. Any other query is a name
+    search: members whose last or first name starts with the query sort before
+    mid-string matches, alphabetically within each tier. Keys from different
+    queries use different tuple shapes, so a key is only comparable to others
+    produced with the same query (fine — sorting always fixes the query).
+    """
+    q = text.strip().lower()
+    if q.isdigit():
+        cid = member.get("center_id")
+        cid_s = "" if cid is None else str(cid)
+        alt = member.get("alt_id")
+        alt_s = "" if alt is None else str(alt)
+        if q in (cid_s, alt_s):
+            tier = 0
+        elif cid_s.startswith(q) or alt_s.startswith(q):
+            tier = 1
+        else:
+            tier = 2
+        return (tier, int(cid_s) if cid_s.isdigit() else float("inf"))
+    last = (member.get("last_name") or "").strip().lower()
+    first = (member.get("first_name") or "").strip().lower()
+    tier = 0 if (last.startswith(q) or first.startswith(q)) else 1
+    return (tier, last, first)
 
 
 class _MemberItemDelegate(QStyledItemDelegate):
@@ -150,8 +195,11 @@ class MainWindow(QMainWindow):
         self._settings_path = settings_path
         self._last_center_id = None
         self._terminated_ids = set()
+        # Session-only alt-id decryption password — never persisted; typed in
+        # the Settings dialog and gone when the app closes.
+        self._alt_id_password = ""
         from version import app_version
-        self.setWindowTitle(f"Bowery Care Manager — {app_version()}")
+        self.setWindowTitle(f"Care Manager — {app_version()}")
         self._apply_default_geometry()
         self._build_ui()
         self._load_members()
@@ -272,6 +320,14 @@ class MainWindow(QMainWindow):
         btn_expiring.clicked.connect(self._open_expiring_report)
         toolbar.addWidget(btn_expiring)
 
+        btn_absences = QPushButton("🏥  Absences")
+        btn_absences.setObjectName("btn_absence_report")
+        btn_absences.setToolTip(
+            "Spreadsheet of active members' absences overlapping a chosen "
+            "month")
+        btn_absences.clicked.connect(self._open_absence_report)
+        toolbar.addWidget(btn_absences)
+
         btn_export = QPushButton("⬇  Export")
         btn_export.setObjectName("btn_export")
         btn_export.setToolTip(
@@ -340,6 +396,7 @@ class MainWindow(QMainWindow):
         try:
             from db.members import get_all_members, get_terminated_center_ids
             self._all_members = get_all_members(db_path)
+            decrypt_corpus_alt_ids(self._all_members, self._alt_id_key())
             try:
                 self._terminated_ids = get_terminated_center_ids(db_path)
             except Exception as exc:
@@ -412,6 +469,8 @@ class MainWindow(QMainWindow):
 
     def _filter_members(self, text: str):
         filtered = [m for m in self._all_members if matches_search(m, text)]
+        if text.strip():
+            filtered.sort(key=lambda m: search_rank_key(m, text))
         self._populate_list(filtered, search_text=text)
 
     def eventFilter(self, obj, event):
@@ -502,7 +561,8 @@ class MainWindow(QMainWindow):
         if not self._all_members:
             return
         from gui.quick_search import QuickSearchDialog
-        dlg = QuickSearchDialog(self._all_members, matches_search, self)
+        dlg = QuickSearchDialog(self._all_members, matches_search, self,
+                                ranker=search_rank_key)
         dlg.chosen.connect(self._jump_to_member)
         self._quick_search_dlg = dlg
         dlg.show()
@@ -539,8 +599,10 @@ class MainWindow(QMainWindow):
         api_key = self._settings.get("google_api_key", "")
         show_row_ids = self._settings.get("show_row_ids", False)
         widget = MemberTabsWidget(center_id, db_path, events_path, api_key,
-                                  show_row_ids)
+                                  show_row_ids,
+                                  alt_id_key=self._alt_id_key())
         widget.members_changed.connect(self._refresh_terminated_marks)
+        widget.members_changed.connect(self._refresh_search_corpus)
         widget.bookmarks_changed.connect(self._update_bookmark_count)
         self._set_detail(widget)
         _FirstPaintLogger(widget, t0, center_id)
@@ -564,6 +626,26 @@ class MainWindow(QMainWindow):
         self._member_list.viewport().update()
         self._update_member_counts()
         self._refresh_notifications()
+
+    def _refresh_search_corpus(self):
+        """Re-read the member list the search box matches against, so edits
+        made in the open member (name, alt id) are searchable immediately —
+        without restarting. Only re-renders the sidebar when a search filter
+        is active, to leave the current selection undisturbed otherwise."""
+        from db.members import get_all_members
+        db_path = self._settings.get("db_path", "")
+        if not db_path:
+            return
+        try:
+            self._all_members = get_all_members(db_path)
+        except Exception as exc:
+            import crash_log
+            crash_log.log_warning(f"refresh search corpus failed: {exc!r}")
+            return
+        decrypt_corpus_alt_ids(self._all_members, self._alt_id_key())
+        text = self._search.text() if getattr(self, "_search", None) else ""
+        if text.strip():
+            self._filter_members(text)
 
     def _compute_notifications(self) -> dict:
         """Expiring/expired auth buckets for active members (35-day window)."""
@@ -710,6 +792,18 @@ class MainWindow(QMainWindow):
         ExpiringReportDialog(db_path, self._all_members,
                              self._terminated_ids, self).exec()
 
+    def _open_absence_report(self):
+        """Monthly absences report: pick a month and year, save a record
+        sheet of every absence overlapping it."""
+        db_path = self._settings.get("db_path", "")
+        if not db_path:
+            QMessageBox.warning(self, "No Database",
+                "Set a database path in Settings before running reports.")
+            return
+        from gui.absence_report import AbsenceReportDialog
+        AbsenceReportDialog(db_path, self._all_members,
+                            self._terminated_ids, self).exec()
+
     def _export_members(self):
         """Save the full member roster (info + latest enrollment + today's
         active auth + first emergency contact) as an .xlsx spreadsheet."""
@@ -755,11 +849,25 @@ class MainWindow(QMainWindow):
         if done.clickedButton() is open_btn:
             os.startfile(out_path)
 
+    def _alt_id_key(self):
+        """Derived key for the session alt-id password (None when unset)."""
+        from db.alt_id_crypto import cached_key
+        return cached_key(self._alt_id_password)
+
     def _open_settings(self):
-        dlg = SettingsDialog(self._settings, self)
+        dlg = SettingsDialog(self._settings, self,
+                             alt_id_password=self._alt_id_password)
         if dlg.exec():
             self._settings.update(dlg.result_settings())
             save_settings(self._settings, self._settings_path)
+            self._alt_id_password = dlg.result_alt_id_password()
+            # First key derivation (PBKDF2) blocks ~0.15s — warm it here under
+            # a wait cursor; every later use hits the cache.
+            QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                self._alt_id_key()
+            finally:
+                QGuiApplication.restoreOverrideCursor()
             # Drop cached DB handles so the new path is used on next access.
             from db.members import close_connections
             close_connections()
@@ -768,10 +876,11 @@ class MainWindow(QMainWindow):
             self._refresh_list_theme()
             self._update_db_indicator()
             self._load_members()
-            # Apply the row-ID debug toggle to the open member live (no rebuild,
-            # so unsaved edits survive).
+            # Apply the row-ID debug toggle and the alt-id key to the open
+            # member live (no rebuild, so unsaved edits survive).
             from gui.member_tabs import MemberTabsWidget
             current = (self._detail_stack.widget(1)
                        if self._detail_stack.count() > 1 else None)
             if isinstance(current, MemberTabsWidget):
                 current.set_show_row_ids(self._settings.get("show_row_ids", False))
+                current.set_alt_id_key(self._alt_id_key())

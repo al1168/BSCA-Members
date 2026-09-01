@@ -40,7 +40,17 @@ class AddMemberWizard(QDialog):
             import crash_log
             crash_log.log_warning(f"suggest_next_center_id failed: {exc!r}")
             suggested_cid = None
-        self._step_contact = StepContact(self._api_key, center_id=suggested_cid)
+        # Health plans come from the DB so new insurances show up without a
+        # code change; StepContact falls back to the static tuple on None.
+        try:
+            import db.members
+            plans = db.members.get_health_plans(self._db_path)
+        except Exception as exc:
+            import crash_log
+            crash_log.log_warning(f"get_health_plans failed: {exc!r}")
+            plans = None
+        self._step_contact = StepContact(self._api_key, center_id=suggested_cid,
+                                         plans=plans)
         self._step_enrollment = StepEnrollment()
         self._step_auths = StepAuths()
         self._step_review = StepReview()

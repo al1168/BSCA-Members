@@ -63,7 +63,20 @@ def test_get_all_members_required_keys():
     members = get_all_members(TEST_DB)
     for m in members:
         assert set(m.keys()) == {"center_id", "last_name", "first_name",
-                                 "health_plan", "dob"}
+                                 "health_plan", "dob", "alt_id"}
+
+
+# ── get_health_plans ───────────────────────────────────────────────────
+
+def test_get_health_plans_covers_every_plan_in_contacts():
+    """The wizard dropdown must offer every plan actually present in the DB."""
+    from db.members import get_all_members, get_health_plans
+    contact_plans = {m["health_plan"].strip() for m in get_all_members(TEST_DB)}
+    contact_plans.discard("")
+    plans = get_health_plans(TEST_DB)
+    assert plans
+    assert plans == sorted(plans, key=str.upper)
+    assert contact_plans <= set(plans)
 
 
 # ── center_id_exists ───────────────────────────────────────────────────
@@ -175,11 +188,12 @@ def test_get_availability_returns_list():
 
 
 def test_get_absences_returns_list():
-    from db.members import get_all_members
-    from monthly_schedule.db import get_absences
+    from db.members import get_all_members, get_absences
     members = get_all_members(TEST_DB)
     result = get_absences(members[0]["center_id"], TEST_DB)
     assert isinstance(result, list)
+    for row in result:
+        assert "notes" in row
 
 
 # ── get_member_photo ──────────────────────────────────────────────────
@@ -224,6 +238,9 @@ def test_get_member_context_returns_all_contact_fields():
     ):
         assert key in m, f"Missing key in member context: {key}"
         assert m[key] is not None, f"Key {key!r} is None (should be '' for missing)"
+    # alt_id is legitimately None when unset — assert presence and type only.
+    assert "alt_id" in m
+    assert m["alt_id"] is None or isinstance(m["alt_id"], int)
 
 
 # ── connection caching ─────────────────────────────────────────────────
@@ -259,7 +276,7 @@ def test_write_is_visible_through_cached_read_connection():
             m["dob"], m["member_id"], m["health_plan"], m["medicaid"], m["medicare"],
             m["ssn"], m["language"], m["case_manager"], m["home_tell"], m["cell"],
             m["address"], m["emergency"], m["pcp"], m["hospital"], m["hha"],
-            m["admission_date"], notes, TEST_DB,
+            m["admission_date"], notes, TEST_DB, alt_id=m.get("alt_id"),
         )
 
     try:
@@ -308,6 +325,45 @@ def test_terminate_enrollment_accepts_explicit_date():
         delete_enrollment(new_id, TEST_DB)
 
 
+def test_update_enrollment_changes_both_dates():
+    from datetime import date
+    from db.members import (
+        get_all_members, insert_enrollment, update_enrollment, delete_enrollment,
+    )
+    from monthly_schedule.db import get_enrollments
+
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    before = {e["id"] for e in get_enrollments(cid, TEST_DB)}
+    insert_enrollment(cid, date(2020, 1, 1), date(2020, 6, 1), TEST_DB)
+    new_id = ({e["id"] for e in get_enrollments(cid, TEST_DB)} - before).pop()
+    try:
+        update_enrollment(new_id, date(2021, 2, 3), date(2021, 9, 4), TEST_DB)
+        row = next(e for e in get_enrollments(cid, TEST_DB) if e["id"] == new_id)
+        assert row["start_date"] == date(2021, 2, 3)
+        assert row["end_date"] == date(2021, 9, 4)
+    finally:
+        delete_enrollment(new_id, TEST_DB)
+
+
+def test_update_enrollment_can_clear_end_to_ongoing():
+    from datetime import date
+    from db.members import (
+        get_all_members, insert_enrollment, update_enrollment, delete_enrollment,
+    )
+    from monthly_schedule.db import get_enrollments
+
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    before = {e["id"] for e in get_enrollments(cid, TEST_DB)}
+    insert_enrollment(cid, date(2020, 1, 1), date(2020, 6, 1), TEST_DB)
+    new_id = ({e["id"] for e in get_enrollments(cid, TEST_DB)} - before).pop()
+    try:
+        update_enrollment(new_id, date(2020, 1, 1), None, TEST_DB)
+        row = next(e for e in get_enrollments(cid, TEST_DB) if e["id"] == new_id)
+        assert row["end_date"] is None
+    finally:
+        delete_enrollment(new_id, TEST_DB)
+
+
 def test_insert_authorization_persists_health_plan():
     from datetime import date
     from db.members import (
@@ -344,6 +400,26 @@ def test_insert_authorization_persists_member_id():
     try:
         row = next(a for a in get_authorizations(cid, TEST_DB) if a["id"] == new_id)
         assert row["member_id"] == "M-AUTH-1"
+    finally:
+        delete_authorization(new_id, TEST_DB)
+
+
+def test_insert_authorization_persists_plan_type():
+    from datetime import date
+    from db.members import (
+        get_all_members, insert_authorization, get_authorizations,
+        delete_authorization,
+    )
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    before = {a["id"] for a in get_authorizations(cid, TEST_DB)}
+    insert_authorization(
+        cid, date(2026, 1, 1), date(2026, 12, 31), {1, 3, 5},
+        None, None, "Aetna", TEST_DB, plan_type="MLTC",
+    )
+    new_id = ({a["id"] for a in get_authorizations(cid, TEST_DB)} - before).pop()
+    try:
+        row = next(a for a in get_authorizations(cid, TEST_DB) if a["id"] == new_id)
+        assert row["plan_type"] == "MLTC"
     finally:
         delete_authorization(new_id, TEST_DB)
 
@@ -398,7 +474,7 @@ def test_sync_writes_current_auth_plan_into_contacts():
             m["dob"], m["member_id"], original_plan, m["medicaid"], m["medicare"],
             m["ssn"], m["language"], m["case_manager"], m["home_tell"], m["cell"],
             m["address"], m["emergency"], m["pcp"], m["hospital"], m["hha"],
-            m["admission_date"], m["notes"], TEST_DB,
+            m["admission_date"], m["notes"], TEST_DB, alt_id=m.get("alt_id"),
         )
 
 
@@ -429,8 +505,54 @@ def test_sync_member_id_from_current_auth_into_contacts():
             m["dob"], original_mid, m["health_plan"], m["medicaid"], m["medicare"],
             m["ssn"], m["language"], m["case_manager"], m["home_tell"], m["cell"],
             m["address"], m["emergency"], m["pcp"], m["hospital"], m["hha"],
-            m["admission_date"], m["notes"], TEST_DB,
+            m["admission_date"], m["notes"], TEST_DB, alt_id=m.get("alt_id"),
         )
+
+
+def test_alt_id_round_trips_through_update_contact():
+    from db.members import (
+        get_all_members, get_member_context, update_contact, close_connections,
+    )
+    close_connections()
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    m = get_member_context(cid, TEST_DB)["member"]
+    original = m.get("alt_id")
+
+    def write(alt_id):
+        update_contact(
+            cid, m["last_name"], m["first_name"], m["chinese_name"], m["gender"],
+            m["dob"], m["member_id"], m["health_plan"], m["medicaid"], m["medicare"],
+            m["ssn"], m["language"], m["case_manager"], m["home_tell"], m["cell"],
+            m["address"], m["emergency"], m["pcp"], m["hospital"], m["hha"],
+            m["admission_date"], m["notes"], TEST_DB, alt_id=alt_id,
+        )
+
+    try:
+        write(424242)
+        assert get_member_context(cid, TEST_DB)["member"]["alt_id"] == 424242
+        row = next(r for r in get_all_members(TEST_DB) if r["center_id"] == cid)
+        assert row["alt_id"] == 424242
+    finally:
+        write(original)
+    assert get_member_context(cid, TEST_DB)["member"]["alt_id"] == original
+
+
+def test_set_member_alt_id_round_trip():
+    """The '+ alt id' header affordance writes via set_member_alt_id (a
+    single-column update, not the full update_contact)."""
+    from db.members import (
+        get_all_members, get_member_context, set_member_alt_id,
+        close_connections,
+    )
+    close_connections()
+    cid = get_all_members(TEST_DB)[0]["center_id"]
+    original = get_member_context(cid, TEST_DB)["member"].get("alt_id")
+    try:
+        set_member_alt_id(cid, 313131, TEST_DB)
+        assert get_member_context(cid, TEST_DB)["member"]["alt_id"] == 313131
+    finally:
+        set_member_alt_id(cid, original, TEST_DB)
+    assert get_member_context(cid, TEST_DB)["member"]["alt_id"] == original
 
 
 def test_sync_noop_when_no_authorizations():
@@ -461,7 +583,7 @@ def test_update_authorization_round_trips_changes():
     try:
         update_authorization(
             new_id, date(2026, 2, 1), date(2026, 7, 31), {3, 4, 5}, "HF", TEST_DB,
-            member_id="M-UPD-2",
+            member_id="M-UPD-2", plan_type="MAP",
         )
         row = next(a for a in get_authorizations(cid, TEST_DB) if a["id"] == new_id)
         assert row["auth_start"] == date(2026, 2, 1)
@@ -469,6 +591,7 @@ def test_update_authorization_round_trips_changes():
         assert row["auth_days"] == "3,4,5"
         assert row["health_plan"] == "HF"
         assert row["member_id"] == "M-UPD-2"
+        assert row["plan_type"] == "MAP"
         # effective_* were cleared, so the mapper falls back to the auth dates.
         assert row["effective_start"] == date(2026, 2, 1)
         assert row["effective_end"] == date(2026, 7, 31)

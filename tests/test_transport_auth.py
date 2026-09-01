@@ -2,8 +2,9 @@
 
 Transport auths live in a separate [TransportAuthorization] table (a structural
 twin of [Authorization]); the care<->transport relationship is stored in the
-[AuthEdge] junction table. The select column list must match AUTHORIZATION_SELECT
-so the shared _map_auth_row mapper applies unchanged.
+[AuthEdge] junction table. The select column list must be a prefix of
+AUTHORIZATION_SELECT's (which adds the care-only [Plan Type]) so the shared
+_map_auth_row mapper applies unchanged.
 """
 
 
@@ -32,13 +33,15 @@ def test_delete_transport_auth_targets_table():
 
 
 def test_transport_select_columns_match_authorization_select():
-    # Same SELECT column list (only the FROM table differs) so _map_auth_row works.
+    # The transport column list is a prefix of the authorization one (which adds
+    # the care-only [Plan Type] at the end), so the shared _map_auth_row keeps
+    # working by index; only the FROM table differs otherwise.
     from db.members import TRANSPORT_AUTH_SELECT, AUTHORIZATION_SELECT
     assert "FROM [TransportAuthorization]" in TRANSPORT_AUTH_SELECT
     assert "WHERE [Center ID]=?" in TRANSPORT_AUTH_SELECT
     cols_t = TRANSPORT_AUTH_SELECT.split("FROM")[0].strip()
     cols_a = AUTHORIZATION_SELECT.split("FROM")[0].strip()
-    assert cols_t == cols_a
+    assert cols_a == cols_t + ",[Plan Type]"
 
 
 def test_insert_auth_edge_targets_join_table():
