@@ -1582,16 +1582,12 @@ class MemberTabsWidget(QWidget):
         row.setSpacing(10)
         days_lbl = QLabel("Authorized Days")
         days_lbl.setObjectName("field_label")
-        days_lbl.setProperty(
-            "lsize", self._layout_cfg.get("label_size", "normal"))
         row.addWidget(days_lbl)
         row.addWidget(WeekdayChips(active_days))
         # The same days in the paper-form notation staff use ("SADC 1.5"
         # for Mon+Fri), right next to the chips.
         sadc_lbl = QLabel("SADC")
         sadc_lbl.setObjectName("field_label")
-        sadc_lbl.setProperty(
-            "lsize", self._layout_cfg.get("label_size", "normal"))
         row.addSpacing(18)
         row.addWidget(sadc_lbl)
         sadc_val = QLabel(
@@ -1603,8 +1599,6 @@ class MemberTabsWidget(QWidget):
         row.addSpacing(28)
         period_lbl = QLabel("Auth Period")
         period_lbl.setObjectName("field_label")
-        period_lbl.setProperty(
-            "lsize", self._layout_cfg.get("label_size", "normal"))
         row.addWidget(period_lbl)
         period_val = QLabel(period_text)
         period_val.setObjectName("schedule_value")

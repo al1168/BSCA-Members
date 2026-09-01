@@ -263,12 +263,20 @@ def test_labels_carry_global_label_size(qapp):
     from gui.info_layout import default_layout
     lay = default_layout()
     lay["label_size"] = "large"
-    _w, tab = _make_tab(qapp, layout_cfg=lay)
+    w, tab = _make_tab(qapp, layout_cfg=lay)
     from PyQt6.QtWidgets import QLabel
+    # Only the grid's field labels take the layout size; the Schedule
+    # card's labels are out of scope by design (spec: Out of scope).
     labels = [l for l in tab.findChildren(QLabel)
-              if l.objectName() == "field_label"]
+              if l.objectName() == "field_label"
+              and not (w._schedule_card is not None
+                       and w._schedule_card.isAncestorOf(l))]
     assert labels
     assert all(l.property("lsize") == "large" for l in labels)
+    card_labels = [l for l in w._schedule_card.findChildren(QLabel)
+                   if l.objectName() == "field_label"]
+    assert card_labels
+    assert all(l.property("lsize") is None for l in card_labels)
 
 
 def test_field_small_size_sets_fsize_property(qapp):
