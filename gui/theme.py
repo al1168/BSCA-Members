@@ -25,6 +25,11 @@ DARK = {
     "error":        "#d05555",
     "error_bg":     "#2e1515",
     "error_text":   "#e08080",
+    # Info tab per-field highlight tints (customizable layout).
+    "hl_amber":     "#3a2f10",
+    "hl_blue":      "#1c2745",
+    "hl_green":     "#16301f",
+    "hl_red":       "#391b1b",
 }
 
 LIGHT = {
@@ -48,6 +53,11 @@ LIGHT = {
     "error":        "#b83a3a",
     "error_bg":     "#f5e8e8",
     "error_text":   "#902a2a",
+    # Info tab per-field highlight tints (customizable layout).
+    "hl_amber":     "#f7ecc8",
+    "hl_blue":      "#dfe7fb",
+    "hl_green":     "#ddf0e4",
+    "hl_red":       "#f7dede",
 }
 
 
@@ -262,6 +272,23 @@ QLineEdit#info_field[error="true"] {{
     border: 1px solid {t['error']};
     border-radius: 4px;
     padding: 3px 6px;
+}}
+/* Customizable Info tab per-field styling, driven by dynamic properties set
+   from the saved layout (see gui/info_layout.py). General QLineEdit selectors
+   on purpose: the address field's inner line edit isn't #info_field. */
+QLineEdit[fbold="true"] {{ font-weight: 800; }}
+QLineEdit[fsize="large"] {{ font-size: 16px; }}
+QLineEdit[hl="amber"], QLineEdit[hl="amber"]:read-only {{
+    background-color: {t['hl_amber']}; border-radius: 4px; padding: 3px 6px;
+}}
+QLineEdit[hl="blue"], QLineEdit[hl="blue"]:read-only {{
+    background-color: {t['hl_blue']}; border-radius: 4px; padding: 3px 6px;
+}}
+QLineEdit[hl="green"], QLineEdit[hl="green"]:read-only {{
+    background-color: {t['hl_green']}; border-radius: 4px; padding: 3px 6px;
+}}
+QLineEdit[hl="red"], QLineEdit[hl="red"]:read-only {{
+    background-color: {t['hl_red']}; border-radius: 4px; padding: 3px 6px;
 }}
 QComboBox::drop-down {{
     border: none;
