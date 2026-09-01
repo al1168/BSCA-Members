@@ -229,3 +229,31 @@ def test_layout_editor_gets_display_member_values(qapp, monkeypatch):
     assert m["center_id"] == "7"
     # No alt-id key set on the widget -> displays the stored value as text.
     assert m["alt_id"] == "987654321"
+
+
+# ── font-size steps: value fsize small/xlarge + label lsize rules ──────────
+
+def test_qss_has_size_step_rules_both_themes():
+    from gui.theme import build_qss, DARK, LIGHT
+    for tokens in (DARK, LIGHT):
+        qss = build_qss(tokens)
+        assert 'QLineEdit#info_field[fsize="small"]' in qss
+        assert 'QLineEdit#info_field[fsize="xlarge"]' in qss
+        assert 'QLineEdit[fsize="small"]' in qss
+        assert 'QLineEdit[fsize="xlarge"]' in qss
+        assert 'QLabel#field_label[lsize="small"]' in qss
+        assert 'QLabel#field_label[lsize="large"]' in qss
+
+
+def test_xlarge_value_and_large_label_render(qapp):
+    from PyQt6.QtWidgets import QLabel
+    from gui.theme import build_qss, DARK
+    w = _styled_line_edit("info_field", {"fsize": "xlarge"})
+    assert w.font().pixelSize() == 20
+    lab = QLabel("DOB")
+    lab.setObjectName("field_label")
+    lab.setProperty("lsize", "large")
+    lab.setStyleSheet(build_qss(DARK))
+    lab.style().unpolish(lab)
+    lab.style().polish(lab)
+    assert lab.font().pixelSize() == 13
