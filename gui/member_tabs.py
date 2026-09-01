@@ -3013,16 +3013,13 @@ class MemberTabsWidget(QWidget):
         dlg.setWindowTitle("Edit Authorization" if existing else "Add Authorization")
         form = QFormLayout(dlg)
 
-        from datetime import date as _date
+        # Creating: dates start empty and must be typed — a new authorization
+        # is an explicit act, nothing is pre-dated.
         auth_start = DateLineEdit()
         auth_end = DateLineEdit()
         if existing:
             auth_start.set_pydate(existing["auth_start"])
             auth_end.set_pydate(existing["auth_end"])
-        else:
-            today = _date.today()
-            auth_start.set_pydate(today)
-            auth_end.set_pydate(today.replace(year=today.year + 1))
 
         existing_days = (
             self.decode_auth_days_static(existing["auth_days"]) if existing else set()
@@ -3039,11 +3036,15 @@ class MemberTabsWidget(QWidget):
             days_hl.addWidget(cb)
 
         plan_combo = QComboBox()
-        plan_combo.addItems(HEALTH_PLANS)
         if existing:
+            plan_combo.addItems(HEALTH_PLANS)
             idx = plan_combo.findText(existing.get("health_plan", ""))
             if idx >= 0:
                 plan_combo.setCurrentIndex(idx)
+        else:
+            # Creating: start on a blank entry so the plan is a choice, not
+            # whatever happened to be first in the list.
+            plan_combo.addItems(("",) + HEALTH_PLANS)
 
         # Plan type (MAP/MLTC); the blank entry covers rows that predate the
         # column so editing one doesn't force a value onto it.
@@ -3065,6 +3066,15 @@ class MemberTabsWidget(QWidget):
             (existing.get("auth_number") if existing else "") or "")
         auth_number_edit.setPlaceholderText("Authorization number")
 
+        if not existing:
+            # A failed OK outlines missing fields red; editing one clears it.
+            for combo in (plan_combo, plan_type_combo):
+                combo.currentIndexChanged.connect(
+                    lambda _i, c=combo: set_widget_error(c, False))
+            for edit in (member_id_edit, auth_number_edit):
+                edit.textEdited.connect(
+                    lambda _t, e=edit: set_widget_error(e, False))
+
         form.addRow("Auth Start:", auth_start)
         form.addRow("Auth End:", auth_end)
         form.addRow("Days:", days_widget)
@@ -3080,12 +3090,38 @@ class MemberTabsWidget(QWidget):
         def on_accept():
             ok = auth_start.flag_validity(required=True)
             ok = auth_end.flag_validity(required=True) and ok
-            if not ok:
-                QMessageBox.warning(dlg, "Validation",
-                    "Enter valid Auth Start and Auth End dates (MM/DD/YYYY).")
+            if existing:
+                # Editing keeps the original rules (dates + days) so legacy
+                # rows with blank plan type / auth number stay editable.
+                if not ok:
+                    QMessageBox.warning(dlg, "Validation",
+                        "Enter valid Auth Start and Auth End dates "
+                        "(MM/DD/YYYY).")
+                    return
+                if not any(cb.isChecked() for cb in day_checks.values()):
+                    QMessageBox.warning(dlg, "Validation",
+                                        "Select at least one day.")
+                    return
+                dlg.accept()
                 return
-            if not any(cb.isChecked() for cb in day_checks.values()):
-                QMessageBox.warning(dlg, "Validation", "Select at least one day.")
+            missing = missing_new_auth_fields(
+                start_valid=auth_start.is_valid(required=True),
+                end_valid=auth_end.is_valid(required=True),
+                has_day=any(cb.isChecked() for cb in day_checks.values()),
+                health_plan=plan_combo.currentText(),
+                plan_type=plan_type_combo.currentText(),
+                member_id=member_id_edit.text(),
+                auth_number=auth_number_edit.text(),
+            )
+            set_widget_error(plan_combo, "Health Plan" in missing)
+            set_widget_error(plan_type_combo, "Plan Type" in missing)
+            set_widget_error(member_id_edit, "Member ID" in missing)
+            set_widget_error(auth_number_edit, "Auth Number" in missing)
+            if missing:
+                QMessageBox.warning(
+                    dlg, "Validation",
+                    "All fields are required for a new authorization. "
+                    "Missing:\n  •  " + "\n  •  ".join(missing))
                 return
             dlg.accept()
         btns.accepted.connect(on_accept)
