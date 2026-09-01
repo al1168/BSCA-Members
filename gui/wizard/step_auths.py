@@ -239,7 +239,7 @@ class StepAuths(QWidget):
     def collect(self) -> dict:
         from db.members import merge_default_availability
 
-        # Authorization is optional (gated by the day checkboxes).
+        # Authorization is optional — gated by is_skipped() (nothing entered at all).
         auth = None
         if not self.is_skipped():
             auth = {

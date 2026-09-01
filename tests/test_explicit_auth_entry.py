@@ -177,6 +177,23 @@ def test_new_dialog_accepts_when_complete(qapp, monkeypatch):
     }
 
 
+def test_new_dialog_rejects_when_only_health_plan_missing(qapp, monkeypatch):
+    def fill_all_but_plan(cap):
+        start, end = cap["dates"][:2]
+        start.setText("01/01/2026")
+        end.setText("12/31/2026")
+        cap["checks"][0].setChecked(True)
+        cap["combos"][1].setCurrentText("MAP")     # plan type only
+        _edit_by_placeholder(cap, "Authorization number").setText("A-1")
+
+    result, cap, warnings = _run_auth_dialog(monkeypatch,
+                                             fill=fill_all_but_plan)
+    assert result is None
+    assert len(warnings) == 1
+    assert "Health Plan" in warnings[0][2]
+    assert cap["combos"][0].property("error") is True
+
+
 def test_edit_mode_exempt_from_new_requirements(qapp, monkeypatch):
     """A legacy auth with blank plan type / auth number / member id still
     saves untouched — edit keeps today's dates+days validation only."""

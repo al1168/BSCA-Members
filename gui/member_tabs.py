@@ -3000,8 +3000,9 @@ class MemberTabsWidget(QWidget):
 
     def _open_auth_dialog(self, existing: dict | None = None) -> dict | None:
         """Build the Add/Edit Authorization dialog. Returns a dict with
-        auth_start, auth_end, days, health_plan, plan_type, member_id — or None
-        if cancelled. Pre-fills from `existing` when editing."""
+        auth_start, auth_end, days, health_plan, plan_type, member_id,
+        auth_number — or None if cancelled. Pre-fills from `existing` when
+        editing."""
         from PyQt6.QtWidgets import (
             QDialog, QFormLayout, QDateEdit, QCheckBox, QComboBox,
             QHBoxLayout, QDialogButtonBox, QWidget, QLineEdit,
@@ -3088,12 +3089,13 @@ class MemberTabsWidget(QWidget):
         form.addRow(btns)
 
         def on_accept():
-            ok = auth_start.flag_validity(required=True)
-            ok = auth_end.flag_validity(required=True) and ok
+            # Paint the date outlines in both modes.
+            dates_ok = auth_start.flag_validity(required=True)
+            dates_ok = auth_end.flag_validity(required=True) and dates_ok
             if existing:
                 # Editing keeps the original rules (dates + days) so legacy
                 # rows with blank plan type / auth number stay editable.
-                if not ok:
+                if not dates_ok:
                     QMessageBox.warning(dlg, "Validation",
                         "Enter valid Auth Start and Auth End dates "
                         "(MM/DD/YYYY).")
@@ -3104,6 +3106,8 @@ class MemberTabsWidget(QWidget):
                     return
                 dlg.accept()
                 return
+            # flag_validity above already painted the outlines; is_valid
+            # re-reads them.
             missing = missing_new_auth_fields(
                 start_valid=auth_start.is_valid(required=True),
                 end_valid=auth_end.is_valid(required=True),
