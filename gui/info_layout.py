@@ -192,3 +192,81 @@ def normalize(layout) -> dict:
     if "emergency" not in seen_special:
         blocks.append({"type": "emergency", "visible": True})
     return {"version": 1, "blocks": blocks}
+
+
+# ── mutation helpers (the editor dialog operates through these) ────────────
+
+def find_field(layout, key):
+    """(block_index, field_index) of key, or None."""
+    for bi, b in enumerate(layout["blocks"]):
+        if b["type"] == "section":
+            for fi, f in enumerate(b["fields"]):
+                if f["key"] == key:
+                    return bi, fi
+    return None
+
+
+def set_field_prop(layout, key, prop, value):
+    pos = find_field(layout, key)
+    if pos is not None:
+        layout["blocks"][pos[0]]["fields"][pos[1]][prop] = value
+
+
+def move_field(layout, key, delta):
+    """Swap the field with its neighbor inside its section; no-op at ends."""
+    pos = find_field(layout, key)
+    if pos is None:
+        return
+    fields = layout["blocks"][pos[0]]["fields"]
+    j = pos[1] + delta
+    if 0 <= j < len(fields):
+        fields[pos[1]], fields[j] = fields[j], fields[pos[1]]
+
+
+def move_field_to_section(layout, key, block_index):
+    """Append the field to the section block at block_index."""
+    pos = find_field(layout, key)
+    if pos is None or pos[0] == block_index:
+        return
+    blocks = layout["blocks"]
+    if not (0 <= block_index < len(blocks)) \
+            or blocks[block_index].get("type") != "section":
+        return
+    f = blocks[pos[0]]["fields"].pop(pos[1])
+    blocks[block_index]["fields"].append(f)
+
+
+def move_block(layout, index, delta):
+    blocks = layout["blocks"]
+    j = index + delta
+    if 0 <= index < len(blocks) and 0 <= j < len(blocks):
+        blocks[index], blocks[j] = blocks[j], blocks[index]
+
+
+def rename_section(layout, index, title):
+    b = layout["blocks"][index]
+    if b["type"] == "section" and title.strip():
+        b["title"] = title.strip()
+
+
+def add_section(layout, after_index, title="New Section"):
+    layout["blocks"].insert(
+        after_index + 1, {"type": "section", "title": title, "fields": []})
+
+
+def delete_section(layout, index):
+    """Delete a section; its fields migrate to the previous section (or the
+    next, if it was first). The last remaining section can't be deleted."""
+    blocks = layout["blocks"]
+    if not (0 <= index < len(blocks)) or blocks[index].get("type") != "section":
+        return
+    others = [i for i, b in enumerate(blocks)
+              if b["type"] == "section" and i != index]
+    if not others:
+        return
+    fields = blocks[index]["fields"]
+    if fields:
+        prev = [i for i in others if i < index]
+        home = blocks[prev[-1]] if prev else blocks[others[0]]
+        home["fields"].extend(fields)
+    blocks.pop(index)

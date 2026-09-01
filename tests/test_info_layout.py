@@ -176,3 +176,100 @@ def test_normalize_survives_non_list_fields():
     all_keys = [f["key"] for b in lay["blocks"] if b["type"] == "section"
                 for f in b["fields"]]
     assert sorted(all_keys) == sorted(k for k, _ in FIELD_REGISTRY)
+
+
+# ── mutation helpers ───────────────────────────────────────────────────────
+
+def _mini():
+    return {"version": 1, "blocks": [
+        {"type": "schedule", "visible": True},
+        {"type": "section", "title": "A", "fields": [
+            {"key": "first_name", "span": 1, "bold": False, "size": "normal",
+             "color": "none", "visible": True},
+            {"key": "dob", "span": 1, "bold": False, "size": "normal",
+             "color": "none", "visible": True},
+        ]},
+        {"type": "section", "title": "B", "fields": [
+            {"key": "cell", "span": 1, "bold": False, "size": "normal",
+             "color": "none", "visible": True},
+        ]},
+        {"type": "emergency", "visible": True},
+    ]}
+
+
+def test_find_and_set_field_prop():
+    from gui.info_layout import find_field, set_field_prop
+    lay = _mini()
+    assert find_field(lay, "dob") == (1, 1)
+    assert find_field(lay, "nope") is None
+    set_field_prop(lay, "dob", "bold", True)
+    assert lay["blocks"][1]["fields"][1]["bold"] is True
+
+
+def test_move_field_within_section_clamps():
+    from gui.info_layout import move_field
+    lay = _mini()
+    move_field(lay, "dob", -1)
+    assert [f["key"] for f in lay["blocks"][1]["fields"]] \
+        == ["dob", "first_name"]
+    move_field(lay, "dob", -1)   # already first: no-op
+    assert lay["blocks"][1]["fields"][0]["key"] == "dob"
+
+
+def test_move_field_to_section():
+    from gui.info_layout import move_field_to_section, find_field
+    lay = _mini()
+    move_field_to_section(lay, "dob", 2)
+    assert find_field(lay, "dob") == (2, 1)   # appended after "cell"
+    move_field_to_section(lay, "dob", 0)      # not a section: no-op
+    assert find_field(lay, "dob") == (2, 1)
+
+
+def test_move_block_and_bounds():
+    from gui.info_layout import move_block
+    lay = _mini()
+    move_block(lay, 1, 1)
+    assert [b.get("title") for b in lay["blocks"]] \
+        == [None, "B", "A", None]
+    move_block(lay, 0, -1)   # out of range: no-op
+    assert lay["blocks"][0]["type"] == "schedule"
+
+
+def test_rename_and_add_section():
+    from gui.info_layout import rename_section, add_section
+    lay = _mini()
+    rename_section(lay, 1, "  Renamed ")
+    assert lay["blocks"][1]["title"] == "Renamed"
+    rename_section(lay, 1, "   ")   # blank: no-op
+    assert lay["blocks"][1]["title"] == "Renamed"
+    add_section(lay, 1, "New")
+    assert lay["blocks"][2] == {"type": "section", "title": "New",
+                                "fields": []}
+
+
+def test_delete_section_migrates_fields_to_previous():
+    from gui.info_layout import delete_section
+    lay = _mini()
+    delete_section(lay, 2)   # deletes "B"; its field joins "A"
+    titles = [b.get("title") for b in lay["blocks"]
+              if b["type"] == "section"]
+    assert titles == ["A"]
+    assert [f["key"] for f in lay["blocks"][1]["fields"]] \
+        == ["first_name", "dob", "cell"]
+
+
+def test_delete_first_section_migrates_to_next():
+    from gui.info_layout import delete_section
+    lay = _mini()
+    delete_section(lay, 1)   # deletes "A"; fields join "B"
+    b = [blk for blk in lay["blocks"] if blk["type"] == "section"][0]
+    assert b["title"] == "B"
+    assert [f["key"] for f in b["fields"]] == ["cell", "first_name", "dob"]
+
+
+def test_delete_last_remaining_section_refused():
+    from gui.info_layout import delete_section
+    lay = _mini()
+    delete_section(lay, 2)
+    delete_section(lay, 1)   # only section left: no-op
+    assert any(b["type"] == "section" for b in lay["blocks"])
