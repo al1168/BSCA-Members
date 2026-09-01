@@ -1625,7 +1625,15 @@ class MemberTabsWidget(QWidget):
             return
         from PyQt6.QtWidgets import QDialog
         from gui.info_layout_editor import InfoLayoutEditor
-        dlg = InfoLayoutEditor(self._layout_cfg, self._member, self)
+        # The preview shows display values: alt_id decrypted, and the
+        # computed Center ID / Enrollment Start the tab itself renders.
+        preview_member = dict(self._member)
+        alt = self._display_alt_id()
+        preview_member["alt_id"] = "" if alt is None else str(alt)
+        preview_member["center_id"] = str(self._center_id)
+        start = self._enrollment_start(self._enrollments)
+        preview_member["enrollment_start"] = str(start) if start else ""
+        dlg = InfoLayoutEditor(self._layout_cfg, preview_member, self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         self._apply_layout(dlg.result_layout())

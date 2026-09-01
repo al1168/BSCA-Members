@@ -210,3 +210,22 @@ def test_customize_button_present_on_info_tab(qapp):
     _w, tab = _make_tab(qapp)
     texts = [b.text() for b in tab.findChildren(QPushButton)]
     assert any("Customize" in t for t in texts)
+
+
+def test_layout_editor_gets_display_member_values(qapp, monkeypatch):
+    captured = {}
+    import gui.info_layout_editor as ed
+
+    class FakeDlg:
+        def __init__(self, layout_cfg, member, parent=None):
+            captured["member"] = member
+        def exec(self):
+            return 0   # rejected
+    monkeypatch.setattr(ed, "InfoLayoutEditor", FakeDlg)
+    w, _tab = _make_tab(qapp, member={"first_name": "Mary", "alt_id": 987654321})
+    w._dirty = False
+    w._open_layout_editor()
+    m = captured["member"]
+    assert m["center_id"] == "7"
+    # No alt-id key set on the widget -> displays the stored value as text.
+    assert m["alt_id"] == "987654321"

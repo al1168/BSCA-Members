@@ -114,11 +114,11 @@ class InfoLayoutEditor(QDialog):
         border = t["accent"] if selected else t["border"]
         weight = 800 if cfg.get("bold") else 600
         size = 15 if cfg.get("size") == "large" else 12
-        opacity = "" if cfg.get("visible", True) else \
+        dim_css = "" if cfg.get("visible", True) else \
             f"color: {t['text4']};"
         return (f"background-color: {bg}; border: 2px solid {border}; "
                 f"border-radius: 6px; padding: 6px; font-size: {size}px; "
-                f"font-weight: {weight}; {opacity}")
+                f"font-weight: {weight}; {dim_css}")
 
     def _preview_value(self, key):
         v = self._member.get(key)

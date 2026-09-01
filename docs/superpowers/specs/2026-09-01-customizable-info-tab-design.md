@@ -46,8 +46,7 @@ Three units:
 ### 1. Layout model — `gui/info_layout.py` (new, pure Python, no Qt)
 
 - **Field registry:** the canonical ordered list of customizable fields:
-  `key → (label, kind)` where kind ∈ {plain, phone, medicaid, medicare, ssn,
-  dob, address, readonly}. Single source of truth for both renderer and
+  `key → label`. Single source of truth for both renderer and
   editor. Keys match the member-dict keys already used by `_make_info_tab`
   (`first_name`, `last_name`, `chinese_name`, `gender`, `dob`, `ssn`,
   `center_id`, `enrollment_start`, `language`, `alt_id`, `address`,
@@ -118,7 +117,7 @@ copy of the current layout; the caller applies the result only on accept.
   special block selects the block.
 - **Right — properties panel** for the selection:
   - Field selected: section dropdown (moves it), Move Up / Move Down within
-    the section, span (1/2/3), Bold, Large, color swatch row, Visible.
+    the section, span (1/2/3), Bold, Large, highlight color dropdown, Visible.
   - Section selected: rename (line edit), Move Up / Move Down among blocks,
     Add Section (inserts after), Delete Section — deleting a non-empty
     section asks to confirm and moves its fields to the previous section
