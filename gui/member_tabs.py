@@ -269,6 +269,30 @@ def build_change_summary(old: dict, fields: dict) -> list[str]:
     return lines
 
 
+def missing_new_auth_fields(*, start_valid: bool, end_valid: bool,
+                            has_day: bool, health_plan: str, plan_type: str,
+                            member_id: str, auth_number: str) -> list[str]:
+    """Labels of the required fields still missing when creating a NEW
+    authorization (creation requires every field; editing is exempt —
+    see _open_auth_dialog). Order matches the dialog's rows."""
+    missing = []
+    if not start_valid:
+        missing.append("Auth Start")
+    if not end_valid:
+        missing.append("Auth End")
+    if not has_day:
+        missing.append("Days")
+    if not health_plan.strip():
+        missing.append("Health Plan")
+    if not plan_type.strip():
+        missing.append("Plan Type")
+    if not member_id.strip():
+        missing.append("Member ID")
+    if not auth_number.strip():
+        missing.append("Auth Number")
+    return missing
+
+
 def to_jpeg_bytes(src_path: str) -> bytes:
     """Load an image file and return JPEG-encoded bytes. Raises ValueError if the
     file can't be read as an image."""
