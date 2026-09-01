@@ -236,6 +236,9 @@ class InfoLayoutEditor(QDialog):
             return
         rename_section(self._layout, self._selection[1], title)
         self._changed()
+        # A rejected (blank) title must not linger in the name box.
+        if not title.strip():
+            self._rebuild_props()
 
     def _add_section(self):
         if not self._selection or self._selection[0] != "block":
@@ -249,6 +252,11 @@ class InfoLayoutEditor(QDialog):
         index = self._selection[1]
         block = self._layout["blocks"][index]
         if block.get("type") != "section":
+            return
+        # The last remaining section can't be deleted (the pure helper
+        # refuses) — don't show a confirm for a no-op.
+        if sum(1 for b in self._layout["blocks"]
+               if b["type"] == "section") <= 1:
             return
         if block["fields"] and self.isVisible():
             keep = QMessageBox.question(

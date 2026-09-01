@@ -140,3 +140,34 @@ def test_result_layout_is_normalized(qapp):
     dlg._set_prop("bold", True)
     out = dlg.result_layout()
     assert out == normalize(out)
+
+
+def test_delete_last_section_short_circuits(qapp):
+    dlg = _dlg(qapp)
+    section_idxs = [i for i, b in enumerate(dlg._layout["blocks"])
+                    if b["type"] == "section"]
+    # Delete all but one section.
+    for _ in section_idxs[1:]:
+        idx = [i for i, b in enumerate(dlg._layout["blocks"])
+               if b["type"] == "section"][-1]
+        dlg._select(("block", idx))
+        dlg._delete_section()
+    remaining = [i for i, b in enumerate(dlg._layout["blocks"])
+                 if b["type"] == "section"]
+    assert len(remaining) == 1
+    dlg._select(("block", remaining[0]))
+    dlg._delete_section()   # no-op, no confirm, no crash
+    assert sum(1 for b in dlg._layout["blocks"]
+               if b["type"] == "section") == 1
+
+
+def test_blank_rename_resyncs_panel(qapp):
+    dlg = _dlg(qapp)
+    identity_bi = [i for i, b in enumerate(dlg._layout["blocks"])
+                   if b.get("title") == "Identity"][0]
+    dlg._select(("block", identity_bi))
+    dlg._rename("   ")
+    assert dlg._layout["blocks"][identity_bi]["title"] == "Identity"
+    from PyQt6.QtWidgets import QLineEdit
+    name = dlg._props_host.findChild(QLineEdit)
+    assert name is not None and name.text() == "Identity"
