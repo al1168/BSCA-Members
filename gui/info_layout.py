@@ -207,6 +207,7 @@ def find_field(layout, key):
 
 
 def set_field_prop(layout, key, prop, value):
+    """Set one property on the field with the given key (no-op if absent)."""
     pos = find_field(layout, key)
     if pos is not None:
         layout["blocks"][pos[0]]["fields"][pos[1]][prop] = value
@@ -237,6 +238,7 @@ def move_field_to_section(layout, key, block_index):
 
 
 def move_block(layout, index, delta):
+    """Swap the block at index with its neighbor; no-op out of bounds."""
     blocks = layout["blocks"]
     j = index + delta
     if 0 <= index < len(blocks) and 0 <= j < len(blocks):
@@ -244,12 +246,17 @@ def move_block(layout, index, delta):
 
 
 def rename_section(layout, index, title):
-    b = layout["blocks"][index]
+    """Rename a section; blank titles and non-section blocks are no-ops."""
+    blocks = layout["blocks"]
+    if not (0 <= index < len(blocks)):
+        return
+    b = blocks[index]
     if b["type"] == "section" and title.strip():
         b["title"] = title.strip()
 
 
 def add_section(layout, after_index, title="New Section"):
+    """Insert a new empty section right after after_index."""
     layout["blocks"].insert(
         after_index + 1, {"type": "section", "title": title, "fields": []})
 
