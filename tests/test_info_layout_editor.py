@@ -223,5 +223,6 @@ def test_preview_cells_render_both_sizes_as_rich_text(qapp):
     cell_text = dlg._preview_cells["dob"].text()
     assert "font-size:13px" in cell_text
     assert "font-size:20px" in cell_text
-    # A normal field uses the base value size.
-    assert "font-size:13px" in dlg._preview_cells["first_name"].text()
+    # A normal field's value renders at the 13px base: its cell has the
+    # 13px label span AND a 13px value span.
+    assert dlg._preview_cells["first_name"].text().count("font-size:13px") == 2

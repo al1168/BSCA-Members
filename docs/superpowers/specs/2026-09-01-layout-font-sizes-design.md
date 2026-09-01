@@ -81,7 +81,7 @@ label size** for all field labels on the tab.
   text — the label line wrapped in a `font-size` span using the global
   label size's pixel value, the value line using the field's value-size
   pixel value. Bold/dim/highlight styling stays on the cell stylesheet.
-  A small `PIXELS_FOR_SIZE` / `PIXELS_FOR_LABEL_SIZE` mapping lives in
+  A small `VALUE_PX` / `LABEL_PX` mapping lives in
   the editor module (presentation detail, not model data).
 
 ### 5. Persistence / compatibility
@@ -91,6 +91,9 @@ before this feature loads with `label_size: "normal"` and its existing
 `size` values untouched. A layout saved after this feature, opened by an
 older build, is also safe: old `normalize()` clamps `xlarge`/`small` back
 to "normal" and ignores the unknown `label_size` key.
+Note: if a layout is edited and saved on an old build, the downgrade
+becomes permanent in the settings JSON (xlarge/small collapse to normal
+and label_size is stripped) — display-safe, but lossy on save.
 
 ## Testing (TDD, existing patterns)
 

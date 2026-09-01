@@ -132,7 +132,8 @@ def normalize(layout) -> dict:
     """A saved layout -> a complete, valid layout. Unknown/duplicate field
     keys are dropped, registry fields the layout lacks are appended to their
     default-titled section (fallback: last section, or a new 'Other'),
-    schedule/emergency blocks appear exactly once, values are clamped, and the global `label_size` is clamped to LABEL_SIZES.
+    schedule/emergency blocks appear exactly once, values are clamped, and
+    the global `label_size` is clamped to LABEL_SIZES.
     Unusable input degrades to default_layout(); never raises."""
     default = default_layout()
     if not isinstance(layout, dict) or not isinstance(layout.get("blocks"), list):

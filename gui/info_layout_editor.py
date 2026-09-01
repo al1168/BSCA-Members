@@ -201,7 +201,7 @@ class InfoLayoutEditor(QDialog):
                 if not cfg.get("visible", True):
                     text += "  (hidden)"
                 label_px = LABEL_PX[self._layout.get("label_size", "normal")]
-                value_px = VALUE_PX.get(cfg.get("size", "normal"), 13)
+                value_px = VALUE_PX[cfg.get("size", "normal")]
                 cell = _ClickLabel(
                     f"<span style='font-size:{label_px}px'>"
                     f"{html.escape(text)}</span><br>"

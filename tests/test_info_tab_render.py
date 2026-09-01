@@ -259,6 +259,17 @@ def test_xlarge_value_and_large_label_render(qapp):
     assert lab.font().pixelSize() == 13
 
 
+def test_qss_pixel_values_match_editor_maps():
+    """The editor's preview px maps must track the theme QSS rules."""
+    from gui.theme import build_qss, DARK
+    from gui.info_layout_editor import VALUE_PX, LABEL_PX
+    qss = build_qss(DARK)
+    for s in ("small", "large", "xlarge"):
+        assert f'[fsize="{s}"] {{ font-size: {VALUE_PX[s]}px' in qss
+    for s in ("small", "large"):
+        assert f'[lsize="{s}"] {{ font-size: {LABEL_PX[s]}px' in qss
+
+
 def test_labels_carry_global_label_size(qapp):
     from gui.info_layout import default_layout
     lay = default_layout()
