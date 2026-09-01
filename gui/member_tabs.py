@@ -1703,6 +1703,9 @@ class MemberTabsWidget(QWidget):
             "hospital": self._info_hospital, "pcp": self._info_pcp,
             "hha": self._info_hha, "case_manager": self._info_case_manager,
         }
+        # Kept so hidden (unparented-from-grid) widgets are still reachable
+        # for baseline resets after save — findChildren alone would miss them.
+        self._info_widgets_by_key = widgets
 
         grid = QGridLayout()
         grid.setContentsMargins(4, 4, 8, 4)
@@ -1741,6 +1744,8 @@ class MemberTabsWidget(QWidget):
                     grid.addWidget(self._emergency_box,
                                    state["row"], 0, 1, 6)
                     state["row"] += 1
+                else:
+                    self._emergency_box.setVisible(False)
                 self._fill_emergency_box()
             else:
                 placed = placements(block["fields"])
@@ -2149,7 +2154,13 @@ class MemberTabsWidget(QWidget):
             # DOB) appears immediately, without revisiting the profile.
             self._populate_info_fields()
             self._refresh_alt_id_label()
-            for w in self.findChildren(_ViewEditLineEdit):
+            # findChildren alone misses hidden fields (never parented into the
+            # grid), so also sweep the layout's widget map for those.
+            baseline_widgets = set(self.findChildren(_ViewEditLineEdit))
+            baseline_widgets.update(
+                w for w in getattr(self, "_info_widgets_by_key", {}).values()
+                if isinstance(w, _ViewEditLineEdit))
+            for w in baseline_widgets:
                 w.set_baseline()                 # saved values -> clear highlight
             self._set_dirty(False)
             new_long_lat = self._info_address.long_lat()

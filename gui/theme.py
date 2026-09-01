@@ -292,8 +292,10 @@ QLineEdit#info_field[error="true"] {{
     padding: 3px 6px;
 }}
 /* Customizable Info tab per-field styling, driven by dynamic properties set
-   from the saved layout (see gui/info_layout.py). General QLineEdit selectors
-   on purpose: the address field's inner line edit isn't #info_field. */
+   from the saved layout (see gui/info_layout.py). Generic fallback for any
+   customizable line edit without the #info_field object name; currently
+   redundant (the address inner edit uses #info_field too) but kept as a
+   safety net. */
 QLineEdit[fbold="true"] {{ font-weight: 800; }}
 QLineEdit[fsize="large"] {{ font-size: 16px; }}
 QLineEdit[hl="amber"], QLineEdit[hl="amber"]:read-only {{
