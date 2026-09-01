@@ -1614,6 +1614,58 @@ class MemberTabsWidget(QWidget):
         self._schedule_card.deleteLater()
         self._schedule_card = new_card
 
+    def _open_layout_editor(self):
+        """Open the layout editor; on save, persist and rebuild the tab."""
+        from PyQt6.QtWidgets import QMessageBox
+        if self.__dict__.get("_dirty"):
+            QMessageBox.information(
+                self, "Customize Layout",
+                "Save or discard your field edits first — changing the "
+                "layout rebuilds the tab.")
+            return
+        from PyQt6.QtWidgets import QDialog
+        from gui.info_layout_editor import InfoLayoutEditor
+        dlg = InfoLayoutEditor(self._layout_cfg, self._member, self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._apply_layout(dlg.result_layout())
+
+    def _apply_layout(self, layout_cfg: dict) -> None:
+        """Adopt a new layout: save it to the settings JSON (when this widget
+        has one) and rebuild the Info tab in place."""
+        self._layout_cfg = layout_cfg
+        settings = self.__dict__.get("_settings")
+        path = self.__dict__.get("_settings_path")
+        if settings is not None:
+            settings["info_tab_layout"] = layout_cfg
+            if path:
+                from settings import save_settings
+                try:
+                    save_settings(settings, path)
+                except OSError as exc:
+                    from PyQt6.QtWidgets import QMessageBox
+                    QMessageBox.warning(
+                        self, "Customize Layout",
+                        f"Could not save the layout:\n{exc}")
+        self._rebuild_info_tab()
+
+    def _rebuild_info_tab(self) -> None:
+        """Swap a freshly built Info tab in at the same index. Field widgets
+        are re-created, so dirty tracking is reset and re-armed."""
+        idx = self._tabs.indexOf(self._tab_info)
+        old = self._tab_info
+        self._tabs.blockSignals(True)   # don't trip the unsaved-edits guard
+        self._tabs.removeTab(idx)
+        self._tab_info = self._make_info_tab()
+        self._tabs.insertTab(idx, self._tab_info, "Info")
+        self._tabs.setCurrentIndex(idx)
+        self._tabs.blockSignals(False)
+        self._info_tab_index = idx
+        self._prev_tab_index = idx
+        old.deleteLater()
+        self._dirty = False
+        self._setup_dirty_tracking()
+
     def _make_info_tab(self) -> QWidget:
         from PyQt6.QtWidgets import (
             QLineEdit, QScrollArea, QGridLayout,
@@ -1796,6 +1848,9 @@ class MemberTabsWidget(QWidget):
         outer_layout.addWidget(scroll)
 
         btn_row = QHBoxLayout()
+        btn_customize = QPushButton("✎ Customize Layout")
+        btn_customize.clicked.connect(self._open_layout_editor)
+        btn_row.addWidget(btn_customize)
         btn_row.addStretch()
         btn_discard = QPushButton("Discard Changes")
         btn_discard.setObjectName("btn_discard")
@@ -2198,7 +2253,15 @@ class MemberTabsWidget(QWidget):
         )
         for w in line_edits:
             w.textChanged.connect(lambda: self._set_dirty(True))
-        self._info_notes.textChanged.connect(lambda: self._set_dirty(True))
+        # __dict__.get, not attribute access: _info_notes lives on the header
+        # (built once in _build_ui, not _make_info_tab), so a __new__-built
+        # test widget that only ever calls _make_info_tab() never has it. A
+        # rebuilt Info tab re-runs this method against the same surviving
+        # header widget, so this connects a second lambda that calls
+        # _set_dirty(True) — a harmless duplicate, not a functional bug.
+        notes = self.__dict__.get("_info_notes")
+        if notes is not None:
+            notes.textChanged.connect(lambda: self._set_dirty(True))
 
     def is_dirty(self) -> bool:
         return self._dirty

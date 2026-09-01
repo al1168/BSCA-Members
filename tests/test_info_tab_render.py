@@ -156,3 +156,57 @@ def test_garbage_layout_falls_back_to_default(qapp):
     pos = _grid_positions(w)
     assert w._info_first in pos
     assert w._schedule_card in pos
+
+
+# ── wiring: apply a new layout, persist, rebuild in place ──────────────────
+
+def test_apply_layout_persists_and_rebuilds(qapp, tmp_path):
+    import json
+    from PyQt6.QtWidgets import QTabWidget, QWidget
+    from gui.info_layout import default_layout
+    w, tab = _make_tab(qapp)
+    # Give the widget a tab bar + settings the way _build_ui/__init__ do.
+    w._tabs = QTabWidget()
+    w._tabs.addTab(tab, "Info")
+    w._tabs.addTab(QWidget(), "Other")
+    w._tab_info = tab
+    w._info_tab_index = 0
+    w._prev_tab_index = 0
+    w._lazy_tabs = {}
+    w._dirty = False
+    path = str(tmp_path / "settings.json")
+    w._settings = {}
+    w._settings_path = path
+    new_layout = default_layout()
+    new_layout["blocks"][1]["title"] = "Rearranged"
+    w._apply_layout(new_layout)
+    # Persisted:
+    with open(path, "r", encoding="utf-8") as f:
+        saved = json.load(f)
+    assert saved["info_tab_layout"]["blocks"][1]["title"] == "Rearranged"
+    # Rebuilt in place at the same index, same count:
+    assert w._tabs.count() == 2
+    assert w._tabs.widget(0) is w._tab_info
+    assert w._tab_info is not tab
+    from PyQt6.QtWidgets import QLabel
+    headers = [lbl.text() for lbl in w._tab_info.findChildren(QLabel)
+               if lbl.objectName() == "section_header"]
+    assert "REARRANGED" in headers
+
+
+def test_open_layout_editor_blocked_while_dirty(qapp, monkeypatch):
+    w, _tab = _make_tab(qapp)
+    w._dirty = True
+    called = {}
+    from PyQt6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "information",
+                        staticmethod(lambda *a, **k: called.setdefault("x", 1)))
+    w._open_layout_editor()
+    assert called   # told the user; no dialog attempted
+
+
+def test_customize_button_present_on_info_tab(qapp):
+    from PyQt6.QtWidgets import QPushButton
+    _w, tab = _make_tab(qapp)
+    texts = [b.text() for b in tab.findChildren(QPushButton)]
+    assert any("Customize" in t for t in texts)
