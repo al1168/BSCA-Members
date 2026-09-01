@@ -257,3 +257,25 @@ def test_xlarge_value_and_large_label_render(qapp):
     lab.style().unpolish(lab)
     lab.style().polish(lab)
     assert lab.font().pixelSize() == 13
+
+
+def test_labels_carry_global_label_size(qapp):
+    from gui.info_layout import default_layout
+    lay = default_layout()
+    lay["label_size"] = "large"
+    _w, tab = _make_tab(qapp, layout_cfg=lay)
+    from PyQt6.QtWidgets import QLabel
+    labels = [l for l in tab.findChildren(QLabel)
+              if l.objectName() == "field_label"]
+    assert labels
+    assert all(l.property("lsize") == "large" for l in labels)
+
+
+def test_field_small_size_sets_fsize_property(qapp):
+    from gui.info_layout import default_layout
+    lay = default_layout()
+    for f in lay["blocks"][1]["fields"]:
+        if f["key"] == "dob":
+            f["size"] = "small"
+    w, _tab = _make_tab(qapp, layout_cfg=lay)
+    assert w._info_dob.property("fsize") == "small"
