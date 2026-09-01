@@ -9,7 +9,7 @@ editor dialog calls. The layout dict is stored per-machine under the
 
 Layout schema (version 1)::
 
-    {"version": 1, "blocks": [
+    {"version": 1, "label_size": "normal", "blocks": [
         {"type": "schedule", "visible": true},
         {"type": "section", "title": "Identity", "fields": [
             {"key": "first_name", "span": 1, "bold": false,
