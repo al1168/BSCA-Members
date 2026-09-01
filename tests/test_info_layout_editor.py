@@ -54,3 +54,19 @@ def test_preview_rebuild_preserves_selection(qapp):
     dlg._rebuild_preview()
     assert dlg._selection == ("field", "dob")
     assert "dob" in dlg._preview_cells
+
+
+def test_real_mouse_click_on_preview_cell_does_not_crash(qapp):
+    """Regression: QScrollArea.setWidget() deletes the old preview; a rebuild
+    triggered from inside a cell's own mousePressEvent must defer that
+    deletion (deleteLater), or the click handler returns into a freed
+    widget and the process dies."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from gui.info_layout_editor import InfoLayoutEditor
+    dlg = InfoLayoutEditor(None, MEMBER)
+    QTest.mouseClick(dlg._preview_cells["dob"], Qt.MouseButton.LeftButton)
+    assert dlg._selection == ("field", "dob")
+    # And again on a cell of the rebuilt preview (fresh widget map).
+    QTest.mouseClick(dlg._preview_cells["cell"], Qt.MouseButton.LeftButton)
+    assert dlg._selection == ("field", "cell")

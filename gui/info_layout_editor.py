@@ -98,7 +98,7 @@ class InfoLayoutEditor(QDialog):
         self._rebuild_props()
 
     def _changed(self):
-        """Re-render after any model mutation."""
+        """Re-render after any model mutation (wired up by the properties panel)."""
         self._rebuild_preview()
 
     # ── preview ────────────────────────────────────────────────────────────
@@ -180,6 +180,13 @@ class InfoLayoutEditor(QDialog):
                 last = frow
             row = base + last + 1
         grid.setRowStretch(row, 1)
+        # setWidget() deletes the previous preview synchronously — but a
+        # rebuild can be triggered from inside a preview cell's own
+        # mousePressEvent. Detach the old widget and let deleteLater free it
+        # once the event stack unwinds.
+        old = self._preview_scroll.takeWidget()
+        if old is not None:
+            old.deleteLater()
         self._preview_scroll.setWidget(content)
 
     # ── properties panel (built in Task 7) ─────────────────────────────────
