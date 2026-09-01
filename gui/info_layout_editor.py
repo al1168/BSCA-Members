@@ -7,6 +7,7 @@ edits go through the pure helpers in gui.info_layout on a deep copy; the
 caller reads result_layout() only after the dialog is accepted.
 """
 import copy
+import html
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -19,8 +20,15 @@ from gui.info_layout import (
     normalize, default_layout, placements, FIELD_LABELS_BY_KEY, COLORS,
     find_field, set_field_prop, move_field, move_field_to_section,
     move_block, rename_section, add_section, delete_section,
+    SIZES, LABEL_SIZES,
 )
 from gui.theme import current_tokens
+
+# Preview-only pixel mapping; must track the theme QSS rules.
+VALUE_PX = {"small": 11, "normal": 13, "large": 16, "xlarge": 20}
+LABEL_PX = {"small": 9, "normal": 11, "large": 13}
+SIZE_NAMES = {"small": "Small", "normal": "Normal", "large": "Large",
+              "xlarge": "X-Large"}
 
 
 class _ClickLabel(QLabel):
@@ -57,6 +65,18 @@ class InfoLayoutEditor(QDialog):
         body.addWidget(self._preview_scroll, 2)
 
         right = QVBoxLayout()
+        lbl_row = QHBoxLayout()
+        lbl_row.addWidget(QLabel("Label size (all fields)"))
+        self._label_size_combo = QComboBox()
+        for s in LABEL_SIZES:
+            self._label_size_combo.addItem(SIZE_NAMES[s], s)
+        self._label_size_combo.setCurrentIndex(
+            LABEL_SIZES.index(self._layout.get("label_size", "normal")))
+        self._label_size_combo.currentIndexChanged.connect(
+            self._on_label_size_changed)
+        lbl_row.addWidget(self._label_size_combo)
+        lbl_row.addStretch()
+        right.addLayout(lbl_row)
         self._props_host = QWidget()
         self._props_host.setMinimumWidth(280)
         QVBoxLayout(self._props_host)
@@ -97,12 +117,20 @@ class InfoLayoutEditor(QDialog):
     def _reset(self):
         self._layout = default_layout()
         self._selection = None
+        self._label_size_combo.blockSignals(True)
+        self._label_size_combo.setCurrentIndex(
+            LABEL_SIZES.index(self._layout["label_size"]))
+        self._label_size_combo.blockSignals(False)
         self._rebuild_preview()
         self._rebuild_props()
 
     def _changed(self):
         """Re-render after any model mutation (wired up by the properties panel)."""
         self._rebuild_preview()
+
+    def _on_label_size_changed(self, _i):
+        self._layout["label_size"] = self._label_size_combo.currentData()
+        self._changed()
 
     # ── preview ────────────────────────────────────────────────────────────
 
@@ -113,11 +141,10 @@ class InfoLayoutEditor(QDialog):
             else t["raised"]
         border = t["accent"] if selected else t["border"]
         weight = 800 if cfg.get("bold") else 600
-        size = 15 if cfg.get("size") == "large" else 12
         dim_css = "" if cfg.get("visible", True) else \
             f"color: {t['text4']};"
         return (f"background-color: {bg}; border: 2px solid {border}; "
-                f"border-radius: 6px; padding: 6px; font-size: {size}px; "
+                f"border-radius: 6px; padding: 6px; "
                 f"font-weight: {weight}; {dim_css}")
 
     def _preview_value(self, key):
@@ -173,7 +200,14 @@ class InfoLayoutEditor(QDialog):
                 text = FIELD_LABELS_BY_KEY[key]
                 if not cfg.get("visible", True):
                     text += "  (hidden)"
-                cell = _ClickLabel(f"{text}\n{self._preview_value(key)}")
+                label_px = LABEL_PX[self._layout.get("label_size", "normal")]
+                value_px = VALUE_PX.get(cfg.get("size", "normal"), 13)
+                cell = _ClickLabel(
+                    f"<span style='font-size:{label_px}px'>"
+                    f"{html.escape(text)}</span><br>"
+                    f"<span style='font-size:{value_px}px'>"
+                    f"{html.escape(self._preview_value(key))}</span>")
+                cell.setTextFormat(Qt.TextFormat.RichText)
                 cell.setStyleSheet(self._cell_css(
                     cfg, self._selection == ("field", key)))
                 cell.clicked.connect(
@@ -280,12 +314,14 @@ class InfoLayoutEditor(QDialog):
             item = box.takeAt(0)
             w = item.widget()
             if w is not None:
+                w.setParent(None)
                 w.deleteLater()
             elif item.layout() is not None:
                 sub = item.layout()
                 while sub.count():
                     sw = sub.takeAt(0).widget()
                     if sw is not None:
+                        sw.setParent(None)
                         sw.deleteLater()
 
     def _rebuild_props(self):
@@ -345,11 +381,14 @@ class InfoLayoutEditor(QDialog):
         bold.setChecked(cfg["bold"])
         bold.toggled.connect(lambda v: self._set_prop("bold", v))
         box.addWidget(bold)
-        large = QCheckBox("Large text")
-        large.setChecked(cfg["size"] == "large")
-        large.toggled.connect(
-            lambda v: self._set_prop("size", "large" if v else "normal"))
-        box.addWidget(large)
+        size_combo = QComboBox()
+        for s in SIZES:
+            size_combo.addItem(SIZE_NAMES[s], s)
+        size_combo.setCurrentIndex(SIZES.index(cfg["size"]))
+        size_combo.currentIndexChanged.connect(
+            lambda _i: self._set_prop("size", size_combo.currentData()))
+        box.addWidget(QLabel("Text size"))
+        box.addWidget(size_combo)
 
         color_combo = QComboBox()
         for c in COLORS:

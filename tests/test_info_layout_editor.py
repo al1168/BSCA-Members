@@ -171,3 +171,57 @@ def test_blank_rename_resyncs_panel(qapp):
     from PyQt6.QtWidgets import QLineEdit
     name = dlg._props_host.findChild(QLineEdit)
     assert name is not None and name.text() == "Identity"
+
+
+# ── font sizes in the editor ───────────────────────────────────────────────
+
+def test_text_size_dropdown_sets_field_size(qapp):
+    from gui.info_layout import find_field
+    dlg = _dlg(qapp)
+    dlg._select(("field", "dob"))
+    dlg._set_prop("size", "xlarge")
+    bi, fi = find_field(dlg._layout, "dob")
+    assert dlg._layout["blocks"][bi]["fields"][fi]["size"] == "xlarge"
+    # The props panel offers a Text size dropdown with all four steps.
+    from PyQt6.QtWidgets import QComboBox
+    dlg._rebuild_props()
+    combos = dlg._props_host.findChildren(QComboBox)
+    size_combos = [c for c in combos
+                   if [c.itemData(i) for i in range(c.count())]
+                   == ["small", "normal", "large", "xlarge"]]
+    assert len(size_combos) == 1
+    assert size_combos[0].currentData() == "xlarge"
+
+
+def test_global_label_size_dropdown(qapp):
+    dlg = _dlg(qapp)
+    assert dlg._layout["label_size"] == "normal"
+    dlg._label_size_combo.setCurrentIndex(2)          # "large"
+    assert dlg._layout["label_size"] == "large"
+    # Survives selection changes and preview rebuilds.
+    dlg._select(("field", "dob"))
+    assert dlg._label_size_combo.currentData() == "large"
+    assert dlg._layout["label_size"] == "large"
+    assert dlg.result_layout()["label_size"] == "large"
+
+
+def test_reset_resyncs_label_size_combo(qapp):
+    dlg = _dlg(qapp)
+    dlg._label_size_combo.setCurrentIndex(0)          # "small"
+    dlg._reset()
+    assert dlg._layout["label_size"] == "normal"
+    assert dlg._label_size_combo.currentData() == "normal"
+
+
+def test_preview_cells_render_both_sizes_as_rich_text(qapp):
+    from gui.info_layout import find_field
+    dlg = _dlg(qapp)
+    dlg._layout["label_size"] = "large"               # 13px labels
+    bi, fi = find_field(dlg._layout, "dob")
+    dlg._layout["blocks"][bi]["fields"][fi]["size"] = "xlarge"   # 20px value
+    dlg._rebuild_preview()
+    cell_text = dlg._preview_cells["dob"].text()
+    assert "font-size:13px" in cell_text
+    assert "font-size:20px" in cell_text
+    # A normal field uses the base value size.
+    assert "font-size:13px" in dlg._preview_cells["first_name"].text()
