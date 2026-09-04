@@ -292,6 +292,16 @@ def format_dob_display(value) -> str:
     return f"{d:%m/%d/%Y}" if d else format_date_only(value)
 
 
+def age_from_dob(value) -> int | None:
+    """Whole-year age as of today from a stored DOB (any shape
+    parse_flexible_date accepts); None when the DOB can't be parsed."""
+    d = parse_flexible_date(value)
+    if d is None:
+        return None
+    today = date.today()
+    return today.year - d.year - ((today.month, today.day) < (d.month, d.day))
+
+
 SET_LONG_LAT = "UPDATE [Contacts] SET [Long Lat]=? WHERE [Center ID]=?"
 
 SET_ALT_ID = "UPDATE [Contacts] SET [alt_id]=? WHERE [Center ID]=?"

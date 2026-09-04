@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 
 from db.members import (
     get_member_context, format_phone, format_date_only, format_dob_display,
+    age_from_dob,
     format_ssn, is_valid_ssn, format_medicaid, is_valid_medicaid,
     format_medicare, is_valid_medicare, is_valid_alt_id,
     format_ssn_live, format_medicaid_live, format_medicare_live,
@@ -1773,10 +1774,30 @@ class MemberTabsWidget(QWidget):
         layout_cfg = normalize(self.__dict__.get("_layout_cfg"))
         self._layout_cfg = layout_cfg
 
+        # Age readout beside the DOB: display-only, tracks the DOB field live.
+        # Saving reads self._info_dob directly, so the age never enters the
+        # stored value.
+        self._info_age = QLabel()
+        self._info_age.setObjectName("field_label")
+        self._info_age.setProperty("lsize", layout_cfg.get("label_size", "normal"))
+
+        def _refresh_age(text: str):
+            years = age_from_dob(text.strip())
+            self._info_age.setText("" if years is None else f"(Age {years})")
+        self._info_dob.textChanged.connect(_refresh_age)
+        _refresh_age(self._info_dob.text())
+
+        self._info_dob_row = QWidget()
+        dob_row = QHBoxLayout(self._info_dob_row)
+        dob_row.setContentsMargins(0, 0, 0, 0)
+        dob_row.setSpacing(6)
+        dob_row.addWidget(self._info_dob, 1)
+        dob_row.addWidget(self._info_age)
+
         widgets = {
             "first_name": self._info_first, "last_name": self._info_last,
             "chinese_name": self._info_chinese, "gender": self._info_gender,
-            "dob": self._info_dob, "ssn": self._info_ssn,
+            "dob": self._info_dob_row, "ssn": self._info_ssn,
             "center_id": self._info_cid, "enrollment_start": enroll_lbl,
             "language": self._info_language, "alt_id": self._info_alt_id,
             "address": self._info_address, "home_tell": self._info_home_tell,
@@ -2244,11 +2265,14 @@ class MemberTabsWidget(QWidget):
             self._populate_info_fields()
             self._refresh_alt_id_label()
             # findChildren alone misses hidden fields (never parented into the
-            # grid), so also sweep the layout's widget map for those.
+            # grid), so also sweep the layout's widget map for those — looking
+            # inside composite entries (the DOB row) for their line edits.
             baseline_widgets = set(self.findChildren(_ViewEditLineEdit))
-            baseline_widgets.update(
-                w for w in getattr(self, "_info_widgets_by_key", {}).values()
-                if isinstance(w, _ViewEditLineEdit))
+            for entry in getattr(self, "_info_widgets_by_key", {}).values():
+                if isinstance(entry, _ViewEditLineEdit):
+                    baseline_widgets.add(entry)
+                else:
+                    baseline_widgets.update(entry.findChildren(_ViewEditLineEdit))
             for w in baseline_widgets:
                 w.set_baseline()                 # saved values -> clear highlight
             self._set_dirty(False)

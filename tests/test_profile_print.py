@@ -35,6 +35,28 @@ def test_includes_member_name_and_id():
     assert "10042" in html
 
 
+def test_center_id_sits_on_the_name_line():
+    html = build_profile_html(_member(), [], "2026-01-01")
+    name_i = html.find("Doe, Jane")
+    br_i = html.find("<br>", name_i)
+    cid_i = html.find("Center ID 10042", name_i)
+    assert -1 < cid_i < br_i   # before the line break → same line as the name
+
+
+def test_age_shown_next_to_dob():
+    from datetime import date
+    html = build_profile_html(_member(), [], "2026-01-01")
+    d, today = date(1948, 5, 14), date.today()
+    years = today.year - d.year - ((today.month, today.day) < (d.month, d.day))
+    # Header meta line and the Identity section both carry the age.
+    assert html.count(f"05/14/1948 (Age {years})") == 2
+
+
+def test_no_age_when_dob_unparseable():
+    html = build_profile_html(_member(dob="not-a-date"), [], "2026-01-01")
+    assert "Age" not in html
+
+
 def test_includes_identity_contact_and_insurance_fields():
     html = build_profile_html(_member(), [], "2026-01-01")
     for value in ("05/14/1948", "M-1234", "(212)-555-0100", "1 Main St, NY",

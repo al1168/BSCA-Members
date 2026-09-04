@@ -139,7 +139,8 @@ def test_layout_styling_sets_dynamic_properties(qapp):
     assert w._info_dob.property("fbold") == "true"
     assert w._info_dob.property("fsize") == "large"
     assert w._info_dob.property("hl") == "amber"
-    assert _grid_positions(w)[w._info_dob][3] == 3   # span 2 -> colspan 3
+    # The DOB is placed via its row container (edit + age label).
+    assert _grid_positions(w)[w._info_dob_row][3] == 3   # span 2 -> colspan 3
 
 
 def test_hidden_schedule_block_skips_card(qapp):
@@ -229,6 +230,36 @@ def test_layout_editor_gets_display_member_values(qapp, monkeypatch):
     assert m["center_id"] == "7"
     # No alt-id key set on the widget -> displays the stored value as text.
     assert m["alt_id"] == "987654321"
+
+
+# ── age readout beside the DOB ──────────────────────────────────────────────
+
+def _expected_age(y, mo, d):
+    from datetime import date
+    dob, today = date(y, mo, d), date.today()
+    return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+
+
+def test_age_label_shows_next_to_dob(qapp):
+    w, _tab = _make_tab(qapp, member={"first_name": "Mary", "last_name": "Chan",
+                                      "dob": "5/14/1948", "alt_id": None})
+    assert w._info_age.text() == f"(Age {_expected_age(1948, 5, 14)})"
+    # Placed via the row container; the edit itself keeps the bare date so
+    # saving never picks up the age text.
+    pos = _grid_positions(w)
+    assert w._info_dob_row in pos
+    assert w._info_dob.text() == "05/14/1948"
+
+
+def test_age_label_tracks_dob_edits(qapp):
+    w, _tab = _make_tab(qapp, member={"first_name": "Mary", "last_name": "Chan",
+                                      "dob": "5/14/1948", "alt_id": None})
+    w._info_dob.setText("01/01/2000")
+    assert w._info_age.text() == f"(Age {_expected_age(2000, 1, 1)})"
+    w._info_dob.setText("")
+    assert w._info_age.text() == ""          # no DOB -> no age
+    w._info_dob.setText("not a date")
+    assert w._info_age.text() == ""          # unparseable -> no age
 
 
 # ── font-size steps: value fsize small/xlarge + label lsize rules ──────────

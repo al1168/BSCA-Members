@@ -36,6 +36,13 @@ def _date_only(value) -> str:
     return format_dob_display(value)
 
 
+def _age_text(dob_value) -> str:
+    """' (Age N)' as of today from a stored DOB; empty when unparseable."""
+    from db.members import age_from_dob
+    years = age_from_dob(dob_value)
+    return "" if years is None else f" (Age {years})"
+
+
 def _fields_grid(pairs, cols: int = 2) -> str:
     """Lay label/value pairs out in `cols` even columns. Each cell holds its
     label and value together (gray label, then value) so the value sits right
@@ -90,6 +97,7 @@ def build_profile_html(
     m = member
     name = _esc(f"{m.get('last_name', '')}, {m.get('first_name', '')}".strip(", "))
     dob = _date_only(m.get("dob"))
+    dob_with_age = f"{dob}{_age_text(m.get('dob'))}" if dob else dob
 
     photo_cell = (
         f'<td width="120" valign="top">'
@@ -101,11 +109,12 @@ def build_profile_html(
         f'<table width="100%" cellspacing="0" cellpadding="4">'
         f'<tr>{photo_cell}'
         f'<td valign="middle">'
-        f'<span style="font-size:17pt; color:{_VALUE};"><b>{name}</b></span><br>'
+        f'<span style="font-size:17pt; color:{_VALUE};"><b>{name}</b></span>'
+        f'&nbsp;&nbsp;<span style="color:{_LABEL}; font-size:{_TITLE_PT};">'
+        f'Center ID {_esc(m.get("center_id"))}</span><br>'
         f'<span style="color:{_LABEL}; font-size:{_BODY_PT};">'
-        f'Center ID {_esc(m.get("center_id"))}'
-        f' &nbsp;·&nbsp; Health Plan {_esc(m.get("health_plan"))}'
-        f' &nbsp;·&nbsp; DOB {_esc(dob)}'
+        f'Health Plan {_esc(m.get("health_plan"))}'
+        f' &nbsp;·&nbsp; DOB {_esc(dob_with_age)}'
         f' &nbsp;·&nbsp; Member ID {_esc(m.get("member_id"))}</span>'
         f'</td></tr></table>'
     )
@@ -113,7 +122,7 @@ def build_profile_html(
     identity = _fields_grid([
         ("Chinese Name", m.get("chinese_name")),
         ("Gender", m.get("gender")),
-        ("Date of Birth", dob),
+        ("Date of Birth", dob_with_age),
         ("Language", m.get("language")),
         ("Enrollment Start", _date_only(enroll_start)),
     ], cols=2)
