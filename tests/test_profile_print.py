@@ -185,6 +185,62 @@ def test_print_active_auth_none_when_all_expired(qapp, monkeypatch):
     assert w._print_active_auth() is None
 
 
+# The selector tests use a fake printer and a plain dialog+toolbar: a real
+# QPrinter/QPrintPreviewDialog talks to the Windows print spooler, which
+# blocks indefinitely on machines whose default printer is unreachable
+# (e.g. the office RICOH from a dev laptop).
+class _FakePrinter:
+    def __init__(self):
+        self._name = ""
+        self._layout = object()
+        self.layouts_set = []
+
+    def setPrinterName(self, name): self._name = name
+    def printerName(self): return self._name
+    def pageLayout(self): return self._layout
+    def setPageLayout(self, layout): self.layouts_set.append(layout)
+
+
+def _selector_fixture(names, default):
+    from PyQt6.QtWidgets import QComboBox, QDialog, QToolBar
+    from gui.profile_print import _attach_printer_selector
+    printer = _FakePrinter()
+    preview = QDialog()
+    QToolBar(preview)                       # stands in for the dialog's toolbar
+    _attach_printer_selector(preview, printer, names=names, default_name=default)
+    return printer, preview, preview.findChild(QComboBox, "printer_select")
+
+
+def test_printer_selector_defaults_to_system_default(qapp):
+    printer, _preview, combo = _selector_fixture(
+        ["Office Laser", "PDF Writer"], "PDF Writer")
+    assert combo is not None
+    assert combo.currentText() == "PDF Writer"
+    assert printer.printerName() == "PDF Writer"
+    # Retargeting carried our page layout (margins) over to the new printer.
+    assert printer.layouts_set == [printer.pageLayout()]
+
+
+def test_printer_selector_switches_print_target(qapp):
+    printer, _preview, combo = _selector_fixture(
+        ["Office Laser", "PDF Writer"], "PDF Writer")
+    combo.setCurrentText("Office Laser")
+    assert printer.printerName() == "Office Laser"
+
+
+def test_printer_selector_absent_without_printers(qapp):
+    printer, preview, combo = _selector_fixture([], "")
+    assert combo is None                    # nothing to choose from
+    assert printer.printerName() == ""      # printer left untouched
+
+
+def test_printer_selector_unknown_default_keeps_first(qapp):
+    printer, _preview, combo = _selector_fixture(
+        ["Office Laser", "PDF Writer"], "Gone Printer")
+    assert combo.currentText() == "Office Laser"
+    assert printer.printerName() == "Office Laser"
+
+
 def test_html_parses_cleanly_into_qtextdocument(qapp):
     from PyQt6.QtGui import QTextDocument
     doc = QTextDocument()

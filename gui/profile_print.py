@@ -196,6 +196,51 @@ def build_profile_html(
     )
 
 
+def _attach_printer_selector(preview, printer,
+                             names=None, default_name=None) -> None:
+    """Add a "Printer:" drop-down to the preview dialog's toolbar, preselected
+    to the computer's default printer; picking another retargets ``printer``
+    so the toolbar's Print button uses it. ``names``/``default_name`` bypass
+    the system printer query (tests). No toolbar entry when there are no
+    printers to choose from."""
+    from PyQt6.QtWidgets import QComboBox, QLabel, QToolBar
+    from PyQt6.QtPrintSupport import QPrinterInfo, QPrintPreviewWidget
+
+    if names is None:
+        names = [p.printerName() for p in QPrinterInfo.availablePrinters()]
+        default_name = QPrinterInfo.defaultPrinter().printerName()
+    if not names:
+        return
+
+    combo = QComboBox()
+    combo.setObjectName("printer_select")
+    combo.addItems(names)
+    if default_name in names:
+        combo.setCurrentText(default_name)
+    # Long printer names shouldn't crowd the Print button off the toolbar.
+    combo.setMaximumWidth(240)
+
+    def _retarget(name: str):
+        page_layout = printer.pageLayout()   # keep our margins/orientation
+        printer.setPrinterName(name)
+        printer.setPageLayout(page_layout)
+        w = preview.findChild(QPrintPreviewWidget)
+        if w is not None:
+            w.updatePreview()
+
+    _retarget(combo.currentText())
+    combo.currentTextChanged.connect(_retarget)
+
+    toolbar = preview.findChild(QToolBar)
+    if toolbar is not None:
+        toolbar.addSeparator()
+        toolbar.addWidget(QLabel(" Printer: "))
+        toolbar.addWidget(combo)
+    else:                      # no toolbar (unexpected): keep combo reachable
+        combo.setParent(preview)
+        combo.setVisible(False)
+
+
 def open_profile_print_preview(
     parent,
     member: dict,
@@ -229,8 +274,9 @@ def open_profile_print_preview(
 
     preview = QPrintPreviewDialog(printer, parent)
     preview.setWindowTitle("Print Member Profile")
-    # Wide enough that the full toolbar (incl. the Print button) shows instead
-    # of collapsing into an overflow "…" menu.
-    preview.resize(1040, 800)
+    # Wide enough that the full toolbar (incl. the Print button and the
+    # printer drop-down) shows instead of collapsing into an overflow "…" menu.
+    preview.resize(1200, 800)
+    _attach_printer_selector(preview, printer)
     preview.paintRequested.connect(doc.print)  # PyQt6: print (not print_)
     preview.exec()
