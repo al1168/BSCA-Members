@@ -163,6 +163,36 @@ Created by this app (DDL in [tests/conftest.py](../tests/conftest.py)).
 | Phone Number | TEXT(255) | Stored formatted `(xxx)-xxx-xxxx`. Required at startup. |
 | Relationship | TEXT(255) | |
 
+### Holidays — company-wide closed dates
+
+Created by the BSCA Setup chain (`scripts/create_supporting_tables.py`).
+Edited here through **🏢 Company Calendar**.
+
+| Field | Type | Notes |
+|---|---|---|
+| ID | AUTOINCREMENT PK | |
+| holiday_name | TEXT(255) | Required at startup. |
+| date | DATETIME | Date only. One row per closed date. Required at startup. |
+
+The scheduler generates no times on a holiday (blank day, not an absence).
+
+### OperatingDays — weekly hours, one row per open weekday
+
+Created by the BSCA Setup chain and seeded Monday–Sunday 08:00–16:00 by
+`scripts/seed_operating_days.py` when empty. Edited here through
+**🏢 Company Calendar**; "Save Hours" rewrites the whole table.
+
+| Field | Type | Notes |
+|---|---|---|
+| ID | AUTOINCREMENT PK | |
+| day_name | TEXT(20) | `Monday` … `Sunday`. Required at startup. |
+| Day Of Week | LONG | 1 = Monday … 7 = Sunday (Availability's convention). The scheduler matches on this, not on `day_name`. Required at startup. |
+| opening_time | DATETIME | Time-only on 1899-12-30, same as Availability. Required at startup. |
+| closing_time | DATETIME | Same; later than `opening_time`. Required at startup. |
+
+A weekday with no row is **closed**. On an open day these times are the
+scheduler's day bounds (earliest Time-In / latest Time-Out).
+
 ---
 
 ## SQLite events log

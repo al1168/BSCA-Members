@@ -203,3 +203,10 @@ def test_set_long_lat_targets_correct_columns():
     assert "UPDATE [Contacts]" in SET_LONG_LAT
     assert "[Long Lat]=?" in SET_LONG_LAT
     assert "WHERE [Center ID]=?" in SET_LONG_LAT
+
+
+def test_required_schema_includes_calendar_tables():
+    from db.members import REQUIRED_SCHEMA
+    assert REQUIRED_SCHEMA["Holidays"] == ["holiday_name", "date"]
+    assert REQUIRED_SCHEMA["OperatingDays"] == [
+        "day_name", "Day Of Week", "opening_time", "closing_time"]

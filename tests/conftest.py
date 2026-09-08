@@ -33,6 +33,22 @@ _CREATE_SQL = {
             [Relationship] TEXT(255)
         )
     """,
+    "Holidays": """
+        CREATE TABLE [Holidays] (
+            [ID] AUTOINCREMENT PRIMARY KEY,
+            [holiday_name] TEXT(255),
+            [date] DATETIME
+        )
+    """,
+    "OperatingDays": """
+        CREATE TABLE [OperatingDays] (
+            [ID] AUTOINCREMENT PRIMARY KEY,
+            [day_name] TEXT(20),
+            [Day Of Week] LONG,
+            [opening_time] DATETIME,
+            [closing_time] DATETIME
+        )
+    """,
 }
 
 

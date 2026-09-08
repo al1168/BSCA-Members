@@ -1209,6 +1209,9 @@ REQUIRED_SCHEMA = {
     "EmergencyContact": ["Center ID", "Full Name", "Phone Number"],
     "TransportAuthorization": ["Center ID", "auth_start", "auth_end"],
     "AuthEdge": ["authorization_id", "transport_authorization_id"],
+    "Holidays": ["holiday_name", "date"],
+    "OperatingDays": ["day_name", "Day Of Week", "opening_time",
+                      "closing_time"],
 }
 
 
