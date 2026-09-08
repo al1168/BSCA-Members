@@ -1761,6 +1761,10 @@ class MemberTabsWidget(QWidget):
             "" if alt is None else str(alt), validator=is_valid_alt_id)
 
         self._info_case_manager   = field("case_manager")
+        # Group is display-only: it mirrors Contacts.[Group], which is
+        # maintained outside this app.
+        self._info_group = _ViewEditLineEdit(m.get("group", "") or "",
+                                             editable=False)
         # Notes is built in the header (always-visible band), not here.
 
         enroll_start = self._enrollment_start(self._enrollments)
@@ -1807,6 +1811,7 @@ class MemberTabsWidget(QWidget):
             "medicaid": self._info_medicaid, "medicare": self._info_medicare,
             "hospital": self._info_hospital, "pcp": self._info_pcp,
             "hha": self._info_hha, "case_manager": self._info_case_manager,
+            "group": self._info_group,
         }
         # Kept so hidden (unparented-from-grid) widgets are still reachable
         # for baseline resets after save — findChildren alone would miss them.
@@ -2143,6 +2148,7 @@ class MemberTabsWidget(QWidget):
         self._info_cell.setText(format_phone(m.get("cell", "") or ""))
         self._info_emergency.setText(m.get("emergency", "") or "")
         self._info_case_manager.setText(m.get("case_manager", "") or "")
+        self._info_group.setText(m.get("group", "") or "")
         alt = self._display_alt_id()
         self._info_alt_id.setText("" if alt is None else str(alt))
         self._info_notes.setPlainText(m.get("notes", "") or "")

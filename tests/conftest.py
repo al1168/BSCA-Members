@@ -42,7 +42,7 @@ _ADD_COLUMNS = {
     "Authorization": [("created_at", "DATETIME"), ("Member ID", "TEXT(255)"),
                       ("Plan Type", "TEXT(255)")],
     "Absences": [("Notes", "MEMO")],
-    "Contacts": [("alt_id", "LONG")],
+    "Contacts": [("alt_id", "LONG"), ("Group", "TEXT(255)")],
 }
 
 

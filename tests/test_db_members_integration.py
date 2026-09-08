@@ -234,7 +234,7 @@ def test_get_member_context_returns_all_contact_fields():
         "medicaid", "medicare", "ssn", "language",
         "case_manager", "home_tell", "cell", "address",
         "emergency", "pcp", "hospital", "hha",
-        "admission_date", "notes",
+        "admission_date", "notes", "group",
     ):
         assert key in m, f"Missing key in member context: {key}"
         assert m[key] is not None, f"Key {key!r} is None (should be '' for missing)"

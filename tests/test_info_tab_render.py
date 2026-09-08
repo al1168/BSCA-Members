@@ -232,6 +232,24 @@ def test_layout_editor_gets_display_member_values(qapp, monkeypatch):
     assert m["alt_id"] == "987654321"
 
 
+# ── Group: display-only Contacts.[Group] value ─────────────────────────────
+
+def test_group_field_renders_read_only(qapp):
+    w, _tab = _make_tab(qapp, member={"first_name": "Mary", "last_name": "Chan",
+                                      "group": "B2", "alt_id": None})
+    pos = _grid_positions(w)
+    assert w._info_group in pos
+    assert w._info_group.text() == "B2"
+    # Display-only, like Center ID / Health Plan: read-only, no edit pencil.
+    assert w._info_group.isReadOnly()
+    assert w._info_group._pencil is None
+
+
+def test_group_field_blank_when_member_lacks_it(qapp):
+    w, _tab = _make_tab(qapp)
+    assert w._info_group.text() == ""
+
+
 # ── age readout beside the DOB ──────────────────────────────────────────────
 
 def _expected_age(y, mo, d):

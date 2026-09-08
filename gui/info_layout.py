@@ -46,6 +46,7 @@ FIELD_REGISTRY = (
     ("pcp", "PCP"),
     ("hha", "HHA"),
     ("case_manager", "Case Manager"),
+    ("group", "Group"),
 )
 FIELD_LABELS_BY_KEY = dict(FIELD_REGISTRY)
 
@@ -82,7 +83,7 @@ def default_layout() -> dict:
             _field("pcp", span=3), _field("hha", span=3),
         ]},
         {"type": "section", "title": "Care", "fields": [
-            _field("case_manager"),
+            _field("case_manager"), _field("group"),
         ]},
         {"type": "emergency", "visible": True},
     ]}

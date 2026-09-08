@@ -928,7 +928,8 @@ def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dic
             "SELECT [Center ID],[Last Name],[First Name],[Chinese Name],[DOB],"
             "[Health Plan],[Member ID],[Medicaid],[Medicare],[SSN],[Language],"
             "[Case Manager],[Home Tell],[Cell],[Address],[Emergency],[PCP],"
-            "[Hospital],[HHA],[Notes],[Gender],[Admission Date],[alt_id] "
+            "[Hospital],[HHA],[Notes],[Gender],[Admission Date],[alt_id],"
+            "[Group] "
             "FROM [Contacts] WHERE [Center ID]=?",
             center_id,
         )
@@ -958,6 +959,7 @@ def get_member_context(center_id: int, db_path: str, _retry: bool = True) -> dic
                 "gender":         row[20] or "",
                 "admission_date": str(row[21]) if row[21] else "",
                 "alt_id":         int(row[22]) if row[22] is not None else None,
+                "group":          row[23] or "",
             }
         else:
             member = {}
