@@ -263,6 +263,7 @@ def test_open_company_calendar_execs_dialog(qapp, tmp_path, monkeypatch, stubs):
     import gui.company_calendar as cc
     import db.members as members
     monkeypatch.setattr(members, "get_all_members", lambda db: [])
+    monkeypatch.setattr(members, "get_terminated_center_ids", lambda db: set())
     monkeypatch.setattr(members, "missing_schema", lambda db: [])
     execd = []
     monkeypatch.setattr(cc.CompanyCalendarDialog, "exec",
