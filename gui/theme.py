@@ -110,6 +110,24 @@ QWidget#sidebar {{
 QWidget#detail {{
     background-color: {t['bg']};
 }}
+/* Grouped sections (Company Calendar). Qt's native group-box frame ignores the
+   palette and draws light chrome on the dark theme, so give it the app's panel
+   border and radius and sit the title on the border line. */
+QGroupBox {{
+    border: 1px solid {t['border_mid']};
+    border-radius: 7px;
+    margin-top: 10px;
+    padding: 12px 10px 10px 10px;
+    font-weight: 600;
+}}
+QGroupBox::title {{
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 10px;
+    padding: 0 6px;
+    color: {t['text']};
+    background-color: {t['bg']};
+}}
 QPushButton {{
     background-color: {t['raised']};
     color: {t['text2']};

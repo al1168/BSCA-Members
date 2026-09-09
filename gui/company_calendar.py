@@ -56,6 +56,26 @@ class _TimeEntry(QWidget):
             return None
 
 
+def _build_discard_box(parent):
+    """The "unsaved hours" confirmation, as (box, discard_btn, keep_btn).
+
+    Built apart from exec() so the default button can be asserted in a test:
+    Qt makes the first button added the default, so Enter would discard the
+    staff member's edits unless "Keep Editing" is set as the default.
+    """
+    box = QMessageBox(parent)
+    box.setWindowTitle("Unsaved Hours")
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setText("Discard unsaved operating hours?")
+    discard_btn = box.addButton("Discard",
+                                QMessageBox.ButtonRole.DestructiveRole)
+    keep_btn = box.addButton("Keep Editing",
+                             QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(keep_btn)
+    box.setEscapeButton(keep_btn)
+    return box, discard_btn, keep_btn
+
+
 class CompanyCalendarDialog(QDialog):
     """Holidays (written as soon as staff add or delete one) and the weekly
     operating hours (edited as a set, then saved together)."""
@@ -298,26 +318,14 @@ class CompanyCalendarDialog(QDialog):
 
     # -- closing -------------------------------------------------------
     def _confirm_discard(self) -> bool:
-        box = QMessageBox(self)
-        box.setWindowTitle("Unsaved Hours")
-        box.setIcon(QMessageBox.Icon.Warning)
-        box.setText("Discard unsaved operating hours?")
-        discard = box.addButton("Discard",
-                                QMessageBox.ButtonRole.DestructiveRole)
-        box.addButton("Keep Editing", QMessageBox.ButtonRole.RejectRole)
+        box, discard_btn, _keep_btn = _build_discard_box(self)
         box.exec()
-        return box.clickedButton() is discard
+        return box.clickedButton() is discard_btn
 
     def reject(self) -> None:
+        """The one gate for every way out — the Close button, Esc, and the
+        window's X (QDialog.closeEvent calls reject() and keeps the window
+        open when it doesn't close)."""
         if self._dirty and not self._confirm_discard():
             return
         super().reject()
-
-    def closeEvent(self, event) -> None:
-        if self._dirty and not self._confirm_discard():
-            event.ignore()
-            return
-        # QDialog.closeEvent goes on to call reject(); the discard is already
-        # settled, so drop the flag rather than ask a second time.
-        self._dirty = False
-        super().closeEvent(event)

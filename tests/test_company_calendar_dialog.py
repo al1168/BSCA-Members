@@ -207,3 +207,25 @@ def test_window_close_can_be_cancelled(qapp, stubs):
     dlg._confirm_discard = lambda: True
     dlg.close()
     assert not dlg.isVisible()
+
+
+def test_discard_box_defaults_to_keep_editing(qapp, stubs):
+    """Enter must not throw away unsaved hours: Qt defaults to the first
+    button added, so "Keep Editing" has to be set as the default."""
+    from gui.company_calendar import _build_discard_box
+    dlg = _dialog()
+    box, discard_btn, keep_btn = _build_discard_box(dlg)
+    assert box.defaultButton() is keep_btn
+    assert box.defaultButton() is not discard_btn
+    assert box.escapeButton() is keep_btn
+
+
+def test_group_boxes_are_themed():
+    """The dialog is the first QGroupBox in the app; without a rule it draws
+    native light chrome over the dark theme."""
+    from gui.theme import DARK, LIGHT, build_qss
+    for tokens in (DARK, LIGHT):
+        qss = build_qss(tokens)
+        assert "QGroupBox {" in qss
+        assert "QGroupBox::title {" in qss
+        assert tokens["border_mid"] in qss.split("QGroupBox {")[1][:200]
