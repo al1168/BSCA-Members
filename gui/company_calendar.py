@@ -85,12 +85,19 @@ class CompanyCalendarDialog(QDialog):
         self._db_path = db_path
         self._dirty = False
         self._loading = False
+        # A failed read must not be mistaken for "no holidays" or "closed all
+        # week": until a load succeeds the matching editor stays locked, so a
+        # Save can never overwrite rows we didn't manage to read.
+        self._holidays_loaded = False
+        self._hours_loaded = False
         self.setWindowTitle("Company Calendar")
         self.setMinimumWidth(520)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(self._build_holidays_group())
-        layout.addWidget(self._build_hours_group())
+        self._holidays_group = self._build_holidays_group()
+        self._hours_group = self._build_hours_group()
+        layout.addWidget(self._holidays_group)
+        layout.addWidget(self._hours_group)
         close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         close.rejected.connect(self.reject)
         layout.addWidget(close)
@@ -152,7 +159,12 @@ class CompanyCalendarDialog(QDialog):
         except Exception as exc:
             from gui.errors import show_db_error
             show_db_error(self, exc)
-            rows = []
+            self._lock_holidays()
+            return
+        self._holidays_loaded = True
+        self._table.setEnabled(True)
+        self._name_edit.setEnabled(True)
+        self._date_edit.setEnabled(True)
         self._table.setRowCount(0)
         for row in rows:
             r = self._table.rowCount()
@@ -165,13 +177,27 @@ class CompanyCalendarDialog(QDialog):
             self._table.setItem(r, 1, date_item)
         self._refresh_delete_enabled()
 
+    def _lock_holidays(self) -> None:
+        """Holidays couldn't be read: no adding or deleting in this dialog."""
+        self._holidays_loaded = False
+        self._table.setRowCount(0)
+        self._table.setEnabled(False)
+        self._name_edit.setEnabled(False)
+        self._date_edit.setEnabled(False)
+        self._btn_add.setEnabled(False)
+        self._btn_delete.setEnabled(False)
+        self._holidays_help.setText(
+            "Couldn't read the holidays. Close this window and open it again.")
+
     def _refresh_add_enabled(self) -> None:
-        ok = bool(self._name_edit.text().strip()) and \
-            self._date_edit.to_pydate() is not None
+        ok = (self._holidays_loaded
+              and bool(self._name_edit.text().strip())
+              and self._date_edit.to_pydate() is not None)
         self._btn_add.setEnabled(ok)
 
     def _refresh_delete_enabled(self) -> None:
-        self._btn_delete.setEnabled(self._table.currentRow() >= 0
+        self._btn_delete.setEnabled(self._holidays_loaded
+                                    and self._table.currentRow() >= 0
                                     and bool(self._table.selectedItems()))
 
     def _add_holiday(self) -> None:
@@ -262,7 +288,7 @@ class CompanyCalendarDialog(QDialog):
         self._mark_dirty()
 
     def _mark_dirty(self) -> None:
-        if self._loading:
+        if self._loading or not self._hours_loaded:
             return
         self._dirty = True
         self._btn_save.setEnabled(True)
@@ -273,7 +299,10 @@ class CompanyCalendarDialog(QDialog):
         except Exception as exc:
             from gui.errors import show_db_error
             show_db_error(self, exc)
-            days = {}
+            self._lock_hours()
+            return
+        self._hours_loaded = True
+        self._hours_group.setEnabled(True)
         self._loading = True
         try:
             for dow, (check, opening, closing) in self._day_rows.items():
@@ -289,6 +318,17 @@ class CompanyCalendarDialog(QDialog):
             self._loading = False
         self._dirty = False
         self._btn_save.setEnabled(False)
+
+    def _lock_hours(self) -> None:
+        """Hours couldn't be read: the whole editor is off for this dialog, so
+        an empty grid can never be saved over the real rows."""
+        self._hours_loaded = False
+        self._dirty = False
+        self._btn_save.setEnabled(False)
+        self._hours_group.setEnabled(False)
+        self._hours_help.setText(
+            "Couldn't read the operating hours. "
+            "Close this window and open it again.")
 
     def _collect_rows(self) -> list[dict]:
         rows = []

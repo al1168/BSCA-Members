@@ -220,6 +220,48 @@ def test_discard_box_defaults_to_keep_editing(qapp, stubs):
     assert box.escapeButton() is keep_btn
 
 
+def _silence_db_errors(monkeypatch):
+    """Swallow the modal error dialog and report how many times it fired."""
+    shown = []
+    import gui.errors
+    monkeypatch.setattr(gui.errors, "show_db_error",
+                        lambda parent, exc, title="Database Error":
+                        shown.append(exc))
+    return shown
+
+
+def _raise(*_a, **_k):
+    raise RuntimeError("[42S02] The Microsoft Access database engine cannot "
+                       "find the input table or query 'OperatingDays'.")
+
+
+def test_failed_hours_read_locks_the_hours_editor(qapp, stubs, monkeypatch):
+    """A read failure must not look like "closed all week" — with every box
+    unchecked and editing live, the next Save would delete the real rows."""
+    _silence_db_errors(monkeypatch)
+    monkeypatch.setattr("db.company_calendar.get_operating_days", _raise)
+    dlg = _dialog()
+    assert not dlg._hours_loaded
+    assert not dlg._btn_save.isEnabled()
+    assert not dlg._day_rows[1][0].isEnabled()
+    dlg._day_rows[1][0].setChecked(True)          # can't happen via the UI
+    assert not dlg._btn_save.isEnabled()
+    assert "open it again" in dlg._hours_help.text()
+
+
+def test_failed_holiday_read_locks_the_holiday_editor(qapp, stubs, monkeypatch):
+    _silence_db_errors(monkeypatch)
+    monkeypatch.setattr("db.company_calendar.get_holidays", _raise)
+    dlg = _dialog()
+    assert not dlg._holidays_loaded
+    dlg._name_edit.setText("Thanksgiving")
+    dlg._date_edit.setText("11/26/2026")
+    assert not dlg._btn_add.isEnabled()
+    assert not dlg._btn_delete.isEnabled()
+    assert not dlg._table.isEnabled()
+    assert "open it again" in dlg._holidays_help.text()
+
+
 def test_dialog_opens_at_its_design_width(qapp, stubs):
     """The explanatory labels must wrap: unwrapped, each one forces the whole
     dialog to its single-line width (~1765px) and the window opens off-screen
