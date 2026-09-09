@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+import crash_log
 from db import company_calendar as cal
 from gui.address_autocomplete import DateLineEdit
 
@@ -224,6 +225,7 @@ class CompanyCalendarDialog(QDialog):
             from gui.errors import show_db_error
             show_db_error(self, exc)
             return
+        crash_log.log_warning(f"Holiday added: {name} {day.isoformat()}")
         self._name_edit.clear()
         self._date_edit.clear()
         self._load_holidays()
@@ -255,6 +257,8 @@ class CompanyCalendarDialog(QDialog):
             from gui.errors import show_db_error
             show_db_error(self, exc)
             return
+        crash_log.log_warning(
+            f"Holiday deleted: {name} {when} (id {record_id})")
         self._load_holidays()
 
     # -- operating days ------------------------------------------------
@@ -372,6 +376,7 @@ class CompanyCalendarDialog(QDialog):
             from gui.errors import show_db_error
             show_db_error(self, exc)
             return
+        crash_log.log_warning(f"OperatingDays rewritten: {rows}")
         self._load_hours()
 
     # -- closing -------------------------------------------------------

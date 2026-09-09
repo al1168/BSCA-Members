@@ -273,6 +273,30 @@ def test_unmigrated_database_reports_one_error(qapp, stubs, monkeypatch):
     assert not dlg._holidays_loaded and not dlg._hours_loaded
 
 
+def test_calendar_edits_are_logged(qapp, stubs, monkeypatch):
+    """The events log is per-member, so these center-wide edits would leave
+    no trace at all without a line in the debug log."""
+    import crash_log
+    logged = []
+    monkeypatch.setattr(crash_log, "log_warning", logged.append)
+    dlg = _dialog()
+    dlg._day_rows[3][0].setChecked(False)
+    dlg._btn_save.click()
+    assert [m for m in logged if "OperatingDays rewritten" in m]
+
+    logged.clear()
+    dlg._name_edit.setText("Thanksgiving")
+    dlg._date_edit.setText("11/26/2026")
+    dlg._btn_add.click()
+    assert logged == ["Holiday added: Thanksgiving 2026-11-26"]
+
+    logged.clear()
+    dlg._table.selectRow(0)
+    dlg._btn_delete.click()
+    assert len(logged) == 1
+    assert logged[0].startswith("Holiday deleted: New Year's Day 01/01/2026")
+
+
 def test_dialog_opens_at_its_design_width(qapp, stubs):
     """The explanatory labels must wrap: unwrapped, each one forces the whole
     dialog to its single-line width (~1765px) and the window opens off-screen
