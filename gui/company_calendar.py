@@ -102,8 +102,11 @@ class CompanyCalendarDialog(QDialog):
     def _build_holidays_group(self) -> QGroupBox:
         group = QGroupBox("Holidays")
         v = QVBoxLayout(group)
-        v.addWidget(QLabel("Days the center is closed for everyone. "
-                           "The scheduler leaves these days blank."))
+        self._holidays_help = QLabel(
+            "Days the center is closed for everyone. "
+            "The scheduler leaves these days blank.")
+        self._holidays_help.setWordWrap(True)
+        v.addWidget(self._holidays_help)
 
         self._table = QTableWidget(0, 2)
         self._table.setHorizontalHeaderLabels(["Holiday", "Date"])
@@ -219,9 +222,12 @@ class CompanyCalendarDialog(QDialog):
     def _build_hours_group(self) -> QGroupBox:
         group = QGroupBox("Operating Days")
         v = QVBoxLayout(group)
-        v.addWidget(QLabel("Uncheck a day to close the center that day. "
-                           "Opening and closing times are the earliest "
-                           "Time-In and latest Time-Out on the schedule."))
+        self._hours_help = QLabel(
+            "Uncheck a day to close the center that day. "
+            "Opening and closing times are the earliest "
+            "Time-In and latest Time-Out on the schedule.")
+        self._hours_help.setWordWrap(True)
+        v.addWidget(self._hours_help)
         grid = QGridLayout()
         grid.addWidget(QLabel("Open"), 0, 0)
         grid.addWidget(QLabel("Opens"), 0, 1)

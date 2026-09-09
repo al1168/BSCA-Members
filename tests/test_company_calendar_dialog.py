@@ -220,6 +220,14 @@ def test_discard_box_defaults_to_keep_editing(qapp, stubs):
     assert box.escapeButton() is keep_btn
 
 
+def test_dialog_opens_at_its_design_width(qapp, stubs):
+    """The explanatory labels must wrap: unwrapped, each one forces the whole
+    dialog to its single-line width (~1765px) and the window opens off-screen
+    wide."""
+    dlg = _dialog()
+    assert dlg.layout().minimumSize().width() <= 560
+
+
 def test_group_boxes_are_themed():
     """The dialog is the first QGroupBox in the app; without a rule it draws
     native light chrome over the dark theme."""
