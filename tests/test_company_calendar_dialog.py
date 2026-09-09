@@ -105,6 +105,39 @@ def test_delete_holiday_needs_selection_then_deletes(qapp, stubs):
     assert dlg._table.rowCount() == 1
 
 
+def test_delete_declined_keeps_the_holiday(qapp, stubs, monkeypatch):
+    """Answering No to the confirmation must leave the row alone."""
+    calls, _state = stubs
+    from PyQt6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda *a, **k: QMessageBox.StandardButton.No)
+    dlg = _dialog()
+    dlg._table.selectRow(1)
+    dlg._btn_delete.click()
+    assert calls["delete"] == []
+    assert dlg._table.rowCount() == 2
+
+
+def test_blank_time_blocks_save_and_names_the_day(qapp, stubs, monkeypatch):
+    """A cleared time box makes hhmm() None; saving that would write a row
+    with no times, so it must be refused and the day named."""
+    calls, _state = stubs
+    from PyQt6.QtWidgets import QMessageBox
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning",
+                        lambda *a, **k: (warned.append(a[2]),
+                                         QMessageBox.StandardButton.Ok)[1])
+    dlg = _dialog()
+    dlg._day_rows[2][1].edit.setText("")          # Tuesday's opening time
+    dlg._day_rows[2][0].setChecked(False)         # toggle twice: still open,
+    dlg._day_rows[2][0].setChecked(True)          # but now dirty
+    assert dlg._btn_save.isEnabled()
+    dlg._btn_save.click()
+    assert calls["save"] == []
+    assert len(warned) == 1
+    assert "Tuesday" in warned[0]
+
+
 def test_hours_loaded_from_table(qapp, stubs):
     _calls, state = stubs
     state["days"] = _open_days(1, 2, 3, 4, 5, opening="09:00", closing="15:30")
