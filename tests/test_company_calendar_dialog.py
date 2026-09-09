@@ -181,3 +181,29 @@ def test_close_when_clean_does_not_ask(qapp, stubs, monkeypatch):
     dlg._confirm_discard = lambda: (_ for _ in ()).throw(AssertionError("asked"))
     dlg.reject()
     assert closed == [True]
+
+
+def test_window_close_asks_once(qapp, stubs):
+    """The X button must not prompt twice: a visible QDialog's closeEvent
+    goes on to call reject(), which checks the dirty flag again."""
+    asked = []
+    dlg = _dialog()
+    dlg.show()
+    dlg._day_rows[1][0].setChecked(False)
+    dlg._confirm_discard = lambda: (asked.append(True), True)[1]
+    dlg.close()
+    assert asked == [True]
+    assert not dlg.isVisible()
+
+
+def test_window_close_can_be_cancelled(qapp, stubs):
+    dlg = _dialog()
+    dlg.show()
+    dlg._day_rows[1][0].setChecked(False)
+    dlg._confirm_discard = lambda: False
+    dlg.close()
+    assert dlg.isVisible()          # stayed open
+    assert dlg._dirty
+    dlg._confirm_discard = lambda: True
+    dlg.close()
+    assert not dlg.isVisible()

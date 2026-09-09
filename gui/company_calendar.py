@@ -317,4 +317,7 @@ class CompanyCalendarDialog(QDialog):
         if self._dirty and not self._confirm_discard():
             event.ignore()
             return
+        # QDialog.closeEvent goes on to call reject(); the discard is already
+        # settled, so drop the flag rather than ask a second time.
+        self._dirty = False
         super().closeEvent(event)
