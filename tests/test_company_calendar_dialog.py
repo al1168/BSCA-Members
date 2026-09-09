@@ -229,3 +229,45 @@ def test_group_boxes_are_themed():
         assert "QGroupBox {" in qss
         assert "QGroupBox::title {" in qss
         assert tokens["border_mid"] in qss.split("QGroupBox {")[1][:200]
+
+
+# ── main-window wiring ─────────────────────────────────────────────────────
+
+def test_toolbar_button_sits_after_absences(qapp, tmp_path):
+    from PyQt6.QtWidgets import QToolBar
+    from gui.main_window import MainWindow
+    w = MainWindow({"db_path": "", "theme": "dark"},
+                   str(tmp_path / "settings.json"))
+    toolbar = w.findChild(QToolBar, "main_toolbar")
+    names = [toolbar.widgetForAction(a).objectName()
+             for a in toolbar.actions()
+             if toolbar.widgetForAction(a) is not None]
+    i = names.index("btn_absence_report")
+    assert names[i + 1] == "btn_company_calendar"
+
+
+def test_open_company_calendar_without_db_warns(qapp, tmp_path, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+    from gui.main_window import MainWindow
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning",
+                        lambda *a, **k: warned.append(a[1]))
+    w = MainWindow({"db_path": "", "theme": "dark"},
+                   str(tmp_path / "settings.json"))
+    w._open_company_calendar()
+    assert warned == ["No Database"]
+
+
+def test_open_company_calendar_execs_dialog(qapp, tmp_path, monkeypatch, stubs):
+    from gui.main_window import MainWindow
+    import gui.company_calendar as cc
+    import db.members as members
+    monkeypatch.setattr(members, "get_all_members", lambda db: [])
+    monkeypatch.setattr(members, "missing_schema", lambda db: [])
+    execd = []
+    monkeypatch.setattr(cc.CompanyCalendarDialog, "exec",
+                        lambda self: execd.append(self._db_path) or 0)
+    w = MainWindow({"db_path": "fake.accdb", "theme": "dark"},
+                   str(tmp_path / "settings.json"))
+    w._open_company_calendar()
+    assert execd == ["fake.accdb"]

@@ -328,6 +328,14 @@ class MainWindow(QMainWindow):
         btn_absences.clicked.connect(self._open_absence_report)
         toolbar.addWidget(btn_absences)
 
+        btn_calendar = QPushButton("🏢  Company Calendar")
+        btn_calendar.setObjectName("btn_company_calendar")
+        btn_calendar.setToolTip(
+            "Company holidays and weekly operating hours used by the "
+            "monthly scheduler")
+        btn_calendar.clicked.connect(self._open_company_calendar)
+        toolbar.addWidget(btn_calendar)
+
         btn_export = QPushButton("⬇  Export")
         btn_export.setObjectName("btn_export")
         btn_export.setToolTip(
@@ -805,6 +813,18 @@ class MainWindow(QMainWindow):
         from gui.absence_report import AbsenceReportDialog
         AbsenceReportDialog(db_path, self._all_members,
                             self._terminated_ids, self).exec()
+
+    def _open_company_calendar(self):
+        """Company holidays and the weekly operating hours (Holidays /
+        OperatingDays tables) that the monthly scheduler honors."""
+        db_path = self._settings.get("db_path", "")
+        if not db_path:
+            QMessageBox.warning(self, "No Database",
+                "Set a database path in Settings before editing the "
+                "company calendar.")
+            return
+        from gui.company_calendar import CompanyCalendarDialog
+        CompanyCalendarDialog(db_path, self).exec()
 
     def _export_members(self):
         """Save the full member roster (info + latest enrollment + today's

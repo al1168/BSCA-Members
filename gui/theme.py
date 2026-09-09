@@ -396,7 +396,7 @@ QToolBar#main_toolbar {{
 }}
 QPushButton#btn_export, QPushButton#btn_expiring_report,
 QPushButton#btn_birthday_report, QPushButton#btn_absence_report,
-QPushButton#btn_bookmarks {{
+QPushButton#btn_company_calendar, QPushButton#btn_bookmarks {{
     background-color: transparent;
     color: {t['text2']};
     border: 1px solid {t['border']};
@@ -407,7 +407,7 @@ QPushButton#btn_bookmarks {{
 }}
 QPushButton#btn_export:hover, QPushButton#btn_expiring_report:hover,
 QPushButton#btn_birthday_report:hover, QPushButton#btn_absence_report:hover,
-QPushButton#btn_bookmarks:hover {{
+QPushButton#btn_company_calendar:hover, QPushButton#btn_bookmarks:hover {{
     background-color: {t['raised']};
     color: {t['text']};
 }}

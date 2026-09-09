@@ -25,6 +25,7 @@ product
 - Add New Member wizard (4-step: Contact Info, Enrollment, Auths & Availability, Review)
 - Per-member tabs: Info, Enrollments, Authorizations, Availability, Absences, Events
 - Global events log (audit trail, 30-day TTL, stored in local SQLite)
+- Company Calendar dialog (holidays + weekly operating hours)
 
 ## Tech Stack
 PyQt6 desktop app on Windows. Styled with Qt stylesheets (QSS). Dark theme — staff work in an indoor office environment with controlled lighting.
