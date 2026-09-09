@@ -34,6 +34,19 @@ def test_friendly_message_for_missing_file():
     assert "Settings" in msg
 
 
+def test_friendly_message_for_missing_table_says_run_setup():
+    """Access 42S02 on a database that never went through BSCA Setup: the
+    fix is running Setup, so say so instead of "something went wrong"."""
+    exc = Exception(
+        "('42S02', \"[42S02] [Microsoft][ODBC Microsoft Access Driver] The "
+        "Microsoft Access database engine cannot find the input table or "
+        "query 'OperatingDays'. (-1305)\")")
+    msg = friendly_db_message(exc)
+    assert "hasn't been set up for the company calendar yet" in msg
+    assert "Run BSCA Setup" in msg
+    assert "Details:" in msg
+
+
 def test_friendly_message_generic_keeps_detail():
     msg = friendly_db_message(RuntimeError("weird failure 123"))
     assert "weird failure 123" in msg

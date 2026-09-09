@@ -90,6 +90,9 @@ class CompanyCalendarDialog(QDialog):
         # Save can never overwrite rows we didn't manage to read.
         self._holidays_loaded = False
         self._hours_loaded = False
+        # Against a database missing both tables the two loaders would stack
+        # two identical modal errors; one is enough to explain the problem.
+        self._db_error_shown = False
         self.setWindowTitle("Company Calendar")
         self.setMinimumWidth(520)
 
@@ -104,6 +107,17 @@ class CompanyCalendarDialog(QDialog):
 
         self._load_holidays()
         self._load_hours()
+
+    def _report_load_error(self, exc: BaseException) -> None:
+        """Report the first failed read only. The two loaders run back to back
+        at open time, so on a database without the calendar tables both fail
+        for the same reason and a second identical dialog only adds clicks.
+        Saves and deletes still report every failure."""
+        if self._db_error_shown:
+            return
+        self._db_error_shown = True
+        from gui.errors import show_db_error
+        show_db_error(self, exc)
 
     # -- holidays ------------------------------------------------------
     def _build_holidays_group(self) -> QGroupBox:
@@ -157,8 +171,7 @@ class CompanyCalendarDialog(QDialog):
         try:
             rows = cal.get_holidays(self._db_path)
         except Exception as exc:
-            from gui.errors import show_db_error
-            show_db_error(self, exc)
+            self._report_load_error(exc)
             self._lock_holidays()
             return
         self._holidays_loaded = True
@@ -297,8 +310,7 @@ class CompanyCalendarDialog(QDialog):
         try:
             days = cal.get_operating_days(self._db_path)
         except Exception as exc:
-            from gui.errors import show_db_error
-            show_db_error(self, exc)
+            self._report_load_error(exc)
             self._lock_hours()
             return
         self._hours_loaded = True

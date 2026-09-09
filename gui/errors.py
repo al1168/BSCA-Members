@@ -19,6 +19,12 @@ _LOCK_MARKERS = (
     "file already in use",
 )
 
+# Access 42S02: the table simply isn't there. In the field that means the
+# database predates a feature's Setup step, not a broken query.
+_MISSING_TABLE_MARKERS = (
+    "cannot find the input table",
+)
+
 _MISSING_MARKERS = (
     "database not found",              # our own FileNotFoundError text
     "could not find file",
@@ -37,6 +43,12 @@ def friendly_db_message(exc: BaseException) -> str:
             "The database file can't be found.\n\n"
             "It may have been moved or renamed, or the network drive may be "
             "disconnected. Check the path in ⚙ Settings.\n\n"
+            f"Details: {raw}"
+        )
+    if any(m in lowered for m in _MISSING_TABLE_MARKERS):
+        return (
+            "This database hasn't been set up for the company calendar yet.\n\n"
+            "Run BSCA Setup on this database, then try again.\n\n"
             f"Details: {raw}"
         )
     if any(m in lowered for m in _LOCK_MARKERS):

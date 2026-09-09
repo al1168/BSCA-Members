@@ -262,6 +262,17 @@ def test_failed_holiday_read_locks_the_holiday_editor(qapp, stubs, monkeypatch):
     assert "open it again" in dlg._holidays_help.text()
 
 
+def test_unmigrated_database_reports_one_error(qapp, stubs, monkeypatch):
+    """Both loaders fail on a database without the calendar tables; staff
+    should see one error dialog, not two identical ones stacked up."""
+    shown = _silence_db_errors(monkeypatch)
+    monkeypatch.setattr("db.company_calendar.get_holidays", _raise)
+    monkeypatch.setattr("db.company_calendar.get_operating_days", _raise)
+    dlg = _dialog()
+    assert len(shown) == 1
+    assert not dlg._holidays_loaded and not dlg._hours_loaded
+
+
 def test_dialog_opens_at_its_design_width(qapp, stubs):
     """The explanatory labels must wrap: unwrapped, each one forces the whole
     dialog to its single-line width (~1765px) and the window opens off-screen
