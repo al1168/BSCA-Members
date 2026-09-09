@@ -449,7 +449,9 @@ class MainWindow(QMainWindow):
                 self, "Database Schema",
                 "This database is missing some tables/columns the app uses.\n"
                 "The affected features won't work until they are added:\n\n  • "
-                + "\n  • ".join(missing))
+                + "\n  • ".join(missing)
+                + "\n\nRun BSCA Setup on this database to add them, or "
+                  "contact support.")
 
     def _update_member_counts(self):
         """Refresh the sidebar's 'N members · M active' tally (active = not
