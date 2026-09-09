@@ -217,6 +217,12 @@ QLineEdit:read-only {{
     color: {t['text3']};
     border-style: dashed;
 }}
+/* Inputs switched off (a closed day's opening/closing time, for instance)
+   keep full-strength text without this and read as editable. */
+QLineEdit:disabled, QComboBox:disabled {{
+    color: {t['text3']};
+    background-color: {t['surface']};
+}}
 /* Date fields use the calendar popup, not up/down steppers. Once a QDateEdit is
    styled, Qt renders spin buttons on the right whose hit area increments the
    highlighted section on a click. Hide them and show only the calendar arrow. */

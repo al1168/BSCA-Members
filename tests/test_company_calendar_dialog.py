@@ -292,6 +292,18 @@ def test_group_boxes_are_themed():
         assert tokens["border_mid"] in qss.split("QGroupBox {")[1][:200]
 
 
+def test_disabled_inputs_are_themed():
+    """A closed day's time boxes are switched off; without a :disabled rule
+    they keep full-strength text and still look editable."""
+    from gui.theme import DARK, LIGHT, build_qss
+    for tokens in (DARK, LIGHT):
+        qss = build_qss(tokens)
+        assert "QLineEdit:disabled, QComboBox:disabled {" in qss
+        rule = qss.split("QLineEdit:disabled, QComboBox:disabled {")[1][:140]
+        assert tokens["text3"] in rule
+        assert tokens["surface"] in rule
+
+
 # ── main-window wiring ─────────────────────────────────────────────────────
 
 def test_toolbar_button_sits_after_absences(qapp, tmp_path):
