@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QStackedWidget, QApplication, QMessageBox, QSizePolicy,
     QStyledItemDelegate, QStyle, QStyleOptionViewItem,
 )
-from PyQt6.QtCore import Qt, QEvent, QObject
+from PyQt6.QtCore import Qt, QEvent, QObject, QRect, QSize
 from PyQt6.QtGui import (
     QTextDocument, QAbstractTextDocumentLayout, QShortcut, QKeySequence,
     QGuiApplication,
@@ -18,6 +18,30 @@ from gui.settings_dialog import SettingsDialog
 
 
 TERMINATED_ROLE = Qt.ItemDataRole.UserRole + 1
+
+# Room the OS window frame needs around the client area, in logical pixels.
+# Qt cannot report the real frame before the window is shown, so these are
+# fixed allowances sized for the Windows 10/11 title bar and borders. Erring
+# high is safe: it only makes a borderline screen open maximized.
+FRAME_ALLOWANCE_W = 16
+FRAME_ALLOWANCE_H = 40
+
+
+def choose_startup_geometry(desired: QSize, avail: QRect) -> QRect | None:
+    """Where to open the main window on a screen whose work area is `avail`.
+
+    Returns the client rect of size `desired` centered in `avail` when the
+    window plus its frame fits, or None meaning "open maximized" when it does
+    not fit in either dimension. Maximizing lets the OS size the frame to the
+    work area, so the bottom edge never lands under the taskbar (which is
+    what happened when the client size was merely clamped: resize() ignores
+    the title bar, so the window overshot by its height)."""
+    if (desired.width() + FRAME_ALLOWANCE_W > avail.width()
+            or desired.height() + FRAME_ALLOWANCE_H > avail.height()):
+        return None
+    x = avail.x() + (avail.width() - desired.width()) // 2
+    y = avail.y() + (avail.height() - desired.height()) // 2
+    return QRect(x, y, desired.width(), desired.height())
 
 
 def active_first(members: list[dict], terminated_ids: set) -> list[dict]:
