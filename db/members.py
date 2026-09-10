@@ -312,7 +312,7 @@ UPDATE_CONTACT = (
     "[Member ID]=?, [Health Plan]=?, [Medicaid]=?, [Medicare]=?, [SSN]=?, "
     "[Language]=?, [Case Manager]=?, [Home Tell]=?, [Cell]=?, [Address]=?, "
     "[Emergency]=?, [PCP]=?, [Hospital]=?, [HHA]=?, [Admission Date]=?, "
-    "[Notes]=?, [alt_id]=? "
+    "[Notes]=?, [alt_id]=?, [Group]=? "
     "WHERE [Center ID]=?"
 )
 
@@ -1065,6 +1065,28 @@ def get_member_auth_ends(db_path: str, _retry: bool = True) -> list[tuple]:
         raise
 
 
+CONTACT_GROUPS_QUERY = "SELECT [Center ID],[Group] FROM [Contacts]"
+
+
+def get_member_groups(db_path: str, _retry: bool = True) -> dict[int, str]:
+    """{center_id: Group text} for every Contacts row with a Center ID, in
+    one query, for the meal sheet's Location column (NULL Group -> '').
+    Cached read connection with the same stale-connection retry as
+    get_member_auth_ends."""
+    import pyodbc
+    conn = _read_connection(db_path)
+    try:
+        c = conn.cursor()
+        c.execute(CONTACT_GROUPS_QUERY)
+        return {int(r[0]): str(r[1] or "").strip()
+                for r in c.fetchall() if r[0] is not None}
+    except pyodbc.Error:
+        _drop_read_connection(db_path)
+        if _retry:
+            return get_member_groups(db_path, _retry=False)
+        raise
+
+
 def get_health_plans(db_path: str, _retry: bool = True) -> list[str]:
     """Distinct health plans present in the DB (Contacts + Authorization),
     sorted, for the add-member wizard's dropdown. Falls back to the static
@@ -1541,13 +1563,14 @@ def update_contact(
     db_path: str,
     *,
     alt_id: int | None,
+    group: str,
 ) -> None:
     _execute_write(db_path, UPDATE_CONTACT, (
         last_name, first_name, chinese_name, gender, dob,
         member_id, health_plan, medicaid, medicare, ssn,
         language, case_manager, home_tell, cell, address,
         emergency, pcp, hospital, hha, admission_date, notes,
-        alt_id,
+        alt_id, group,
         center_id,
     ))
 

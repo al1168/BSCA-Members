@@ -277,6 +277,7 @@ def test_write_is_visible_through_cached_read_connection():
             m["ssn"], m["language"], m["case_manager"], m["home_tell"], m["cell"],
             m["address"], m["emergency"], m["pcp"], m["hospital"], m["hha"],
             m["admission_date"], notes, TEST_DB, alt_id=m.get("alt_id"),
+            group=m.get("group", ""),
         )
 
     try:
@@ -475,6 +476,7 @@ def test_sync_writes_current_auth_plan_into_contacts():
             m["ssn"], m["language"], m["case_manager"], m["home_tell"], m["cell"],
             m["address"], m["emergency"], m["pcp"], m["hospital"], m["hha"],
             m["admission_date"], m["notes"], TEST_DB, alt_id=m.get("alt_id"),
+            group=m.get("group", ""),
         )
 
 
@@ -506,6 +508,7 @@ def test_sync_member_id_from_current_auth_into_contacts():
             m["ssn"], m["language"], m["case_manager"], m["home_tell"], m["cell"],
             m["address"], m["emergency"], m["pcp"], m["hospital"], m["hha"],
             m["admission_date"], m["notes"], TEST_DB, alt_id=m.get("alt_id"),
+            group=m.get("group", ""),
         )
 
 
@@ -524,7 +527,7 @@ def test_alt_id_round_trips_through_update_contact():
             m["dob"], m["member_id"], m["health_plan"], m["medicaid"], m["medicare"],
             m["ssn"], m["language"], m["case_manager"], m["home_tell"], m["cell"],
             m["address"], m["emergency"], m["pcp"], m["hospital"], m["hha"],
-            m["admission_date"], m["notes"], TEST_DB, alt_id=alt_id,
+            m["admission_date"], m["notes"], TEST_DB, alt_id=alt_id, group=m.get("group", ""),
         )
 
     try:

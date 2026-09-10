@@ -375,6 +375,267 @@ def write_absence_xlsx(path: str, rows: list[dict], month_label: str) -> None:
         widths=(9, 24, 12, 12, 12, 29), center_cols={1, 4, 5})
 
 
+# ── monthly meal sheet ───────────────────────────────────────────────────
+#
+# A blank workbook staff fill in by hand: three identically laid-out sheets
+# (breakfast, meal ticket, lunch) listing every member enrolled and
+# authorized at some point in the month, one column per day. Day cells are
+# empty but shaded — orange when the member is authorized that weekday,
+# yellow when the center is closed, blue otherwise — so the totals at the
+# bottom can split meals into authorized / not authorized. The split uses
+# SUMPRODUCT against a hidden 1/0 mask sheet instead of the hand-made
+# template's sum-by-cell-colour macro, so the file stays a plain .xlsx.
+
+MEAL_SHEET_TITLES = ("会员早餐统计-B", "会员餐券统计-B", "会员午餐统计-B")
+MEAL_MASK_SHEET = "_mask"
+MEAL_FIXED_COLUMNS = ["ID", "Alt ID", "Name", "Health plan"]
+# The template's theme colours resolved to RGB: accent2 tint 0.4, accent4
+# tint 0.8, accent5 tint 0.8.
+MEAL_FILL_AUTHORIZED = "F4B183"
+MEAL_FILL_CLOSED = "FFF2CC"
+MEAL_FILL_OPEN = "DEEBF7"
+DAY_AUTHORIZED, DAY_CLOSED, DAY_NOT_AUTHORIZED = (
+    "authorized", "closed", "not_authorized")
+
+
+def _month_span(year: int, month: int) -> tuple[date, date]:
+    import calendar as _cal
+    return (date(year, month, 1),
+            date(year, month, _cal.monthrange(year, month)[1]))
+
+
+def members_for_meal_sheet(members, groups, enrollment_rows, auth_rows,
+                           year: int, month: int,
+                           alt_ids_unlocked: bool) -> list[dict]:
+    """Members on the month's meal sheet: enrolled on some day of the month
+    AND holding at least one authorization overlapping it, sorted by Center
+    ID like the hand-made template. Month overlap replaces the "active
+    today" rule the other reports use, so a past month still lists members
+    terminated since. Pure (no DB) — unit-testable.
+
+    enrollment_rows: (center_id, start, end); auth_rows: (center_id, start,
+    end, auth_days) — raw bulk-query tuples. A missing enrollment start
+    disqualifies the row; a missing auth start does not (as in
+    pick_active_auth). groups: {center_id: Group text} for Location.
+    alt_ids_unlocked: the corpus alt ids are decrypted only when a session
+    password is set; when it isn't, the column is left blank.
+    """
+    first, last = _month_span(year, month)
+    enrolled: set[int] = set()
+    for cid, start, end in enrollment_rows:
+        if cid is None:
+            continue
+        start, end = _access_date(start), _access_date(end)
+        if start is None or start > last or (end is not None and end < first):
+            continue
+        enrolled.add(int(cid))
+    auths: dict[int, list[tuple]] = {}
+    for cid, start, end, days in auth_rows:
+        if cid is None:
+            continue
+        start, end = _access_date(start), _access_date(end)
+        if (start is not None and start > last) or \
+           (end is not None and end < first):
+            continue
+        auths.setdefault(int(cid), []).append((start, end, days or ""))
+    rows = []
+    for m in members:
+        cid = m["center_id"]
+        if cid not in enrolled or cid not in auths:
+            continue
+        rows.append({
+            "center_id": cid,
+            "alt_id": m.get("alt_id") if alt_ids_unlocked else None,
+            "name": f"{m.get('last_name', '')}, {m.get('first_name', '')}",
+            "health_plan": m.get("health_plan") or "",
+            "location": groups.get(cid, "") or "",
+            "auths": auths[cid],
+        })
+    rows.sort(key=lambda r: r["center_id"])
+    return rows
+
+
+def closed_days_in_month(year: int, month: int, holidays,
+                         operating_days) -> set[int]:
+    """Day numbers the center is closed: company holidays plus every
+    weekday without an OperatingDays row (so an empty table closes the
+    whole month — that is what the table means). holidays: get_holidays
+    dicts; operating_days: get_operating_days {day_of_week: row}."""
+    first, last = _month_span(year, month)
+    holiday_dates = {h["date"] for h in holidays if h.get("date")}
+    return {d for d in range(1, last.day + 1)
+            if date(year, month, d) in holiday_dates
+            or date(year, month, d).isoweekday() not in operating_days}
+
+
+def _safe_auth_days(value) -> set[int]:
+    try:
+        return decode_auth_days(value or "")
+    except ValueError:      # hand-edited text like "Mon" in Access
+        return set()
+
+
+def meal_day_states(auths, year: int, month: int,
+                    closed_days: set[int]) -> list[str]:
+    """One state per day of the month (index day-1): closed wins; otherwise
+    authorized when any auth covers that exact date and its auth_days
+    includes that weekday (union across overlapping auths); otherwise not
+    authorized. auths: (start, end, auth_days) with dates or None."""
+    first, last = _month_span(year, month)
+    spans = [(s, e, _safe_auth_days(days)) for s, e, days in auths]
+    states = []
+    for d in range(1, last.day + 1):
+        day = date(year, month, d)
+        if d in closed_days:
+            states.append(DAY_CLOSED)
+            continue
+        wd = day.isoweekday()
+        authorized = any(
+            (s is None or s <= day) and (e is None or e >= day) and wd in days
+            for s, e, days in spans)
+        states.append(DAY_AUTHORIZED if authorized else DAY_NOT_AUTHORIZED)
+    return states
+
+
+def load_meal_sheet_inputs(db_path: str) -> dict:
+    """The five bulk reads the meal sheet needs, fetched once per dialog:
+    enrollments, auths, groups, holidays, operating_days."""
+    from db.members import get_member_groups
+    from db.company_calendar import get_holidays, get_operating_days
+    return {
+        "enrollments": _fetch_all(db_path, _ENROLLMENTS_QUERY),
+        "auths": _fetch_all(db_path, _AUTHS_QUERY),
+        "groups": get_member_groups(db_path),
+        "holidays": get_holidays(db_path),
+        "operating_days": get_operating_days(db_path),
+    }
+
+
+def write_meal_sheet_xlsx(path: str, rows: list[dict], year: int, month: int,
+                          closed_days: set[int]) -> None:
+    """Three identical meal sheets plus the hidden mask sheet. Layout copies
+    the hand-made template: Calibri 14, thin borders on every cell (blank
+    day cells included), 44/26pt rows, dates as m/d, frozen at E2, landscape
+    at 79% with the header row and the ID..Health plan columns repeated on
+    every printed page. With no rows only the header is written."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.page import PageMargins
+
+    first, last = _month_span(year, month)
+    n_days = last.day
+    day_col = lambda d: 4 + d                      # E = day 1
+    total_col, loc_col = 5 + n_days, 6 + n_days
+    first_day, last_day = get_column_letter(5), get_column_letter(4 + n_days)
+    last_row = 1 + len(rows)                        # last member row
+
+    thin = Side(style="thin", color="000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    font = Font(name="Calibri", size=14)
+    bold = Font(name="Calibri", size=14, bold=True)
+    centered = Alignment(horizontal="center", vertical="center")
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    fills = {
+        DAY_AUTHORIZED: PatternFill("solid", fgColor=MEAL_FILL_AUTHORIZED),
+        DAY_CLOSED: PatternFill("solid", fgColor=MEAL_FILL_CLOSED),
+        DAY_NOT_AUTHORIZED: PatternFill("solid", fgColor=MEAL_FILL_OPEN),
+    }
+    states = [meal_day_states(r["auths"], year, month, closed_days)
+              for r in rows]
+
+    def day_range(col_letter):
+        return f"{col_letter}2:{col_letter}{last_row}"
+
+    def row_total(r):
+        return f"=SUM({first_day}{r}:{last_day}{r})"
+
+    def fill_sheet(ws):
+        header = (MEAL_FIXED_COLUMNS
+                  + [date(year, month, d) for d in range(1, n_days + 1)]
+                  + ["Total", "Location"])
+        ws.append(header)
+        for col in range(1, loc_col + 1):
+            cell = ws.cell(row=1, column=col)
+            cell.font = bold
+            cell.border = grid
+            cell.alignment = centered
+            if 5 <= col <= 4 + n_days:
+                cell.number_format = "m/d;@"
+        ws.row_dimensions[1].height = 44
+
+        for i, r in enumerate(rows):
+            row_i = i + 2
+            values = ([r["center_id"], r["alt_id"], r["name"],
+                       r["health_plan"]]
+                      + [None] * n_days
+                      + [row_total(row_i), r["location"] or None])
+            ws.append(values)
+            ws.row_dimensions[row_i].height = 26
+            for col in range(1, loc_col + 1):
+                cell = ws.cell(row=row_i, column=col)
+                cell.font = font
+                cell.border = grid
+                cell.alignment = left if col in (3, 4) else centered
+                if 5 <= col <= 4 + n_days:
+                    cell.fill = fills[states[i][col - 5]]
+
+        if rows:
+            summary = [
+                ("Total", lambda L: f"=SUM({day_range(L)})"),
+                ("Authorized",
+                 lambda L: f"=SUMPRODUCT({day_range(L)},"
+                           f"'{MEAL_MASK_SHEET}'!{day_range(L)})"),
+                ("Not_Authorized",
+                 lambda L: f"=SUMPRODUCT({day_range(L)},"
+                           f"1-'{MEAL_MASK_SHEET}'!{day_range(L)})"),
+            ]
+            for label, formula in summary:
+                row_i = ws.max_row + 1
+                ws.append([label, None, None, None]
+                          + [formula(get_column_letter(day_col(d)))
+                             for d in range(1, n_days + 1)]
+                          + [row_total(row_i), None])
+                ws.row_dimensions[row_i].height = 26
+                for col in range(1, loc_col + 1):
+                    cell = ws.cell(row=row_i, column=col)
+                    cell.font = bold
+                    cell.border = grid
+                    cell.alignment = centered
+
+        for col, width in ((1, 16), (2, 16), (3, 29), (4, 18),
+                           (total_col, 9), (loc_col, 10)):
+            ws.column_dimensions[get_column_letter(col)].width = width
+        for d in range(1, n_days + 1):
+            ws.column_dimensions[get_column_letter(day_col(d))].width = 9
+        ws.freeze_panes = "E2"
+        ws.page_setup.orientation = "landscape"
+        ws.page_setup.scale = 79
+        ws.page_margins = PageMargins(left=0.25, right=0.25,
+                                      top=0.75, bottom=0.75)
+        ws.print_title_rows = "1:1"
+        ws.print_title_cols = "A:D"
+
+    wb = Workbook()
+    wb.active.title = MEAL_SHEET_TITLES[0]
+    fill_sheet(wb.active)
+    for title in MEAL_SHEET_TITLES[1:]:
+        fill_sheet(wb.create_sheet(title))
+
+    # The mask mirrors the member rows' day cells: 1 where authorized, 0
+    # otherwise (closed days count as not authorized). Same row/column
+    # positions on every sheet, so one mask serves all three.
+    mask = wb.create_sheet(MEAL_MASK_SHEET)
+    mask.append(MEAL_FIXED_COLUMNS
+                + [date(year, month, d) for d in range(1, n_days + 1)])
+    for i, r in enumerate(rows):
+        mask.append([r["center_id"], None, r["name"], None]
+                    + [1 if s == DAY_AUTHORIZED else 0 for s in states[i]])
+    mask.sheet_state = "hidden"
+    wb.active = 0
+    wb.save(path)
+
+
 def export_members_xlsx(db_path: str, out_path: str, today=None) -> int:
     """Query, assemble, and write the roster. Returns the number of rows."""
     today = today or date.today()

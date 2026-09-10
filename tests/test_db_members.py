@@ -104,7 +104,7 @@ def test_update_contact_targets_all_editable_fields():
         "[Member ID]", "[Health Plan]", "[Medicaid]", "[Medicare]", "[SSN]",
         "[Language]", "[Case Manager]", "[Home Tell]", "[Cell]", "[Address]",
         "[Emergency]", "[PCP]", "[Hospital]", "[HHA]", "[Admission Date]", "[Notes]",
-        "[alt_id]",
+        "[alt_id]", "[Group]",
     ):
         assert col in UPDATE_CONTACT, f"Missing column in UPDATE_CONTACT: {col}"
     assert "WHERE [Center ID]=?" in UPDATE_CONTACT
@@ -210,3 +210,10 @@ def test_required_schema_includes_calendar_tables():
     assert REQUIRED_SCHEMA["Holidays"] == ["holiday_name", "date"]
     assert REQUIRED_SCHEMA["OperatingDays"] == [
         "day_name", "Day Of Week", "opening_time", "closing_time"]
+
+
+def test_contact_groups_query_shape():
+    from db.members import CONTACT_GROUPS_QUERY
+    assert "[Center ID]" in CONTACT_GROUPS_QUERY
+    assert "[Group]" in CONTACT_GROUPS_QUERY
+    assert "FROM [Contacts]" in CONTACT_GROUPS_QUERY

@@ -336,6 +336,14 @@ class MainWindow(QMainWindow):
         btn_calendar.clicked.connect(self._open_company_calendar)
         toolbar.addWidget(btn_calendar)
 
+        btn_meal = QPushButton("🍱  Meal Sheet")
+        btn_meal.setObjectName("btn_meal_sheet")
+        btn_meal.setToolTip(
+            "Blank monthly meal sheet (breakfast, meal ticket, lunch) for "
+            "members enrolled and authorized in a chosen month")
+        btn_meal.clicked.connect(self._open_meal_sheet)
+        toolbar.addWidget(btn_meal)
+
         btn_export = QPushButton("⬇  Export")
         btn_export.setObjectName("btn_export")
         btn_export.setToolTip(
@@ -815,6 +823,18 @@ class MainWindow(QMainWindow):
         from gui.absence_report import AbsenceReportDialog
         AbsenceReportDialog(db_path, self._all_members,
                             self._terminated_ids, self).exec()
+
+    def _open_meal_sheet(self):
+        """Monthly meal sheet: pick a month, save a blank workbook of every
+        member enrolled and authorized in it, day cells shaded by auth."""
+        db_path = self._settings.get("db_path", "")
+        if not db_path:
+            QMessageBox.warning(self, "No Database",
+                "Set a database path in Settings before running reports.")
+            return
+        from gui.meal_sheet import MealSheetDialog
+        MealSheetDialog(db_path, self._all_members, self,
+                        alt_ids_unlocked=bool(self._alt_id_password)).exec()
 
     def _open_company_calendar(self):
         """Company holidays and the weekly operating hours (Holidays /

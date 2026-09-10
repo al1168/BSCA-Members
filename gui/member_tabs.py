@@ -58,7 +58,7 @@ FIELD_LABELS = {
     "home_tell": "Home Phone", "cell": "Cell", "address": "Address",
     "emergency": "Emergency", "pcp": "PCP", "hospital": "Hospital",
     "hha": "HHA", "admission_date": "Admission Date", "notes": "Notes",
-    "alt_id": "Alt ID",
+    "alt_id": "Alt ID", "group": "Group",
 }
 
 WEEKDAY_NAMES = {
@@ -253,21 +253,26 @@ def _normalize_value(v) -> str:
     return s.replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
-def build_change_summary(old: dict, fields: dict) -> list[str]:
-    """Friendly 'Label: old → new' lines for each field whose value changed.
-
-    Values are normalized (newlines unified, surrounding whitespace stripped)
-    before comparison, so trailing spaces or CRLF/LF differences do not count
-    as changes. Blank values render as '(empty)'. Order follows `fields`.
-    """
-    lines = []
+def build_change_rows(old: dict, fields: dict) -> list[tuple[str, str, str]]:
+    """(label, original, modified) for each field whose value changed, in
+    `fields` order. Values are normalized (newlines unified, surrounding
+    whitespace stripped) before comparison, so trailing spaces or CRLF/LF
+    differences do not count as changes. Blanks stay '' here; the confirm
+    dialog and the summary lines render them as '(empty)'."""
+    rows = []
     for key, new_val in fields.items():
         old_norm = _normalize_value(old.get(key))
         new_norm = _normalize_value(new_val)
         if new_norm != old_norm:
-            label = FIELD_LABELS.get(key, key)
-            lines.append(f"{label}: {old_norm or '(empty)'} → {new_norm or '(empty)'}")
-    return lines
+            rows.append((FIELD_LABELS.get(key, key), old_norm, new_norm))
+    return rows
+
+
+def build_change_summary(old: dict, fields: dict) -> list[str]:
+    """Friendly 'Label: old → new' lines for each changed field (the events
+    log entry). Same change detection as build_change_rows."""
+    return [f"{label}: {o or '(empty)'} → {n or '(empty)'}"
+            for label, o, n in build_change_rows(old, fields)]
 
 
 def missing_new_auth_fields(*, start_valid: bool, end_valid: bool,
@@ -1761,10 +1766,9 @@ class MemberTabsWidget(QWidget):
             "" if alt is None else str(alt), validator=is_valid_alt_id)
 
         self._info_case_manager   = field("case_manager")
-        # Group is display-only: it mirrors Contacts.[Group], which is
-        # maintained outside this app.
-        self._info_group = _ViewEditLineEdit(m.get("group", "") or "",
-                                             editable=False)
+        # Group (Contacts.[Group]): the site/location code the meal sheet
+        # prints as Location.
+        self._info_group          = field("group")
         # Notes is built in the header (always-visible band), not here.
 
         enroll_start = self._enrollment_start(self._enrollments)
@@ -2198,6 +2202,7 @@ class MemberTabsWidget(QWidget):
             "pcp":            self._info_pcp.text().strip(),
             "hospital":       self._info_hospital.text().strip(),
             "hha":            self._info_hha.text().strip(),
+            "group":          self._info_group.text().strip(),
             # Admission Date is no longer shown/edited here; preserve the stored
             # value so saving the form never blanks it.
             "admission_date": old.get("admission_date", "") or "",
@@ -2218,24 +2223,19 @@ class MemberTabsWidget(QWidget):
 
         # Compare/summarize in display values so the confirm dialog never
         # shows ciphertext (bijectivity keeps change detection equivalent).
-        summary = build_change_summary(
-            {**old, "alt_id": self._display_alt_id()},
-            {**fields, "alt_id": alt_plain})
-        if not summary:
+        shown_old = {**old, "alt_id": self._display_alt_id()}
+        shown_new = {**fields, "alt_id": alt_plain}
+        rows = build_change_rows(shown_old, shown_new)
+        summary = build_change_summary(shown_old, shown_new)
+        if not rows:
             self._set_dirty(False)
             return
 
         name = f"{old.get('last_name', '')}, {old.get('first_name', '')}"
-        confirm = QMessageBox(self)
-        confirm.setWindowTitle("Confirm Changes")
-        confirm.setIcon(QMessageBox.Icon.Question)
-        confirm.setText(f"Confirm changes for {name}?")
-        confirm.setInformativeText("\n".join(summary))
-        confirm.setStandardButtons(
-            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel
-        )
-        confirm.setDefaultButton(QMessageBox.StandardButton.Save)
-        if confirm.exec() != QMessageBox.StandardButton.Save:
+        from PyQt6.QtWidgets import QDialog
+        from gui.confirm_changes import ConfirmChangesDialog
+        confirm = ConfirmChangesDialog(name, rows, self)
+        if confirm.exec() != QDialog.DialogCode.Accepted:
             return  # user cancelled — keep edits, stay dirty
 
         try:
@@ -2264,6 +2264,7 @@ class MemberTabsWidget(QWidget):
                 notes=fields["notes"],
                 db_path=self._db_path,
                 alt_id=fields["alt_id"],
+                group=fields["group"],
             )
             self._member.update(fields)
             # Refresh the shown values from what was saved so formatting (phone,
@@ -2313,7 +2314,7 @@ class MemberTabsWidget(QWidget):
             self._info_language, self._info_case_manager,
             self._info_home_tell, self._info_cell, self._info_address,
             self._info_emergency, self._info_pcp, self._info_hospital,
-            self._info_hha, self._info_alt_id,
+            self._info_hha, self._info_alt_id, self._info_group,
         )
         for w in line_edits:
             w.textChanged.connect(lambda: self._set_dirty(True))

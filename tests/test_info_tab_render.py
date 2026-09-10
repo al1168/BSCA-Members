@@ -232,17 +232,24 @@ def test_layout_editor_gets_display_member_values(qapp, monkeypatch):
     assert m["alt_id"] == "987654321"
 
 
-# ── Group: display-only Contacts.[Group] value ─────────────────────────────
+# ── Group: editable Contacts.[Group] value (meal-sheet Location) ───────────
 
-def test_group_field_renders_read_only(qapp):
+def test_group_field_renders_editable(qapp):
     w, _tab = _make_tab(qapp, member={"first_name": "Mary", "last_name": "Chan",
                                       "group": "B2", "alt_id": None})
     pos = _grid_positions(w)
     assert w._info_group in pos
     assert w._info_group.text() == "B2"
-    # Display-only, like Center ID / Health Plan: read-only, no edit pencil.
-    assert w._info_group.isReadOnly()
-    assert w._info_group._pencil is None
+    # Editable like Case Manager: the hover pencil is present.
+    assert w._info_group._pencil is not None
+
+
+def test_group_change_appears_in_confirm_summary():
+    from gui.member_tabs import build_change_summary
+    lines = build_change_summary({"group": "B"}, {"group": "C"})
+    assert lines == ["Group: B → C"]
+    assert build_change_summary({"group": ""}, {"group": "C"}) == [
+        "Group: (empty) → C"]
 
 
 def test_group_field_blank_when_member_lacks_it(qapp):
@@ -347,3 +354,18 @@ def test_field_small_size_sets_fsize_property(qapp):
             f["size"] = "small"
     w, _tab = _make_tab(qapp, layout_cfg=lay)
     assert w._info_dob.property("fsize") == "small"
+
+
+def test_editing_group_marks_form_dirty(qapp):
+    """Regression: Group was missing from the dirty-tracking list, so editing
+    it never lit the Save / Discard buttons."""
+    from PyQt6.QtWidgets import QPushButton
+    w, _tab = _make_tab(qapp, member={"first_name": "Mary", "last_name": "Chan",
+                                      "group": "B", "alt_id": None})
+    w._btn_save = QPushButton()
+    w._btn_discard = QPushButton()
+    w._setup_dirty_tracking()
+    assert not w._dirty
+    w._info_group.setText("C")
+    assert w._dirty
+    assert w._btn_save.isEnabled() and w._btn_discard.isEnabled()
