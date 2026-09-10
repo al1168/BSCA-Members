@@ -229,20 +229,23 @@ class MainWindow(QMainWindow):
         self._load_members()
 
     def _apply_default_geometry(self):
-        """Open wide enough to show the widest tab (the Authorizations table
-        needs ~1780px with the sidebar), but never larger than the screen, and
-        centered on it."""
-        desired_w, desired_h = 1800, 920
+        """Open at 1800x920 (wide enough for the Authorizations table with
+        the sidebar) centered on the primary screen when the window plus
+        its frame fits the work area; otherwise open maximized so the OS
+        keeps the bottom edge — and the Info tab's Save/Discard row on it —
+        above the taskbar. See choose_startup_geometry."""
+        desired = QSize(1800, 920)
         screen = QApplication.primaryScreen()
-        avail = screen.availableGeometry() if screen else None
-        if avail is not None:
-            w = min(desired_w, avail.width())
-            h = min(desired_h, avail.height())
-            self.resize(w, h)
-            self.move(avail.x() + (avail.width() - w) // 2,
-                      avail.y() + (avail.height() - h) // 2)
+        if screen is None:
+            self.resize(desired)
+            return
+        rect = choose_startup_geometry(desired, screen.availableGeometry())
+        if rect is None:
+            self.setWindowState(self.windowState()
+                                | Qt.WindowState.WindowMaximized)
         else:
-            self.resize(desired_w, desired_h)
+            self.resize(rect.size())
+            self.move(rect.topLeft())
 
     def _build_ui(self):
         central = QWidget()

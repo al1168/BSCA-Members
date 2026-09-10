@@ -69,3 +69,17 @@ def test_one_pixel_under_allowance_maximizes():
                          920 + FRAME_ALLOWANCE_H - 1)) is None
     assert _choose(QRect(0, 0, 1800 + FRAME_ALLOWANCE_W - 1,
                          920 + FRAME_ALLOWANCE_H)) is None
+
+
+def test_main_window_maximizes_on_small_offscreen_screen(qapp, tmp_path):
+    """The offscreen platform's primary screen is 800x600, far below the
+    1800x920 target, so the window must ask to open maximized rather than
+    clamp its client size to the work area."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
+    avail = QApplication.primaryScreen().availableGeometry()
+    assert avail.height() < 920, "precondition: offscreen screen is small"
+    from gui.main_window import MainWindow
+    w = MainWindow({"db_path": "", "theme": "dark"},
+                   str(tmp_path / "settings.json"))
+    assert w.windowState() & Qt.WindowState.WindowMaximized
