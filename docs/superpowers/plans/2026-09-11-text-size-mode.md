@@ -856,13 +856,18 @@ def test_run_rebuilds_window_once_when_requested(monkeypatch, tmp_path):
         def __init__(self, settings, path):
             self.settings = settings
             self.jumped = None
+            self.password = None
             # First window asks to reopen on member 7; the second does not.
             self.reopen_requested = len(created) == 0
             self.reopen_member_id = 7 if self.reopen_requested else None
+            self.reopen_alt_id_password = "hunter2" if self.reopen_requested else ""
             created.append(self)
 
         def show(self):
             pass
+
+        def set_alt_id_password(self, pw):
+            self.password = pw
 
         def jump_to_member(self, cid):
             self.jumped = cid
@@ -891,6 +896,7 @@ def test_run_rebuilds_window_once_when_requested(monkeypatch, tmp_path):
     assert len(created) == 2
     assert created[0].jumped is None
     assert created[1].jumped == 7
+    assert created[0].password == "" and created[1].password == "hunter2"
     assert applied == [("light", "xlarge"), ("light", "xlarge")]
 ```
 
@@ -911,6 +917,7 @@ def run(app) -> int:
     Settings are re-read on every pass so the rebuilt window and the freshly
     applied theme see the size the user just saved."""
     reopen_id = None
+    reopen_password = ""
     while True:
         settings = load_settings(SETTINGS_PATH)
         if ensure_events_path(settings):
@@ -918,6 +925,9 @@ def run(app) -> int:
         apply_theme(app, settings.get("theme", "dark"),
                     settings.get("text_size", "normal"))
         window = MainWindow(settings, SETTINGS_PATH)
+        # Session-only alt-id password survives the rebuild (it is never
+        # written to disk, so it has to be carried in memory).
+        window.set_alt_id_password(reopen_password)
         window.show()
         if reopen_id is not None:
             window.jump_to_member(reopen_id)
@@ -925,6 +935,7 @@ def run(app) -> int:
         if not getattr(window, "reopen_requested", False):
             return code
         reopen_id = window.reopen_member_id
+        reopen_password = window.reopen_alt_id_password
 
 
 def main():

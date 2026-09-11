@@ -170,8 +170,11 @@ rebuilt on change, see §5):
      size reverts; every other setting still applies and saves.
   3. Update and save settings as today; apply theme live as today.
   4. If the text size did change: set `self.reopen_requested = True`,
-     record `self.reopen_member_id` (the id currently open, or `None`),
-     and `self.close()`.
+     record `self.reopen_member_id` (the member widget currently on
+     screen, or `None` when the All Events view is showing or the
+     database path changed in the same dialog), record
+     `self.reopen_alt_id_password` (the session-only password, which is
+     never on disk and must be carried in memory), and `self.close()`.
 - `member_manager.main()` becomes a loop:
 
   ```python
