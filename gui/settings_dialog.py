@@ -5,12 +5,14 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
+from gui.theme import px
+
 
 class SettingsDialog(QDialog):
     def __init__(self, settings: dict, parent=None, alt_id_password: str = ""):
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setMinimumWidth(480)
+        self.setMinimumWidth(px(480))
         self._settings = dict(settings)
         # Session-only secret: shown/edited here but NEVER part of
         # result_settings(), so it can't reach the settings JSON on disk.
@@ -103,15 +105,15 @@ class SettingsDialog(QDialog):
         self._radio_size_normal = QRadioButton("Normal")
         self._radio_size_large = QRadioButton("Large")
         self._radio_size_xlarge = QRadioButton("Extra Large")
+        self._size_radios = {"normal": self._radio_size_normal,
+                             "large": self._radio_size_large,
+                             "xlarge": self._radio_size_xlarge}
         self._text_size_group = QButtonGroup()
-        for b in (self._radio_size_normal, self._radio_size_large,
-                  self._radio_size_xlarge):
+        for b in self._size_radios.values():
             self._text_size_group.addButton(b)
             size_hl.addWidget(b)
         current = self._settings.get("text_size", "normal")
-        {"large": self._radio_size_large,
-         "xlarge": self._radio_size_xlarge}.get(
-            current, self._radio_size_normal).setChecked(True)
+        self._size_radios.get(current, self._radio_size_normal).setChecked(True)
         size_row.setToolTip(
             "Make all text in the program larger. The window reopens to apply "
             "the new size; printed reports keep their normal size.")
@@ -184,9 +186,8 @@ class SettingsDialog(QDialog):
             "theme": "light" if self._radio_light.isChecked() else "dark",
             "google_api_key": self._api_key.text().strip(),
             "show_row_ids": self._show_row_ids.isChecked(),
-            "text_size": ("xlarge" if self._radio_size_xlarge.isChecked()
-                          else "large" if self._radio_size_large.isChecked()
-                          else "normal"),
+            "text_size": next((name for name, b in self._size_radios.items()
+                               if b.isChecked()), "normal"),
         }
 
     def result_alt_id_password(self) -> str:

@@ -126,3 +126,6 @@ def test_settings_dialog_text_size_defaults_to_normal_when_missing(qapp):
     assert dlg.result_settings()["text_size"] == "normal"
     dlg._radio_size_xlarge.setChecked(True)
     assert dlg.result_settings()["text_size"] == "xlarge"
+    # Unknown values (hand-edited settings file) fall back to Normal.
+    assert SettingsDialog({**_BASE_SETTINGS, "text_size": "huge"}
+                          ).result_settings()["text_size"] == "normal"
