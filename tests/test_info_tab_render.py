@@ -299,6 +299,10 @@ def test_qss_has_size_step_rules_both_themes():
         assert 'QLineEdit[fsize="xlarge"]' in qss
         assert 'QLabel#field_label[lsize="small"]' in qss
         assert 'QLabel#field_label[lsize="large"]' in qss
+        for s in ("xxlarge", "xxxlarge"):
+            assert f'QLineEdit#info_field[fsize="{s}"]' in qss
+        for s in ("xlarge", "xxlarge", "xxxlarge"):
+            assert f'QLabel#field_label[lsize="{s}"]' in qss
 
 
 def test_xlarge_value_and_large_label_render(qapp):
@@ -321,9 +325,11 @@ def test_qss_pixel_values_match_editor_maps():
     from gui.info_layout_editor import VALUE_PX, LABEL_PX
     qss = build_qss(DARK)
     for s in ("small", "large", "xlarge", "xxlarge", "xxxlarge"):
-        assert f'[fsize="{s}"] {{ font-size: {VALUE_PX[s]}px' in qss
+        rule = f'[fsize="{s}"] {{ font-size: {VALUE_PX[s]}px; }}'
+        assert f"QLineEdit#info_field{rule}" in qss
+        assert f"\nQLineEdit{rule}" in qss          # the generic safety-net block
     for s in ("small", "large", "xlarge", "xxlarge", "xxxlarge"):
-        assert f'[lsize="{s}"] {{ font-size: {LABEL_PX[s]}px' in qss
+        assert f'QLabel#field_label[lsize="{s}"] {{ font-size: {LABEL_PX[s]}px; }}' in qss
 
 
 def test_labels_carry_global_label_size(qapp):

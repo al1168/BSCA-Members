@@ -51,6 +51,9 @@ FIELD_REGISTRY = (
 FIELD_LABELS_BY_KEY = dict(FIELD_REGISTRY)
 
 NCOLS = 3
+# NB: these names overlap with gui.theme.TEXT_SIZES ("large"/"xlarge" = the
+# app-wide 25/30px modes) but are a separate, per-field vocabulary persisted
+# in the layout JSON.
 # Value text sizes -> 11/13/16/20/25/30px at Normal app text size ("normal" is
 # the un-ruled 13px base). All multiply with the app-wide text size factor.
 SIZES = ("small", "normal", "large", "xlarge", "xxlarge", "xxxlarge")

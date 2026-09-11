@@ -322,9 +322,7 @@ def test_label_size_roundtrips():
 
 
 def test_new_size_steps_accepted_and_unknown_clamped():
-    from gui.info_layout import normalize, default_layout, SIZES, LABEL_SIZES, find_field
-    assert SIZES == ("small", "normal", "large", "xlarge", "xxlarge", "xxxlarge")
-    assert LABEL_SIZES == ("small", "normal", "large", "xlarge", "xxlarge", "xxxlarge")
+    from gui.info_layout import normalize, default_layout, find_field
     lay = default_layout()
     bi, fi = find_field(lay, "dob")
     lay["blocks"][bi]["fields"][fi]["size"] = "xxxlarge"

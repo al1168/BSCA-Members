@@ -54,7 +54,15 @@ class InfoLayoutEditor(QDialog):
     def __init__(self, layout_cfg, member, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Customize Info Tab")
-        self.resize(980, 640)
+        # Size with the app text scale, but never larger than the work area
+        # (at Extra Large the unclamped size would exceed a 1080p screen).
+        from PyQt6.QtWidgets import QApplication
+        w, h = px(980), px(640)
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            w, h = min(w, avail.width() - 40), min(h, avail.height() - 80)
+        self.resize(w, h)
         self._layout = normalize(copy.deepcopy(layout_cfg))
         self._member = member or {}
         self._selection = None          # ("field", key) | ("block", index)
@@ -82,7 +90,7 @@ class InfoLayoutEditor(QDialog):
         lbl_row.addStretch()
         right.addLayout(lbl_row)
         self._props_host = QWidget()
-        self._props_host.setMinimumWidth(280)
+        self._props_host.setMinimumWidth(px(280))
         QVBoxLayout(self._props_host)
         right.addWidget(self._props_host)
         right.addStretch()
@@ -189,7 +197,7 @@ class InfoLayoutEditor(QDialog):
             header = _ClickLabel(block["title"].upper())
             hsel = self._selection == ("block", bi)
             header.setStyleSheet(
-                f"color: {t['accent_text']}; font-size: {px(11)}px; "
+                f"color: {t['accent_text']}; font-size: {px(10)}px; "
                 f"font-weight: 700; padding: 6px 2px 2px 2px; "
                 f"border: none; border-bottom: 2px solid "
                 f"{t['accent'] if hsel else t['border_mid']};")
@@ -350,6 +358,7 @@ class InfoLayoutEditor(QDialog):
         cfg = self._layout["blocks"][pos[0]]["fields"][pos[1]]
         title = QLabel(FIELD_LABELS_BY_KEY[key])
         title.setStyleSheet(f"font-weight: 700; font-size: {px(14)}px;")
+        title.setWordWrap(True)
         box.addWidget(title)
 
         section_combo = QComboBox()
@@ -416,6 +425,7 @@ class InfoLayoutEditor(QDialog):
             title = QLabel("Schedule card" if block["type"] == "schedule"
                            else "Emergency contacts")
         title.setStyleSheet(f"font-weight: 700; font-size: {px(14)}px;")
+        title.setWordWrap(True)
         box.addWidget(title)
 
         move_row = QHBoxLayout()

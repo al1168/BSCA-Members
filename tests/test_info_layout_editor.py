@@ -246,7 +246,6 @@ def test_preview_uses_scaled_pixels(qapp):
     dlg._set_prop("size", "xxxlarge")
     theme.set_text_size("xlarge")          # conftest resets to Normal afterwards
     dlg._rebuild_preview()
-    from PyQt6.QtWidgets import QLabel
-    texts = [w.text() for w in dlg._preview_scroll.widget().findChildren(QLabel)]
-    assert any("font-size:69px" in t for t in texts)      # value 30 × 30/13
-    assert any("font-size:25px" in t for t in texts)      # label 11 × 30/13
+    cell = dlg._preview_cells["dob"].text()
+    assert "font-size:69px" in cell      # value: 30 × 30/13
+    assert "font-size:25px" in cell      # label: 11 × 30/13
