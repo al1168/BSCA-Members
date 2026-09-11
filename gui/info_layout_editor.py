@@ -22,13 +22,17 @@ from gui.info_layout import (
     move_block, rename_section, add_section, delete_section,
     SIZES, LABEL_SIZES,
 )
-from gui.theme import current_tokens
+from gui.theme import current_tokens, px
 
-# Preview-only pixel mapping; must track the theme QSS rules.
-VALUE_PX = {"small": 11, "normal": 13, "large": 16, "xlarge": 20}
-LABEL_PX = {"small": 9, "normal": 11, "large": 13}
+# Preview-only pixel mapping at Normal app text size; must track the theme
+# QSS rules. The preview multiplies these through px() so it matches the
+# live tab in every text-size mode.
+VALUE_PX = {"small": 11, "normal": 13, "large": 16, "xlarge": 20,
+            "xxlarge": 25, "xxxlarge": 30}
+LABEL_PX = {"small": 9, "normal": 11, "large": 13, "xlarge": 20,
+            "xxlarge": 25, "xxxlarge": 30}
 SIZE_NAMES = {"small": "Small", "normal": "Normal", "large": "Large",
-              "xlarge": "X-Large"}
+              "xlarge": "X-Large", "xxlarge": "2X-Large", "xxxlarge": "3X-Large"}
 
 
 class _ClickLabel(QLabel):
@@ -185,7 +189,7 @@ class InfoLayoutEditor(QDialog):
             header = _ClickLabel(block["title"].upper())
             hsel = self._selection == ("block", bi)
             header.setStyleSheet(
-                f"color: {t['accent_text']}; font-size: 11px; "
+                f"color: {t['accent_text']}; font-size: {px(11)}px; "
                 f"font-weight: 700; padding: 6px 2px 2px 2px; "
                 f"border: none; border-bottom: 2px solid "
                 f"{t['accent'] if hsel else t['border_mid']};")
@@ -200,8 +204,8 @@ class InfoLayoutEditor(QDialog):
                 text = FIELD_LABELS_BY_KEY[key]
                 if not cfg.get("visible", True):
                     text += "  (hidden)"
-                label_px = LABEL_PX[self._layout.get("label_size", "normal")]
-                value_px = VALUE_PX[cfg.get("size", "normal")]
+                label_px = px(LABEL_PX[self._layout.get("label_size", "normal")])
+                value_px = px(VALUE_PX[cfg.get("size", "normal")])
                 cell = _ClickLabel(
                     f"<span style='font-size:{label_px}px'>"
                     f"{html.escape(text)}</span><br>"
@@ -345,7 +349,7 @@ class InfoLayoutEditor(QDialog):
             return
         cfg = self._layout["blocks"][pos[0]]["fields"][pos[1]]
         title = QLabel(FIELD_LABELS_BY_KEY[key])
-        title.setStyleSheet("font-weight: 700; font-size: 14px;")
+        title.setStyleSheet(f"font-weight: 700; font-size: {px(14)}px;")
         box.addWidget(title)
 
         section_combo = QComboBox()
@@ -411,7 +415,7 @@ class InfoLayoutEditor(QDialog):
         else:
             title = QLabel("Schedule card" if block["type"] == "schedule"
                            else "Emergency contacts")
-        title.setStyleSheet("font-weight: 700; font-size: 14px;")
+        title.setStyleSheet(f"font-weight: 700; font-size: {px(14)}px;")
         box.addWidget(title)
 
         move_row = QHBoxLayout()

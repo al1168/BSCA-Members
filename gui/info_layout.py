@@ -51,10 +51,11 @@ FIELD_REGISTRY = (
 FIELD_LABELS_BY_KEY = dict(FIELD_REGISTRY)
 
 NCOLS = 3
-# Value text sizes -> 11/13/16/20px ("normal" is the un-ruled 13px base).
-SIZES = ("small", "normal", "large", "xlarge")
-# Global field-label sizes -> 9/11/13px ("normal" is the un-ruled 11px base).
-LABEL_SIZES = ("small", "normal", "large")
+# Value text sizes -> 11/13/16/20/25/30px at Normal app text size ("normal" is
+# the un-ruled 13px base). All multiply with the app-wide text size factor.
+SIZES = ("small", "normal", "large", "xlarge", "xxlarge", "xxxlarge")
+# Global field-label sizes -> 9/11/13/20/25/30px ("normal" is the un-ruled base).
+LABEL_SIZES = ("small", "normal", "large", "xlarge", "xxlarge", "xxxlarge")
 COLORS = ("none", "amber", "blue", "green", "red")
 
 

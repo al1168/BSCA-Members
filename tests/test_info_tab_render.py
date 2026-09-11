@@ -320,9 +320,9 @@ def test_qss_pixel_values_match_editor_maps():
     from gui.theme import build_qss, DARK
     from gui.info_layout_editor import VALUE_PX, LABEL_PX
     qss = build_qss(DARK)
-    for s in ("small", "large", "xlarge"):
+    for s in ("small", "large", "xlarge", "xxlarge", "xxxlarge"):
         assert f'[fsize="{s}"] {{ font-size: {VALUE_PX[s]}px' in qss
-    for s in ("small", "large"):
+    for s in ("small", "large", "xlarge", "xxlarge", "xxxlarge"):
         assert f'[lsize="{s}"] {{ font-size: {LABEL_PX[s]}px' in qss
 
 

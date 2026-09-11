@@ -182,13 +182,13 @@ def test_text_size_dropdown_sets_field_size(qapp):
     dlg._set_prop("size", "xlarge")
     bi, fi = find_field(dlg._layout, "dob")
     assert dlg._layout["blocks"][bi]["fields"][fi]["size"] == "xlarge"
-    # The props panel offers a Text size dropdown with all four steps.
+    # The props panel offers a Text size dropdown with all six steps.
     from PyQt6.QtWidgets import QComboBox
     dlg._rebuild_props()
     combos = dlg._props_host.findChildren(QComboBox)
     size_combos = [c for c in combos
                    if [c.itemData(i) for i in range(c.count())]
-                   == ["small", "normal", "large", "xlarge"]]
+                   == ["small", "normal", "large", "xlarge", "xxlarge", "xxxlarge"]]
     assert len(size_combos) == 1
     assert size_combos[0].currentData() == "xlarge"
 
@@ -226,3 +226,27 @@ def test_preview_cells_render_both_sizes_as_rich_text(qapp):
     # A normal field's value renders at the 13px base: its cell has the
     # 13px label span AND a 13px value span.
     assert dlg._preview_cells["first_name"].text().count("font-size:13px") == 2
+
+
+def test_label_size_dropdown_offers_six_steps_with_display_names(qapp):
+    dlg = _dlg(qapp)
+    combo = dlg._label_size_combo
+    assert [combo.itemData(i) for i in range(combo.count())] == [
+        "small", "normal", "large", "xlarge", "xxlarge", "xxxlarge"]
+    assert [combo.itemText(i) for i in range(combo.count())] == [
+        "Small", "Normal", "Large", "X-Large", "2X-Large", "3X-Large"]
+    combo.setCurrentIndex(5)
+    assert dlg._layout["label_size"] == "xxxlarge"
+
+
+def test_preview_uses_scaled_pixels(qapp):
+    from gui import theme
+    dlg = _dlg(qapp)
+    dlg._select(("field", "dob"))
+    dlg._set_prop("size", "xxxlarge")
+    theme.set_text_size("xlarge")          # conftest resets to Normal afterwards
+    dlg._rebuild_preview()
+    from PyQt6.QtWidgets import QLabel
+    texts = [w.text() for w in dlg._preview_scroll.widget().findChildren(QLabel)]
+    assert any("font-size:69px" in t for t in texts)      # value 30 × 30/13
+    assert any("font-size:25px" in t for t in texts)      # label 11 × 30/13

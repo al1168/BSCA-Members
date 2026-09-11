@@ -82,7 +82,7 @@ def test_qss_scales_every_font_size():
         normal = build_qss(tokens)
         large = build_qss(tokens, text_scale_for("large"))
         xlarge = build_qss(tokens, text_scale_for("xlarge"))
-        assert len(sizes(normal)) >= 48
+        assert len(sizes(normal)) >= 55
         # Every rule, in order, is exactly the Normal value through _scaled —
         # a single hand-written literal among the rules fails this.
         assert sizes(large) == [_scaled(n, 25 / 13) for n in sizes(normal)]

@@ -279,8 +279,8 @@ def test_delete_last_remaining_section_refused():
 
 def test_size_constants():
     from gui.info_layout import SIZES, LABEL_SIZES
-    assert SIZES == ("small", "normal", "large", "xlarge")
-    assert LABEL_SIZES == ("small", "normal", "large")
+    assert SIZES == ("small", "normal", "large", "xlarge", "xxlarge", "xxxlarge")
+    assert LABEL_SIZES == ("small", "normal", "large", "xlarge", "xxlarge", "xxxlarge")
 
 
 def test_default_layout_has_normal_label_size():
@@ -319,3 +319,21 @@ def test_label_size_roundtrips():
     lay = default_layout()
     lay["label_size"] = "small"
     assert normalize(json.loads(json.dumps(lay)))["label_size"] == "small"
+
+
+def test_new_size_steps_accepted_and_unknown_clamped():
+    from gui.info_layout import normalize, default_layout, SIZES, LABEL_SIZES, find_field
+    assert SIZES == ("small", "normal", "large", "xlarge", "xxlarge", "xxxlarge")
+    assert LABEL_SIZES == ("small", "normal", "large", "xlarge", "xxlarge", "xxxlarge")
+    lay = default_layout()
+    bi, fi = find_field(lay, "dob")
+    lay["blocks"][bi]["fields"][fi]["size"] = "xxxlarge"
+    lay["label_size"] = "xxlarge"
+    out = normalize(lay)
+    assert out["blocks"][bi]["fields"][fi]["size"] == "xxxlarge"
+    assert out["label_size"] == "xxlarge"
+    lay["blocks"][bi]["fields"][fi]["size"] = "gigantic"
+    lay["label_size"] = "gigantic"
+    out = normalize(lay)
+    assert out["blocks"][bi]["fields"][fi]["size"] == "normal"
+    assert out["label_size"] == "normal"

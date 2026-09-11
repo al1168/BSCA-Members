@@ -323,6 +323,8 @@ QLineEdit#info_field[fbold="true"] {{ font-weight: 800; }}
 QLineEdit#info_field[fsize="small"] {{ font-size: {p(11)}px; }}
 QLineEdit#info_field[fsize="large"] {{ font-size: {p(16)}px; }}
 QLineEdit#info_field[fsize="xlarge"] {{ font-size: {p(20)}px; }}
+QLineEdit#info_field[fsize="xxlarge"] {{ font-size: {p(25)}px; }}
+QLineEdit#info_field[fsize="xxxlarge"] {{ font-size: {p(30)}px; }}
 QLineEdit#info_field[hl="amber"], QLineEdit#info_field[hl="amber"]:read-only {{
     background-color: {t['hl_amber']}; border-radius: 4px; padding: 3px 6px;
 }}
@@ -369,6 +371,8 @@ QLineEdit[fbold="true"] {{ font-weight: 800; }}
 QLineEdit[fsize="small"] {{ font-size: {p(11)}px; }}
 QLineEdit[fsize="large"] {{ font-size: {p(16)}px; }}
 QLineEdit[fsize="xlarge"] {{ font-size: {p(20)}px; }}
+QLineEdit[fsize="xxlarge"] {{ font-size: {p(25)}px; }}
+QLineEdit[fsize="xxxlarge"] {{ font-size: {p(30)}px; }}
 QLineEdit[hl="amber"], QLineEdit[hl="amber"]:read-only {{
     background-color: {t['hl_amber']}; border-radius: 4px; padding: 3px 6px;
 }}
@@ -676,6 +680,9 @@ QLabel#field_label {{
    above; the lsize property is stamped by _make_info_tab). */
 QLabel#field_label[lsize="small"] {{ font-size: {p(9)}px; }}
 QLabel#field_label[lsize="large"] {{ font-size: {p(13)}px; }}
+QLabel#field_label[lsize="xlarge"] {{ font-size: {p(20)}px; }}
+QLabel#field_label[lsize="xxlarge"] {{ font-size: {p(25)}px; }}
+QLabel#field_label[lsize="xxxlarge"] {{ font-size: {p(30)}px; }}
 /* Ctrl+K quick-search palette: a floating rounded card with a big search box. */
 QWidget#quick_search {{
     background-color: {t['surface']};
