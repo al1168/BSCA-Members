@@ -83,8 +83,9 @@ def run(app) -> int:
         requested = window.reopen_requested
         reopen_id = window.reopen_member_id if requested else None
         reopen_password = window.reopen_alt_id_password if requested else ""
-        # Release the closed window before apply_theme re-polishes
-        # app.allWidgets() on the next pass, so it doesn't walk a dead tree.
+        # Drop the closed window now: otherwise it stays alive through the
+        # next pass, apply_theme re-polishes two full widget trees and two
+        # member profiles sit in memory at once.
         window = None
         if not requested:
             return code

@@ -360,6 +360,12 @@ def test_run_rebuilds_window_once_when_requested(monkeypatch, tmp_path):
     # The password must be restored before the member is reopened.
     assert created[1].order == ["password", "show", "jump"]
     assert applied == [("light", "normal"), ("light", "xlarge")]
+    # run() must not keep the first window alive into the second pass.
+    import gc, weakref
+    first = weakref.ref(created[0])
+    created.clear()
+    gc.collect()
+    assert first() is None
 
 
 def test_run_exits_immediately_and_propagates_the_exit_code(monkeypatch, tmp_path):
@@ -416,6 +422,12 @@ _CONVERTED = [
 
 _LITERAL_FONT_SIZE = re.compile(r"font-size:\s*\d+px")
 _LITERAL_ROW_HEIGHT = re.compile(r"setDefaultSectionSize\(\s*\d+\s*\)")
+# Badge/button caps, icon-button widths and note-editor heights that Task 8
+# converted; a literal here means a text-holding dimension stopped scaling.
+_LITERAL_TEXT_DIMENSION = re.compile(
+    r"setMaximumHeight\(\s*26\s*\)|setFixedWidth\(\s*2[68]\s*\)|setFixedHeight\(\s*6[04]\s*\)")
+# Point-size fonts (events-log timestamps, time-slider ticks) must go through px().
+_LITERAL_POINT_SIZE = re.compile(r"setPointSize\(\s*\d|QFont\([^)]*,\s*\d")
 
 
 @pytest.mark.parametrize("rel", _CONVERTED)
@@ -424,6 +436,8 @@ def test_no_literal_font_sizes_or_row_heights(rel):
     src = open(os.path.join(root, rel), encoding="utf-8").read()
     assert not _LITERAL_FONT_SIZE.findall(src), rel
     assert not _LITERAL_ROW_HEIGHT.findall(src), rel
+    assert not _LITERAL_TEXT_DIMENSION.findall(src), rel
+    assert not _LITERAL_POINT_SIZE.findall(src), rel
 
 
 def test_member_table_row_height_follows_scale(qapp):

@@ -39,10 +39,11 @@ def test_emergency_table_has_fixed_height_fitting_its_rows(qapp):
         {"id": 2, "full_name": "Andy Lau", "phone": "(917) 628-0459",
          "relationship": "Son"},
     ]
+    from gui import theme
     w = _info_tab_with(contacts)
     t = w._emergency_table
     assert t.minimumHeight() == t.maximumHeight()       # fixed, not squeezable
-    assert t.minimumHeight() >= 34 * len(contacts)      # all rows fit
+    assert t.minimumHeight() >= theme.px(34) * len(contacts)  # all rows fit
 
 
 def test_emergency_table_fixed_even_when_empty(qapp):

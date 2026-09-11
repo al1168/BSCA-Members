@@ -3858,10 +3858,10 @@ class MemberTabsWidget(QWidget):
         row.setContentsMargins(16, 14, 16, 14)
         row.setSpacing(11)
         icon = QLabel("i")
-        icon.setFixedSize(18, 18)
+        icon.setFixedSize(px(18), px(18))
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon.setStyleSheet(
-            f"background: {t['accent']}; color: white; border-radius: 9px; "
+            f"background: {t['accent']}; color: white; border-radius: {px(9)}px; "
             f"font-size: {px(12)}px; font-weight: 700;")
         row.addWidget(icon, alignment=Qt.AlignmentFlag.AlignTop)
         col = QVBoxLayout()
