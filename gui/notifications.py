@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from gui.theme import current_tokens
+from gui.theme import current_tokens, px
 
 
 def format_notification_line(end: date, days: int, expired: bool) -> str:
@@ -50,7 +50,7 @@ class _NotifRow(QFrame):
             f"&nbsp;&nbsp;<span style='color:{t['text2']}'>ID {center_id}</span>")
         title.setTextFormat(Qt.TextFormat.RichText)
         sub = QLabel(subtitle)
-        sub.setStyleSheet(f"color:{sub_color}; font-size:11px;")
+        sub.setStyleSheet(f"color:{sub_color}; font-size:{px(11)}px;")
         col.addWidget(title)
         col.addWidget(sub)
 
@@ -77,7 +77,7 @@ class NotificationsPanel(QDialog):
         self.setWindowFlags(Qt.WindowType.Popup |
                             Qt.WindowType.FramelessWindowHint)
         self.setObjectName("notif_panel")
-        self.setFixedWidth(360)
+        self.setFixedWidth(px(360))
         self._build_ui()
         self._show_tab("expiring" if expiring or not expired else "expired")
 
@@ -125,7 +125,7 @@ class NotificationsPanel(QDialog):
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._scroll.setFixedHeight(220)
+        self._scroll.setFixedHeight(px(220))
         self._scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         root.addWidget(self._scroll)

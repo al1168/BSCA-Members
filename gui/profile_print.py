@@ -11,6 +11,7 @@ attaches the photo as a document resource, and shows a QPrintPreviewDialog
 import html as _html
 
 from db.members import format_phone, format_date_only
+from gui.theme import px
 
 # Subtle, print-friendly palette (white paper, dark text, calm accent).
 _ACCENT = "#5b7cf4"
@@ -218,7 +219,7 @@ def _attach_printer_selector(preview, printer,
     if default_name in names:
         combo.setCurrentText(default_name)
     # Long printer names shouldn't crowd the Print button off the toolbar.
-    combo.setMaximumWidth(240)
+    combo.setMaximumWidth(px(240))
 
     def _retarget(name: str):
         page_layout = printer.pageLayout()   # keep our margins/orientation

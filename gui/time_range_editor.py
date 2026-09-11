@@ -11,6 +11,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QRectF
 from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QFont
 
+from gui.theme import px
+
 MIN_MINUTES = 480   # 08:00
 MAX_MINUTES = 960   # 16:00
 SNAP_MINUTES = 15
@@ -67,7 +69,7 @@ class RangeSlider(QWidget):
         self._start = MIN_MINUTES
         self._end = MAX_MINUTES
         self._drag = None  # 'start' | 'end' | None
-        self.setMinimumHeight(60)
+        self.setMinimumHeight(px(60))
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
@@ -116,7 +118,7 @@ class RangeSlider(QWidget):
         p.drawRoundedRect(QRectF(xs, self._TRACK_Y, max(xe - xs, 1), self._TRACK_H), 4, 4)
 
         # hour ticks + labels (8a..4p)
-        p.setFont(QFont("Segoe UI", 7))
+        p.setFont(QFont("Segoe UI", px(7)))
         p.setPen(QPen(QColor("#757a98")))
         for hour in range(8, 17):
             mx = self._x_for(hour * 60)
@@ -196,7 +198,7 @@ class TimeRangeEditor(QWidget):
 
         self._readout = QLabel()
         self._readout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        self._readout.setStyleSheet("font-size:16px; font-weight:700;")
+        self._readout.setStyleSheet(f"font-size:{px(16)}px; font-weight:700;")
         layout.addWidget(self._readout)
 
         self._slider = RangeSlider()

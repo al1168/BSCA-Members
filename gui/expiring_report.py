@@ -13,6 +13,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
+from gui.theme import px
+
 
 class ExpiringReportDialog(QDialog):
     """Pick a month; save the expiring-auths report as a spreadsheet or
@@ -56,7 +58,7 @@ class ExpiringReportDialog(QDialog):
         for b in (btn_all, btn_none):
             b.setFlat(True)
             b.setCursor(Qt.CursorShape.PointingHandCursor)
-            b.setStyleSheet("font-size:11px; padding:1px 8px;")
+            b.setStyleSheet(f"font-size:{px(11)}px; padding:1px 8px;")
         btn_all.clicked.connect(lambda: self._set_all_plans(True))
         btn_none.clicked.connect(lambda: self._set_all_plans(False))
         plans_row.addWidget(btn_all)

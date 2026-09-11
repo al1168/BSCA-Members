@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
 
-from gui.theme import event_badge_colors, format_member_counts, current_tokens
+from gui.theme import event_badge_colors, format_member_counts, current_tokens, px
 
 
 class EventsTableWidget(QWidget):
@@ -30,9 +30,9 @@ class EventsTableWidget(QWidget):
         if self._show_header:
             header_row = QHBoxLayout()
             title = QLabel("All Events" if self._center_id is None else "Events")
-            title.setStyleSheet("font-size:15px; font-weight:600;")
+            title.setStyleSheet(f"font-size:{px(15)}px; font-weight:600;")
             ttl_lbl = QLabel("Auto-deletes after 30 days")
-            ttl_lbl.setStyleSheet("font-size:10px; color: gray;")
+            ttl_lbl.setStyleSheet(f"font-size:{px(10)}px; color: gray;")
             header_row.addWidget(title)
             header_row.addStretch()
             header_row.addWidget(ttl_lbl)
@@ -45,7 +45,7 @@ class EventsTableWidget(QWidget):
                     self._member_count, self._active_count))
                 counts.setObjectName("events_member_counts")
                 counts.setTextFormat(Qt.TextFormat.RichText)
-                counts.setStyleSheet("font-size:12px;")
+                counts.setStyleSheet(f"font-size:{px(12)}px;")
                 layout.addWidget(counts)
 
         self._search = QLineEdit()
@@ -108,7 +108,7 @@ class EventsTableWidget(QWidget):
             msg.setForeground(QColor(current_tokens()["text3"]))
             self._table.setItem(0, 0, msg)
             return
-        mono_font = QFont("Cascadia Mono, Consolas", 10)
+        mono_font = QFont("Cascadia Mono, Consolas", px(10))
         for r, row in enumerate(rows):
             ts_item = QTableWidgetItem(row["ts"].replace("T", "  "))
             ts_item.setFont(mono_font)

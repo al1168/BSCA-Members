@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from gui.theme import current_tokens
+from gui.theme import current_tokens, px
 
 
 def format_bookmark_date(iso: str) -> str:
@@ -56,10 +56,10 @@ class _BookmarkRow(QFrame):
         if note:
             note_lbl = QLabel(note)
             note_lbl.setWordWrap(True)
-            note_lbl.setStyleSheet(f"color:{t['text']}; font-size:11px;")
+            note_lbl.setStyleSheet(f"color:{t['text']}; font-size:{px(11)}px;")
             col.addWidget(note_lbl)
         date_lbl = QLabel(format_bookmark_date(bm.get("date", "")))
-        date_lbl.setStyleSheet(f"color:{t['text3']}; font-size:10px;")
+        date_lbl.setStyleSheet(f"color:{t['text3']}; font-size:{px(10)}px;")
         col.addWidget(date_lbl)
         row.addLayout(col, 1)
 
@@ -67,7 +67,7 @@ class _BookmarkRow(QFrame):
         # row's jump-to-member click.
         btn = QPushButton("✕")
         btn.setObjectName("btn_icon_delete")
-        btn.setFixedWidth(26)
+        btn.setFixedWidth(px(26))
         btn.setToolTip("Remove bookmark")
         btn.clicked.connect(lambda: self.removed.emit(self._center_id))
         row.addWidget(btn, alignment=Qt.AlignmentFlag.AlignTop)
@@ -90,7 +90,7 @@ class BookmarksPanel(QDialog):
         self.setWindowFlags(Qt.WindowType.Popup |
                             Qt.WindowType.FramelessWindowHint)
         self.setObjectName("bookmarks_panel")
-        self.setFixedWidth(380)
+        self.setFixedWidth(px(380))
         self._build_ui()
         self._rebuild()
 
@@ -120,7 +120,7 @@ class BookmarksPanel(QDialog):
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._scroll.setFixedHeight(260)
+        self._scroll.setFixedHeight(px(260))
         self._scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         root.addWidget(self._scroll)

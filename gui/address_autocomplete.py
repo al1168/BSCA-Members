@@ -11,6 +11,8 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QLabel, QCompleter
 from PyQt6.QtCore import Qt, QTimer, QUrl, QByteArray, QStringListModel, pyqtSignal
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
+from gui.theme import px
+
 # Places API (New). Autocomplete is a POST; Place Details is a GET with a
 # field mask. Both authenticate via the X-Goog-Api-Key header.
 AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete"
@@ -246,7 +248,7 @@ class AddressAutocomplete(QWidget):
             self._refresh_empty()
 
         self._status = QLabel("")
-        self._status.setStyleSheet("color:#3d9e6e; font-size:10px;")
+        self._status.setStyleSheet(f"color:#3d9e6e; font-size:{px(10)}px;")
         self._status.hide()
         layout.addWidget(self._status)
 
@@ -417,7 +419,7 @@ class AddressAutocomplete(QWidget):
 
     def _show_status(self, text: str, *, error: bool = False) -> None:
         color = "#d05555" if error else "#3d9e6e"
-        self._status.setStyleSheet(f"color:{color}; font-size:10px;")
+        self._status.setStyleSheet(f"color:{color}; font-size:{px(10)}px;")
         self._status.setText(text)
         self._status.show()
 

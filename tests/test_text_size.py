@@ -419,6 +419,13 @@ _CONVERTED = [
     "gui/member_tabs.py",
     "gui/main_window.py",
     "gui/info_layout_editor.py",
+    "gui/bookmarks_panel.py",
+    "gui/notifications.py",
+    "gui/confirm_changes.py",
+    "gui/events_view.py",
+    "gui/expiring_report.py",
+    "gui/address_autocomplete.py",
+    "gui/time_range_editor.py",
 ]
 
 _LITERAL_FONT_SIZE = re.compile(r"font-size:\s*\d+px")

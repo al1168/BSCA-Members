@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 import crash_log
 from db import company_calendar as cal
 from gui.address_autocomplete import DateLineEdit
+from gui.theme import px
 
 
 class _TimeEntry(QWidget):
@@ -27,7 +28,7 @@ class _TimeEntry(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.edit = QLineEdit()
         self.edit.setPlaceholderText("h:mm")
-        self.edit.setFixedWidth(64)
+        self.edit.setFixedWidth(px(64))
         self.period = QComboBox()
         self.period.addItems(["AM", "PM"])
         layout.addWidget(self.edit)
@@ -148,7 +149,7 @@ class CompanyCalendarDialog(QDialog):
         self._name_edit = QLineEdit()
         self._name_edit.setPlaceholderText("Holiday name")
         self._date_edit = DateLineEdit()
-        self._date_edit.setFixedWidth(110)
+        self._date_edit.setFixedWidth(px(110))
         self._btn_add = QPushButton("Add")
         self._btn_add.setObjectName("btn_row_add")
         self._btn_add.setEnabled(False)

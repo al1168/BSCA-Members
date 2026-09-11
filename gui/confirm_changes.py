@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QScrollArea,
     QWidget, QPushButton, QFrame,
 )
+from gui.theme import px
 
 _ORIGINAL_CAPTION = "ORIGINAL"
 _MODIFIED_CAPTION = "MODIFIED"
@@ -25,7 +26,7 @@ def _value_label(text: str, bg: str, fg: str) -> QLabel:
     lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
     lbl.setStyleSheet(
         f"background-color:{bg}; color:{fg}; border-radius:6px; "
-        f"padding:6px 8px; font-size:13px;")
+        f"padding:6px 8px; font-size:{px(13)}px;")
     if not text:
         lbl.setProperty("empty", True)
     return lbl
@@ -48,7 +49,7 @@ class ConfirmChangesDialog(QDialog):
         layout.setSpacing(10)
 
         heading = QLabel(f"Confirm changes for {member_name}?")
-        heading.setStyleSheet("font-size:15px; font-weight:600;")
+        heading.setStyleSheet(f"font-size:{px(15)}px; font-weight:600;")
         layout.addWidget(heading)
 
         # ── column captions ─────────────────────────────────────────────
@@ -89,7 +90,7 @@ class ConfirmChangesDialog(QDialog):
                               | Qt.AlignmentFlag.AlignTop)
             orig = _value_label(old, t["error_bg"], t["error_text"])
             arrow = QLabel("→")
-            arrow.setStyleSheet(f"color:{t['text2']}; font-size:18px;")
+            arrow.setStyleSheet(f"color:{t['text2']}; font-size:{px(18)}px;")
             arrow.setAlignment(Qt.AlignmentFlag.AlignHCenter
                                | Qt.AlignmentFlag.AlignTop)
             mod = _value_label(new, t["success_bg"], t["success"])
