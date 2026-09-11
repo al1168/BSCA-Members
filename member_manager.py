@@ -56,17 +56,39 @@ def ensure_events_path(settings: dict) -> bool:
 SETTINGS_PATH = _settings_path()
 
 
+def run(app) -> int:
+    """Build the main window and run the event loop; rebuild the window when
+    it asks to be reopened (a text-size change) and exit otherwise.
+
+    Settings are re-read on every pass so the rebuilt window and the freshly
+    applied theme see the size the user just saved. The session-only alt-id
+    password is carried in memory (it is never on disk) and handed to the
+    new window before the member is reopened."""
+    reopen_id = None
+    reopen_password = ""
+    while True:
+        settings = load_settings(SETTINGS_PATH)
+        if ensure_events_path(settings):
+            save_settings(settings, SETTINGS_PATH)   # persist the appdata default
+        apply_theme(app, settings.get("theme", "dark"),
+                    settings.get("text_size", "normal"))
+        window = MainWindow(settings, SETTINGS_PATH)
+        window.set_alt_id_password(reopen_password)
+        window.show()
+        if reopen_id is not None:
+            window.jump_to_member(reopen_id)
+        code = app.exec()
+        if not getattr(window, "reopen_requested", False):
+            return code
+        reopen_id = window.reopen_member_id
+        reopen_password = window.reopen_alt_id_password
+
+
 def main():
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(_resource_path("bowery-emblem.ico")))
     crash_log.install()
-    settings = load_settings(SETTINGS_PATH)
-    if ensure_events_path(settings):
-        save_settings(settings, SETTINGS_PATH)   # persist the appdata default
-    apply_theme(app, settings.get("theme", "dark"))
-    window = MainWindow(settings, SETTINGS_PATH)
-    window.show()
-    sys.exit(app.exec())
+    sys.exit(run(app))
 
 
 if __name__ == "__main__":

@@ -300,3 +300,63 @@ def test_set_alt_id_password_decrypts_loaded_corpus(qapp, tmp_path, monkeypatch)
     assert w._alt_id_password == "hunter2"
     assert seen["key"] == "KEY"
     assert w._all_members[0]["alt_id"] == "PLAIN"
+
+
+# ── entry point loop ───────────────────────────────────────────────────────
+
+def test_run_rebuilds_window_once_when_requested(monkeypatch, tmp_path):
+    import member_manager as mm
+
+    created = []
+
+    class StubWindow:
+        def __init__(self, settings, path):
+            self.settings = settings
+            self.jumped = None
+            self.password = None
+            self.order = []
+            # First window asks to reopen on member 7; the second does not.
+            self.reopen_requested = len(created) == 0
+            self.reopen_member_id = 7 if self.reopen_requested else None
+            self.reopen_alt_id_password = "hunter2" if self.reopen_requested else ""
+            created.append(self)
+
+        def show(self):
+            self.order.append("show")
+
+        def set_alt_id_password(self, pw):
+            self.password = pw
+            self.order.append("password")
+
+        def jump_to_member(self, cid):
+            self.jumped = cid
+            self.order.append("jump")
+
+    class StubApp:
+        execs = 0
+
+        def exec(self):
+            StubApp.execs += 1
+            return 0
+
+    applied = []
+    sizes = iter(["xlarge", "xlarge"])
+    monkeypatch.setattr(mm, "MainWindow", StubWindow)
+    monkeypatch.setattr(mm, "apply_theme",
+                        lambda app, theme, text_size="normal": applied.append((theme, text_size)))
+    monkeypatch.setattr(mm, "load_settings",
+                        lambda path: {"theme": "light", "text_size": next(sizes),
+                                      "events_db_path": "x"})
+    monkeypatch.setattr(mm, "SETTINGS_PATH", str(tmp_path / "s.json"))
+
+    code = mm.run(StubApp())
+
+    assert code == 0
+    assert StubApp.execs == 2
+    assert len(created) == 2
+    assert created[0].jumped is None
+    assert created[1].jumped == 7
+    assert created[0].password == "" and created[1].password == "hunter2"
+    # The password must be restored before the member is reopened.
+    assert created[1].order == ["password", "show", "jump"]
+    assert applied == [("light", "xlarge"), ("light", "xlarge")]
