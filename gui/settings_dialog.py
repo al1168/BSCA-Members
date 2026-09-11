@@ -94,6 +94,29 @@ class SettingsDialog(QDialog):
         theme_hl.addWidget(self._radio_light)
         form.addRow("Theme:", theme_row)
 
+        # App-wide text size. Large/Extra Large enlarge every on-screen font
+        # (and the rows/panels that hold text); the main window reopens to
+        # apply it. Printouts are unaffected.
+        size_row = QWidget()
+        size_hl = QHBoxLayout(size_row)
+        size_hl.setContentsMargins(0, 0, 0, 0)
+        self._radio_size_normal = QRadioButton("Normal")
+        self._radio_size_large = QRadioButton("Large")
+        self._radio_size_xlarge = QRadioButton("Extra Large")
+        self._text_size_group = QButtonGroup()
+        for b in (self._radio_size_normal, self._radio_size_large,
+                  self._radio_size_xlarge):
+            self._text_size_group.addButton(b)
+            size_hl.addWidget(b)
+        current = self._settings.get("text_size", "normal")
+        {"large": self._radio_size_large,
+         "xlarge": self._radio_size_xlarge}.get(
+            current, self._radio_size_normal).setChecked(True)
+        size_row.setToolTip(
+            "Make all text in the program larger. The window reopens to apply "
+            "the new size; printed reports keep their normal size.")
+        form.addRow("Text size:", size_row)
+
         # Debug: reveal the internal row "ID" column in the member tables.
         self._show_row_ids = QCheckBox("Show row ID columns (debug)")
         self._show_row_ids.setChecked(bool(self._settings.get("show_row_ids", False)))
@@ -161,6 +184,9 @@ class SettingsDialog(QDialog):
             "theme": "light" if self._radio_light.isChecked() else "dark",
             "google_api_key": self._api_key.text().strip(),
             "show_row_ids": self._show_row_ids.isChecked(),
+            "text_size": ("xlarge" if self._radio_size_xlarge.isChecked()
+                          else "large" if self._radio_size_large.isChecked()
+                          else "normal"),
         }
 
     def result_alt_id_password(self) -> str:

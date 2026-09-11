@@ -104,3 +104,25 @@ def test_rendered_label_reports_scaled_pixel_size(qapp):
     lab.style().unpolish(lab)
     lab.style().polish(lab)
     assert lab.font().pixelSize() == 30
+
+
+# ── settings dialog ────────────────────────────────────────────────────────
+
+_BASE_SETTINGS = {"db_path": "", "events_db_path": "", "theme": "dark",
+                  "google_api_key": "", "show_row_ids": False}
+
+
+@pytest.mark.parametrize("name", ["normal", "large", "xlarge"])
+def test_settings_dialog_roundtrips_text_size(qapp, name):
+    from gui.settings_dialog import SettingsDialog
+    dlg = SettingsDialog({**_BASE_SETTINGS, "text_size": name})
+    assert dlg.result_settings()["text_size"] == name
+
+
+def test_settings_dialog_text_size_defaults_to_normal_when_missing(qapp):
+    from gui.settings_dialog import SettingsDialog
+    dlg = SettingsDialog(dict(_BASE_SETTINGS))
+    assert dlg._radio_size_normal.isChecked()
+    assert dlg.result_settings()["text_size"] == "normal"
+    dlg._radio_size_xlarge.setChecked(True)
+    assert dlg.result_settings()["text_size"] == "xlarge"
