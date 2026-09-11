@@ -626,8 +626,11 @@ class MainWindow(QMainWindow):
 
     def set_alt_id_password(self, password: str) -> None:
         """Restore the session-only alt-id password (used by member_manager.run()
-        after a text-size rebuild, before the member is reopened)."""
+        after a text-size rebuild, before the member is reopened). The member
+        corpus was loaded in __init__ with no key, so decrypt it now — search
+        and the Meal Sheet export read alt ids straight from it."""
         self._alt_id_password = password
+        decrypt_corpus_alt_ids(self._all_members, self._alt_id_key())
 
     def jump_to_member(self, center_id) -> None:
         """Open a member by id — used by member_manager.run() to restore the

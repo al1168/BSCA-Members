@@ -280,3 +280,23 @@ def test_theme_only_change_does_not_reopen(qapp, tmp_path, monkeypatch):
 def test_jump_to_member_is_public(qapp, tmp_path):
     w = _main_window(tmp_path)
     assert callable(w.jump_to_member)
+
+
+def test_set_alt_id_password_decrypts_loaded_corpus(qapp, tmp_path, monkeypatch):
+    """The rebuilt window loads its corpus before run() hands it the session
+    password; set_alt_id_password must decrypt what was already loaded."""
+    import gui.main_window as mw
+    w = _main_window(tmp_path)
+    w._all_members = [{"center_id": 1, "alt_id": "CIPHER"}]
+    seen = {}
+
+    def fake_decrypt(members, key):
+        seen["key"] = key
+        for m in members:
+            m["alt_id"] = "PLAIN"
+    monkeypatch.setattr(mw, "decrypt_corpus_alt_ids", fake_decrypt)
+    monkeypatch.setattr(w, "_alt_id_key", lambda: "KEY")
+    w.set_alt_id_password("hunter2")
+    assert w._alt_id_password == "hunter2"
+    assert seen["key"] == "KEY"
+    assert w._all_members[0]["alt_id"] == "PLAIN"
