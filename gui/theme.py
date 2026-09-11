@@ -1,7 +1,8 @@
 """Dark/light theme tokens and QSS generator.
 
 Colors are pre-converted from OKLCH to sRGB hex. Call apply_theme(app, "dark")
-or apply_theme(app, "light") to swap at runtime.
+or apply_theme(app, "light") to swap at runtime; pass text_size="large" or
+"xlarge" to enlarge every on-screen font (see TEXT_SIZES / px()).
 """
 
 DARK = {
@@ -90,7 +91,7 @@ def _readable_text(hex_color: str) -> str:
     return "#1c1e26" if luminance > 150 else "#f4f6fd"
 
 
-def build_qss(t: dict) -> str:
+def build_qss(t: dict, scale: float = 1.0) -> str:
     plan_rules = "\n".join(
         f'QLabel#plan_badge[plan="{code}"] {{ background-color: {color}; '
         f'color: {_readable_text(color)}; border: 1px solid {color}; }}'
@@ -893,6 +894,36 @@ QHeaderView::section {{
 # dict everywhere.
 _current_name = "dark"
 
+# App-wide text size. Every on-screen font size in build_qss and every inline
+# size / text-holding dimension in the widget files is multiplied by the
+# current factor (base ÷ 13). Widgets read it at construction; a change
+# rebuilds the main window (see MainWindow._open_settings).
+BASE_PX = 13
+TEXT_SIZES = {"normal": 13, "large": 25, "xlarge": 30}
+_current_scale = 1.0
+
+
+def text_scale_for(name: str) -> float:
+    """Scale factor for a text-size name; unknown names mean Normal (1.0)."""
+    return TEXT_SIZES.get(name, BASE_PX) / BASE_PX
+
+
+def set_text_size(name: str) -> float:
+    """Make `name` the active text size and return its factor."""
+    global _current_scale
+    _current_scale = text_scale_for(name)
+    return _current_scale
+
+
+def current_text_scale() -> float:
+    return _current_scale
+
+
+def px(n) -> int:
+    """`n` logical pixels at Normal size, scaled to the active text size and
+    rounded to the nearest whole pixel."""
+    return int(n * _current_scale + 0.5)
+
 
 def current_theme_name() -> str:
     return _current_name
@@ -942,12 +973,13 @@ def format_member_counts(total: int, active: int) -> str:
     )
 
 
-def apply_theme(app, theme_name: str) -> None:
-    """Apply 'dark' or 'light' QSS to the entire application."""
+def apply_theme(app, theme_name: str, text_size: str = "normal") -> None:
+    """Apply 'dark' or 'light' QSS at the given text size to the whole app."""
     global _current_name
     _current_name = "dark" if theme_name == "dark" else "light"
     tokens = DARK if theme_name == "dark" else LIGHT
-    app.setStyleSheet(build_qss(tokens))
+    scale = set_text_size(text_size)
+    app.setStyleSheet(build_qss(tokens, scale))
     # Re-polish everything: some chrome (toolbars, property-selector styles)
     # keeps the old palette after a runtime stylesheet swap otherwise.
     style = app.style()
