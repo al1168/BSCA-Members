@@ -6,6 +6,17 @@ fixtures, then drops them at the end of the session to keep the test DB clean.
 import os
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _normal_text_scale():
+    """The app-wide text scale is module state in gui.theme; pin it to Normal
+    before and after every test so scale-changing tests cannot leak."""
+    from gui import theme
+    theme.set_text_size("normal")
+    yield
+    theme.set_text_size("normal")
+
+
 _TEST_DB = os.path.abspath(
     os.path.join(
         os.path.dirname(__file__),

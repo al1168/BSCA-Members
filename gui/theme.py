@@ -899,7 +899,7 @@ _current_name = "dark"
 # current factor (base ÷ 13). Widgets read it at construction; a change
 # rebuilds the main window (see MainWindow._open_settings).
 BASE_PX = 13
-TEXT_SIZES = {"normal": 13, "large": 25, "xlarge": 30}
+TEXT_SIZES = {"normal": BASE_PX, "large": 25, "xlarge": 30}
 _current_scale = 1.0
 
 
@@ -919,10 +919,16 @@ def current_text_scale() -> float:
     return _current_scale
 
 
-def px(n) -> int:
+def _scaled(n: int | float, scale: float) -> int:
+    """`n` pixels at Normal size → pixels at `scale`, rounded to the nearest
+    whole pixel. Dimensions are always positive here (fonts, widths, heights)."""
+    return int(n * scale + 0.5)
+
+
+def px(n: int | float) -> int:
     """`n` logical pixels at Normal size, scaled to the active text size and
     rounded to the nearest whole pixel."""
-    return int(n * _current_scale + 0.5)
+    return _scaled(n, _current_scale)
 
 
 def current_theme_name() -> str:
@@ -973,12 +979,14 @@ def format_member_counts(total: int, active: int) -> str:
     )
 
 
-def apply_theme(app, theme_name: str, text_size: str = "normal") -> None:
-    """Apply 'dark' or 'light' QSS at the given text size to the whole app."""
+def apply_theme(app, theme_name: str, text_size: str | None = None) -> None:
+    """Apply 'dark' or 'light' QSS to the whole app. Pass text_size
+    ("normal" | "large" | "xlarge") to change the app-wide text size at the
+    same time; omit it to keep the current size."""
     global _current_name
     _current_name = "dark" if theme_name == "dark" else "light"
     tokens = DARK if theme_name == "dark" else LIGHT
-    scale = set_text_size(text_size)
+    scale = _current_scale if text_size is None else set_text_size(text_size)
     app.setStyleSheet(build_qss(tokens, scale))
     # Re-polish everything: some chrome (toolbars, property-selector styles)
     # keeps the old palette after a runtime stylesheet swap otherwise.

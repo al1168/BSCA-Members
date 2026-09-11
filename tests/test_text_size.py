@@ -15,14 +15,6 @@ def qapp():
     yield app
 
 
-@pytest.fixture
-def normal_scale():
-    """Any test that changes the module-level scale must leave it at Normal."""
-    from gui import theme
-    yield
-    theme.set_text_size("normal")
-
-
 # ── scale model ────────────────────────────────────────────────────────────
 
 def test_text_sizes_and_factors():
@@ -35,7 +27,7 @@ def test_text_sizes_and_factors():
     assert text_scale_for("bogus") == 1.0
 
 
-def test_px_rounds_to_nearest_pixel(normal_scale):
+def test_px_rounds_to_nearest_pixel():
     from gui.theme import set_text_size, px, current_text_scale
     assert current_text_scale() == 1.0
     assert px(13) == 13 and px(9) == 9
@@ -43,12 +35,21 @@ def test_px_rounds_to_nearest_pixel(normal_scale):
     assert [px(n) for n in (9, 10, 12, 13, 20)] == [17, 19, 23, 25, 38]
     set_text_size("xlarge")
     assert [px(n) for n in (9, 10, 12, 13, 20)] == [21, 23, 28, 30, 46]
-    set_text_size("normal")
-    assert px(220) == 220
+    assert px(220) == 508          # sidebar width at Extra Large (Task 6)
 
 
-def test_set_text_size_returns_scale_and_ignores_unknown(normal_scale):
+def test_set_text_size_returns_scale_and_ignores_unknown():
     from gui.theme import set_text_size, current_text_scale
     assert set_text_size("xlarge") == pytest.approx(30 / 13)
     assert set_text_size("nonsense") == 1.0
     assert current_text_scale() == 1.0
+
+
+def test_apply_theme_sets_scale_only_when_asked(qapp):
+    from gui import theme
+    theme.apply_theme(qapp, "dark", "xlarge")
+    assert theme.current_text_scale() == pytest.approx(30 / 13)
+    theme.apply_theme(qapp, "light")               # theme-only change
+    assert theme.current_text_scale() == pytest.approx(30 / 13)
+    theme.apply_theme(qapp, "dark", "normal")
+    assert theme.current_text_scale() == 1.0
