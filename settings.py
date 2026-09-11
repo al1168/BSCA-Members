@@ -9,6 +9,8 @@ DEFAULT_SETTINGS = {
     # Debug: show the internal row "ID" column in the member tables. Off by
     # default so day-to-day users don't see database ids like 442.
     "show_row_ids": False,
+    # App-wide text size: "normal" (13px base) | "large" (25px) | "xlarge" (30px).
+    "text_size": "normal",
 }
 
 

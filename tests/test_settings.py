@@ -122,3 +122,10 @@ def test_alt_password_returned_verbatim(qtbot):
     # No strip: the password must match the encryptor tool byte-for-byte.
     dlg = _dialog_pw(qtbot, " spaced pw ")
     assert dlg.result_alt_id_password() == " spaced pw "
+
+
+def test_text_size_defaults_to_normal(tmp_path):
+    assert DEFAULT_SETTINGS["text_size"] == "normal"
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"theme": "light"}))   # pre-feature file: no key
+    assert load_settings(str(path))["text_size"] == "normal"
