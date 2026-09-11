@@ -225,9 +225,11 @@ class MainWindow(QMainWindow):
         self._alt_id_password = ""
         # Set by _open_settings when the text size changes: the window closes
         # and member_manager.run() rebuilds it at the new scale, reopening the
-        # same member (row heights and panel widths are fixed at construction).
+        # same member with the same session password (row heights and panel
+        # widths are fixed at construction).
         self.reopen_requested = False
         self.reopen_member_id = None
+        self.reopen_alt_id_password = ""
         from version import app_version
         self.setWindowTitle(f"Care Manager — {app_version()}")
         self._apply_default_geometry()
@@ -622,6 +624,11 @@ class MainWindow(QMainWindow):
         dlg.activateWindow()
         dlg._search.setFocus()
 
+    def set_alt_id_password(self, password: str) -> None:
+        """Restore the session-only alt-id password (used by member_manager.run()
+        after a text-size rebuild, before the member is reopened)."""
+        self._alt_id_password = password
+
     def jump_to_member(self, center_id) -> None:
         """Open a member by id — used by member_manager.run() to restore the
         open member after a text-size rebuild."""
@@ -944,6 +951,7 @@ class MainWindow(QMainWindow):
             return
         result = dlg.result_settings()
         old_size = self._settings.get("text_size", "normal")
+        old_db_path = self._settings.get("db_path", "")
         size_changed = result.get("text_size", "normal") != old_size
         # A text-size change rebuilds the window, which drops unsaved edits —
         # run the same guard as switching members. On Cancel the size reverts
@@ -968,8 +976,17 @@ class MainWindow(QMainWindow):
             # member_manager.run() sees the flag once exec() returns and
             # rebuilds the window at the new scale on the same member.
             self.reopen_requested = True
-            self.reopen_member_id = self._last_center_id
-            self.close()
+            self.reopen_alt_id_password = self._alt_id_password
+            # Reopen the member only if one is actually on screen (not the
+            # All Events view) and the database path did not change too.
+            from gui.member_tabs import MemberTabsWidget
+            current = self._detail_stack.currentWidget()
+            same_db = result.get("db_path", "") == old_db_path
+            self.reopen_member_id = (current._center_id
+                                     if isinstance(current, MemberTabsWidget) and same_db
+                                     else None)
+            if not self.close():
+                self.reopen_requested = False
             return
         from gui.theme import apply_theme
         apply_theme(QApplication.instance(), self._settings["theme"],

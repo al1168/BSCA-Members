@@ -47,11 +47,13 @@ def test_set_text_size_returns_scale_and_ignores_unknown():
 
 def test_apply_theme_sets_scale_only_when_asked(qapp):
     from gui import theme
-    theme.apply_theme(qapp, "dark", "xlarge")
-    assert theme.current_text_scale() == pytest.approx(30 / 13)
-    theme.apply_theme(qapp, "light")               # theme-only change
-    assert theme.current_text_scale() == pytest.approx(30 / 13)
-    theme.apply_theme(qapp, "dark", "normal")
+    try:
+        theme.apply_theme(qapp, "dark", "xlarge")
+        assert theme.current_text_scale() == pytest.approx(30 / 13)
+        theme.apply_theme(qapp, "light")           # theme-only change
+        assert theme.current_text_scale() == pytest.approx(30 / 13)
+    finally:
+        theme.apply_theme(qapp, "dark", "normal")  # restore the shared app
     assert theme.current_text_scale() == 1.0
 
 
@@ -141,8 +143,9 @@ def _main_window(tmp_path, **settings):
 
 def test_sidebar_and_startup_size_follow_text_scale(qapp, tmp_path):
     from gui import theme
+    # MainWindow reads the global scale set by apply_theme, not its settings dict.
     theme.set_text_size("xlarge")
-    w = _main_window(tmp_path, text_size="xlarge")
+    w = _main_window(tmp_path)
     from PyQt6.QtWidgets import QWidget
     sidebar = w.findChild(QWidget, "sidebar")
     # setFixedWidth pins min == max; width() is unreliable before show().
@@ -156,6 +159,7 @@ class _FakeSettingsDialog:
 
     def __init__(self, settings, parent=None, alt_id_password=""):
         self._settings = dict(settings)
+        self._alt_id_password = alt_id_password
 
     def exec(self):
         return True
@@ -164,7 +168,32 @@ class _FakeSettingsDialog:
         return {**self._settings, **self.result}
 
     def result_alt_id_password(self):
-        return ""
+        # Like the real dialog, whose field opens pre-filled with the
+        # session password and hands it straight back when it is untouched.
+        return self._alt_id_password
+
+
+@pytest.fixture(autouse=True)
+def _reset_fake_dialog():
+    """The fake's result is class state; clear it so it cannot leak."""
+    yield
+    _FakeSettingsDialog.result = {}
+
+
+def _show_member_stub(w, center_id):
+    """Put a MemberTabsWidget on the detail stack without a database.
+
+    _set_detail() adds the member/events widget at index 1 and makes it
+    current, so _open_settings' currentWidget() check sees this stub.
+    """
+    from PyQt6.QtWidgets import QWidget
+    import gui.member_tabs as mt
+    stub = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
+    QWidget.__init__(stub)
+    stub._center_id = center_id
+    w._detail_stack.addWidget(stub)
+    w._detail_stack.setCurrentWidget(stub)
+    return stub
 
 
 def _saved(tmp_path):
@@ -172,17 +201,53 @@ def _saved(tmp_path):
     return json.loads((tmp_path / "settings.json").read_text())
 
 
-def test_text_size_change_requests_reopen_on_current_member(qapp, tmp_path, monkeypatch):
+def _arrange_reopen(w, monkeypatch, result, *, with_member=True):
     import gui.main_window as mw
-    w = _main_window(tmp_path)
+    from gui import theme
+    w.show()
+    w._alt_id_password = "hunter2"
     w._last_center_id = 4242
-    _FakeSettingsDialog.result = {"text_size": "large"}
+    if with_member:
+        _show_member_stub(w, 4242)
+    _FakeSettingsDialog.result = result
     monkeypatch.setattr(mw, "SettingsDialog", _FakeSettingsDialog)
     monkeypatch.setattr(w, "_ok_to_leave_current", lambda: True)
+    calls = []
+    monkeypatch.setattr(theme, "apply_theme", lambda *a, **k: calls.append(a))
+    return calls
+
+
+def test_text_size_change_requests_reopen_on_current_member(qapp, tmp_path, monkeypatch):
+    w = _main_window(tmp_path)
+    calls = _arrange_reopen(w, monkeypatch, {"text_size": "large"})
     w._open_settings()
     assert w.reopen_requested is True
     assert w.reopen_member_id == 4242
+    # The session password must survive the rebuild or alt IDs come back
+    # as ciphertext in the new window.
+    assert w.reopen_alt_id_password == "hunter2"
+    assert w.isVisible() is False
+    assert calls == []                 # live re-apply skipped; the rebuild does it
     assert _saved(tmp_path)["text_size"] == "large"
+
+
+def test_reopen_drops_member_id_when_db_path_changes(qapp, tmp_path, monkeypatch):
+    w = _main_window(tmp_path)
+    _arrange_reopen(w, monkeypatch,
+                    {"text_size": "large", "db_path": "other.accdb"})
+    w._open_settings()
+    assert w.reopen_requested is True
+    # The id belongs to the old database — do not reopen it against the new one.
+    assert w.reopen_member_id is None
+
+
+def test_reopen_without_member_on_screen_has_no_member_id(qapp, tmp_path, monkeypatch):
+    w = _main_window(tmp_path)
+    # _last_center_id is still set, but nothing is on the detail stack.
+    _arrange_reopen(w, monkeypatch, {"text_size": "large"}, with_member=False)
+    w._open_settings()
+    assert w.reopen_requested is True
+    assert w.reopen_member_id is None
 
 
 def test_cancelling_discard_reverts_text_size_but_saves_the_rest(qapp, tmp_path, monkeypatch):
@@ -203,11 +268,13 @@ def test_theme_only_change_does_not_reopen(qapp, tmp_path, monkeypatch):
     w = _main_window(tmp_path)
     _FakeSettingsDialog.result = {"theme": "light"}
     monkeypatch.setattr(mw, "SettingsDialog", _FakeSettingsDialog)
-    w._open_settings()
-    assert w.reopen_requested is False
-    assert _saved(tmp_path)["theme"] == "light"
     from gui.theme import apply_theme
-    apply_theme(qapp, "dark")          # leave the shared app on the default
+    try:
+        w._open_settings()
+        assert w.reopen_requested is False
+        assert _saved(tmp_path)["theme"] == "light"
+    finally:
+        apply_theme(qapp, "dark")      # leave the shared app on the default
 
 
 def test_jump_to_member_is_public(qapp, tmp_path):
