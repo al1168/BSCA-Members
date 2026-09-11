@@ -412,8 +412,7 @@ def test_run_exits_immediately_and_propagates_the_exit_code(monkeypatch, tmp_pat
 
 # ── no literal font sizes left in widget code ──────────────────────────────
 
-# Files converted so far; later tasks extend this list until it covers every
-# widget module. theme.py (the QSS) and profile_print.py (printed HTML keeps
+# Every widget module (nothing here may carry a literal font size). theme.py (the QSS) and profile_print.py (printed HTML keeps
 # its own point scale; only its on-screen printer picker scales) are excluded
 # by design.
 _CONVERTED = [
@@ -432,6 +431,13 @@ _CONVERTED = [
     "gui/wizard/step_contact.py",
     "gui/wizard/step_enrollment.py",
     "gui/wizard/step_review.py",
+    "gui/quick_search.py",
+    "gui/company_calendar.py",
+    "gui/settings_dialog.py",
+    "gui/absence_report.py",
+    "gui/birthday_report.py",
+    "gui/meal_sheet.py",
+    "gui/info_layout.py",
 ]
 
 _LITERAL_FONT_SIZE = re.compile(r"font-size:\s*\d+px")
@@ -488,7 +494,10 @@ def test_popup_panels_and_slider_follow_scale(qapp):
     assert s._handle_r == theme.px(9) == 17
     assert s.minimumHeight() >= theme.px(60) == 115
     d = ConfirmChangesDialog("Chan, Mary", [("Notes", "a", "b")])
-    assert d.minimumWidth() == theme.px(760) == 1462
+    from PyQt6.QtWidgets import QApplication
+    avail_w = QApplication.primaryScreen().availableGeometry().width()
+    assert theme.px(760) == 1462
+    assert d.minimumWidth() == min(1462, avail_w - 40)   # clamped to the work area
 
 
 def test_wizard_dots_scale_and_stay_round(qapp):

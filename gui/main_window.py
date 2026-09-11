@@ -988,9 +988,11 @@ class MainWindow(QMainWindow):
             self.reopen_member_id = (current._center_id
                                      if isinstance(current, MemberTabsWidget) and same_db
                                      else None)
-            if not self.close():
-                self.reopen_requested = False
-            return
+            if self.close():
+                return
+            # A vetoed close (nothing vetoes today) must not leave the saved
+            # size unapplied: fall through to the live path below.
+            self.reopen_requested = False
         from gui.theme import apply_theme
         apply_theme(QApplication.instance(), self._settings["theme"],
                     self._settings.get("text_size", "normal"))

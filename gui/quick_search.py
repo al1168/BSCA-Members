@@ -10,8 +10,9 @@ main_window (and a circular import)."""
 
 from PyQt6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QLineEdit, QListWidget, QListWidgetItem,
-    QLabel, QGraphicsDropShadowEffect,
+    QLabel, QGraphicsDropShadowEffect, QApplication,
 )
+from gui.theme import px
 from PyQt6.QtCore import Qt, QEvent, pyqtSignal
 from PyQt6.QtGui import QColor
 
@@ -35,7 +36,14 @@ class QuickSearchDialog(QDialog):
         # Non-modal so a click on the background window goes through (focusing it);
         # we close ourselves on deactivation (see event()).
         self.setModal(False)
-        self.resize(620, 460)
+        # Scaled with the text size (more result rows stay visible at
+        # Large / Extra Large), clamped to the work area.
+        w, h = px(620), px(460)
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            w, h = min(w, avail.width() - 40), min(h, avail.height() - 80)
+        self.resize(w, h)
 
         # Transparent window; the rounded card lives inside so the corners render
         # cleanly and we can drop a shadow under it.

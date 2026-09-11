@@ -10,7 +10,7 @@ green) and captioned so it is obvious at a glance which side is which.
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QScrollArea,
-    QWidget, QPushButton, QFrame,
+    QWidget, QPushButton, QFrame, QApplication,
 )
 from gui.theme import px
 
@@ -42,7 +42,14 @@ class ConfirmChangesDialog(QDialog):
         from gui.theme import current_tokens
         t = current_tokens()
         self.setWindowTitle("Confirm Changes")
-        self.setMinimumWidth(px(760))
+        # Wide enough for the side-by-side columns at the current text size,
+        # but never wider than the work area (Extra Large would otherwise
+        # push Save off a laptop screen).
+        min_w = px(760)
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            min_w = min(min_w, screen.availableGeometry().width() - 40)
+        self.setMinimumWidth(min_w)
         self._rows = list(rows)
 
         layout = QVBoxLayout(self)
