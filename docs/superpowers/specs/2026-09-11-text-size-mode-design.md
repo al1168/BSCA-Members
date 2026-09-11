@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-11
 **Branch:** `feature/text-size-mode`
-**Status:** Approved
+**Status:** Implemented (2026-09-11, branch `feature/text-size-mode`)
 
 ## Goal
 
@@ -96,9 +96,13 @@ fields can be pushed larger still.
 - Not scaled: padding, margin, border widths, border-radius, the
   combo-box drop-down/arrow widths, spin-box `min-width: 72px`, scrollbar
   width and handle `min-height`. They hold no text.
+- Radio and check box indicators are drawn by the theme (`p(14)` square /
+  ring, accent-filled when checked): the native radio dot was invisible on
+  the dark palette and neither indicator grew with the text.
 - Pixel values remain theme-independent: identical numbers in dark and
   light; `build_qss(t)` with the default scale is byte-identical to today's
-  output, so existing tests keep passing.
+  output apart from the additive rules above, so existing tests keep
+  passing.
 
 ### 3. Widget code
 
@@ -145,6 +149,10 @@ rebuilt on change, see §5):
   the work area, so at Extra Large the nav row never falls off-screen.
 - **Info layout editor:** opens at `px(980) × px(640)` clamped to the work
   area; props titles word-wrap.
+- **Confirm Changes dialog:** minimum width `px(760)` clamped to the work
+  area (the 70 % height cap stays) so Save never leaves the screen.
+- **Ctrl+K palette:** opens at `px(620) × px(460)` clamped to the work area
+  so the result list keeps its row count at larger sizes.
 
 ### 4. Info layout model, theme rules and editor
 
@@ -178,35 +186,52 @@ rebuilt on change, see §5):
   2. If `new != old` and `not self._ok_to_leave_current()` (the existing
      unsaved-edits prompt), set `result["text_size"] = old` — the text
      size reverts; every other setting still applies and saves.
-  3. Update and save settings as today; apply theme live as today.
+  3. Update and save settings. When the size did not change, apply the
+     theme live and refresh as today.
   4. If the text size did change: set `self.reopen_requested = True`,
      record `self.reopen_member_id` (the member widget currently on
      screen, or `None` when the All Events view is showing or the
      database path changed in the same dialog), record
      `self.reopen_alt_id_password` (the session-only password, which is
-     never on disk and must be carried in memory), and `self.close()`.
-- `member_manager.main()` becomes a loop:
+     never on disk and must be carried in memory), and `self.close()` —
+     skipping the live apply, since the window is about to be rebuilt.
+     (If a future `closeEvent` ever vetoed the close, the code falls
+     through to the live path so the saved size is never left unapplied.)
+- `member_manager.main()` becomes a thin wrapper around `run(app)`:
 
   ```python
-  reopen_id = None
-  while True:
-      settings = load_settings(SETTINGS_PATH)
-      apply_theme(app, settings.get("theme", "dark"),
-                  settings.get("text_size", "normal"))
-      window = MainWindow(settings, SETTINGS_PATH)
-      window.show()
-      if reopen_id is not None:
-          window.jump_to_member(reopen_id)   # public wrapper over _jump_to_member
-      app.exec()
-      if not window.reopen_requested:
-          break
-      reopen_id = window.reopen_member_id
-  sys.exit(0)
+  def run(app) -> int:
+      reopen_id, reopen_password = None, ""
+      while True:
+          settings = load_settings(SETTINGS_PATH)
+          if ensure_events_path(settings):
+              save_settings(settings, SETTINGS_PATH)   # only writes on the first pass
+          apply_theme(app, settings.get("theme", "dark"),
+                      settings.get("text_size", "normal"))
+          window = MainWindow(settings, SETTINGS_PATH)
+          window.set_alt_id_password(reopen_password)   # after construction
+          window.show()
+          if reopen_id is not None:
+              window.jump_to_member(reopen_id)          # after the password
+          code = app.exec()
+          requested = window.reopen_requested
+          reopen_id = window.reopen_member_id if requested else None
+          reopen_password = window.reopen_alt_id_password if requested else ""
+          window = None            # release before the next pass re-polishes
+          if not requested:
+              return code
+
+  def main():
+      app = QApplication(sys.argv)
+      ...icon, crash log...
+      sys.exit(run(app))
   ```
 
   `app.quit()` semantics are unchanged: closing the last window ends
-  `exec()`; the loop only continues when the window asked to be reopened.
-  `ensure_events_path` runs once before the loop, as today.
+  `exec()`; the loop only continues when the window asked to be reopened,
+  and the exit code of the final pass is what the process returns.
+  Settings are re-read on every pass so the rebuilt window sees the size
+  the user just saved.
 - Theme-only changes do not rebuild — `apply_theme` + the existing refresh
   path stay live.
 
@@ -233,7 +258,7 @@ rebuilt on change, see §5):
   saved; changing only the theme does not set `reopen_requested`.
 - **Widgets:** sidebar width equals `px(220)` under a patched scale;
   a member table's default section size equals `px(34)`.
-- **Entry point:** `member_manager.main` loop tested with a stub
+- **Entry point:** `member_manager.run` loop tested with a stub
   `MainWindow` and stub `app.exec` — reopens once when requested, passes
   the member id through, exits when not requested.
 
