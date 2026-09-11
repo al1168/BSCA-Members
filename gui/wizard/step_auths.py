@@ -20,7 +20,7 @@ class TimeLineEdit(QLineEdit):
         super().__init__(default, parent)
         self.setValidator(
             QRegularExpressionValidator(QRegularExpression(r"[0-9:]*"), self))
-        self.setFixedWidth(px(64))          # the time-entry line edit class near the top
+        self.setFixedWidth(px(64))
         self.textEdited.connect(self._on_edited)
 
     def _on_edited(self):

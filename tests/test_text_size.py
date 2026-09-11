@@ -499,3 +499,19 @@ def test_wizard_dots_scale_and_stay_round(qapp):
     dot = wiz._dots[0]
     assert dot.width() == dot.height() == theme.px(28) == 65
     assert f"border-radius:{theme.px(14)}px" in dot.styleSheet()
+
+
+def test_wizard_steps_scroll_and_dialog_never_exceeds_the_work_area(qapp):
+    from PyQt6.QtWidgets import QApplication, QScrollArea
+    from gui import theme
+    from gui.wizard.wizard import AddMemberWizard
+    theme.set_text_size("xlarge")
+    wiz = AddMemberWizard("", "")
+    # Steps 0-2 sit inside a scroll area so the dialog's minimum height no
+    # longer tracks the scaled form; StepReview already scrolls internally.
+    for i in range(3):
+        assert isinstance(wiz._stack.widget(i), QScrollArea), i
+    avail = QApplication.primaryScreen().availableGeometry()
+    assert wiz.minimumSize().width() <= avail.width() - 40
+    assert wiz.minimumSize().height() <= avail.height() - 80
+    assert wiz.minimumSizeHint().height() <= avail.height() - 80
