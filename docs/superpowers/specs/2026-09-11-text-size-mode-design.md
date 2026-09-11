@@ -135,8 +135,16 @@ rebuilt on change, see §5):
 - **Startup geometry:** `desired = QSize(px(1800), px(920))`;
   `choose_startup_geometry` already falls back to maximized when that does
   not fit the work area.
-- **Time slider ticks:** `_TRACK_Y`/`_TRACK_H` unchanged; only the label
-  font scales (labels are drawn, not laid out, so no clipping risk).
+- **Time slider:** the `RangeSlider` paints its own geometry, so the class
+  constants (`_MARGIN`, `_TRACK_Y`, `_TRACK_H`, `_HANDLE_R`) stay as the
+  Normal-scale source and `__init__` derives `px()`-scaled instance copies;
+  tick labels are drawn into a font-metrics-derived rect and the minimum
+  height is `max(px(60), track + labels)`.
+- **Add Member wizard:** steps 0–2 are wrapped in a `QScrollArea` (Review
+  already scrolls) and the dialog opens at `px(880) × px(660)` clamped to
+  the work area, so at Extra Large the nav row never falls off-screen.
+- **Info layout editor:** opens at `px(980) × px(640)` clamped to the work
+  area; props titles word-wrap.
 
 ### 4. Info layout model, theme rules and editor
 
