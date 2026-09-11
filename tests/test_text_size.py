@@ -129,3 +129,87 @@ def test_settings_dialog_text_size_defaults_to_normal_when_missing(qapp):
     # Unknown values (hand-edited settings file) fall back to Normal.
     assert SettingsDialog({**_BASE_SETTINGS, "text_size": "huge"}
                           ).result_settings()["text_size"] == "normal"
+
+
+# ── main window ────────────────────────────────────────────────────────────
+
+def _main_window(tmp_path, **settings):
+    from gui.main_window import MainWindow
+    return MainWindow({"db_path": "", "theme": "dark", **settings},
+                      str(tmp_path / "settings.json"))
+
+
+def test_sidebar_and_startup_size_follow_text_scale(qapp, tmp_path):
+    from gui import theme
+    theme.set_text_size("xlarge")
+    w = _main_window(tmp_path, text_size="xlarge")
+    from PyQt6.QtWidgets import QWidget
+    sidebar = w.findChild(QWidget, "sidebar")
+    # setFixedWidth pins min == max; width() is unreliable before show().
+    assert sidebar.minimumWidth() == sidebar.maximumWidth() == theme.px(220) == 508
+    assert w._member_counts.styleSheet() == f"font-size:{theme.px(12)}px;"
+
+
+class _FakeSettingsDialog:
+    """Stands in for SettingsDialog: accepted immediately with a fixed result."""
+    result = {}
+
+    def __init__(self, settings, parent=None, alt_id_password=""):
+        self._settings = dict(settings)
+
+    def exec(self):
+        return True
+
+    def result_settings(self):
+        return {**self._settings, **self.result}
+
+    def result_alt_id_password(self):
+        return ""
+
+
+def _saved(tmp_path):
+    import json
+    return json.loads((tmp_path / "settings.json").read_text())
+
+
+def test_text_size_change_requests_reopen_on_current_member(qapp, tmp_path, monkeypatch):
+    import gui.main_window as mw
+    w = _main_window(tmp_path)
+    w._last_center_id = 4242
+    _FakeSettingsDialog.result = {"text_size": "large"}
+    monkeypatch.setattr(mw, "SettingsDialog", _FakeSettingsDialog)
+    monkeypatch.setattr(w, "_ok_to_leave_current", lambda: True)
+    w._open_settings()
+    assert w.reopen_requested is True
+    assert w.reopen_member_id == 4242
+    assert _saved(tmp_path)["text_size"] == "large"
+
+
+def test_cancelling_discard_reverts_text_size_but_saves_the_rest(qapp, tmp_path, monkeypatch):
+    import gui.main_window as mw
+    w = _main_window(tmp_path)
+    _FakeSettingsDialog.result = {"text_size": "xlarge", "show_row_ids": True}
+    monkeypatch.setattr(mw, "SettingsDialog", _FakeSettingsDialog)
+    monkeypatch.setattr(w, "_ok_to_leave_current", lambda: False)
+    w._open_settings()
+    assert w.reopen_requested is False
+    saved = _saved(tmp_path)
+    assert saved["text_size"] == "normal"
+    assert saved["show_row_ids"] is True
+
+
+def test_theme_only_change_does_not_reopen(qapp, tmp_path, monkeypatch):
+    import gui.main_window as mw
+    w = _main_window(tmp_path)
+    _FakeSettingsDialog.result = {"theme": "light"}
+    monkeypatch.setattr(mw, "SettingsDialog", _FakeSettingsDialog)
+    w._open_settings()
+    assert w.reopen_requested is False
+    assert _saved(tmp_path)["theme"] == "light"
+    from gui.theme import apply_theme
+    apply_theme(qapp, "dark")          # leave the shared app on the default
+
+
+def test_jump_to_member_is_public(qapp, tmp_path):
+    w = _main_window(tmp_path)
+    assert callable(w.jump_to_member)

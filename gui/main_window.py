@@ -15,6 +15,7 @@ from PyQt6.QtGui import (
 
 from settings import save_settings
 from gui.settings_dialog import SettingsDialog
+from gui.theme import px
 
 
 TERMINATED_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -222,6 +223,11 @@ class MainWindow(QMainWindow):
         # Session-only alt-id decryption password — never persisted; typed in
         # the Settings dialog and gone when the app closes.
         self._alt_id_password = ""
+        # Set by _open_settings when the text size changes: the window closes
+        # and member_manager.run() rebuilds it at the new scale, reopening the
+        # same member (row heights and panel widths are fixed at construction).
+        self.reopen_requested = False
+        self.reopen_member_id = None
         from version import app_version
         self.setWindowTitle(f"Care Manager — {app_version()}")
         self._apply_default_geometry()
@@ -229,12 +235,12 @@ class MainWindow(QMainWindow):
         self._load_members()
 
     def _apply_default_geometry(self):
-        """Open at 1800x920 (wide enough for the Authorizations table with
+        """Open at 1800x920 at Normal text size (scaled with the text size; wide
         the sidebar) centered on the primary screen when the window plus
         its frame fits the work area; otherwise open maximized so the OS
         keeps the bottom edge — and the Info tab's Save/Discard row on it —
         above the taskbar. See choose_startup_geometry."""
-        desired = QSize(1800, 920)
+        desired = QSize(px(1800), px(920))
         screen = QApplication.primaryScreen()
         if screen is None:
             self.resize(desired)
@@ -257,7 +263,7 @@ class MainWindow(QMainWindow):
         # ── Sidebar ──────────────────────────────────────────
         sidebar = QWidget()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(220)
+        sidebar.setFixedWidth(px(220))
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(10, 10, 10, 10)
         sidebar_layout.setSpacing(6)
@@ -303,7 +309,7 @@ class MainWindow(QMainWindow):
         self._member_counts.setObjectName("sidebar_member_counts")
         self._member_counts.setTextFormat(Qt.TextFormat.RichText)
         self._member_counts.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._member_counts.setStyleSheet("font-size:12px;")
+        self._member_counts.setStyleSheet(f"font-size:{px(12)}px;")
 
         sidebar_layout.addWidget(self._btn_add)
         sidebar_layout.addWidget(self._search)
@@ -614,6 +620,11 @@ class MainWindow(QMainWindow):
         dlg.raise_()
         dlg.activateWindow()
         dlg._search.setFocus()
+
+    def jump_to_member(self, center_id) -> None:
+        """Open a member by id — used by member_manager.run() to restore the
+        open member after a text-size rebuild."""
+        self._jump_to_member(center_id)
 
     def _jump_to_member(self, center_id):
         """Open a member by id (from quick search), honoring the unsaved guard
@@ -928,30 +939,48 @@ class MainWindow(QMainWindow):
     def _open_settings(self):
         dlg = SettingsDialog(self._settings, self,
                              alt_id_password=self._alt_id_password)
-        if dlg.exec():
-            self._settings.update(dlg.result_settings())
-            save_settings(self._settings, self._settings_path)
-            self._alt_id_password = dlg.result_alt_id_password()
-            # First key derivation (PBKDF2) blocks ~0.15s — warm it here under
-            # a wait cursor; every later use hits the cache.
-            QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            try:
-                self._alt_id_key()
-            finally:
-                QGuiApplication.restoreOverrideCursor()
-            # Drop cached DB handles so the new path is used on next access.
-            from db.members import close_connections
-            close_connections()
-            from gui.theme import apply_theme
-            apply_theme(QApplication.instance(), self._settings["theme"])
-            self._refresh_list_theme()
-            self._update_db_indicator()
-            self._load_members()
-            # Apply the row-ID debug toggle and the alt-id key to the open
-            # member live (no rebuild, so unsaved edits survive).
-            from gui.member_tabs import MemberTabsWidget
-            current = (self._detail_stack.widget(1)
-                       if self._detail_stack.count() > 1 else None)
-            if isinstance(current, MemberTabsWidget):
-                current.set_show_row_ids(self._settings.get("show_row_ids", False))
-                current.set_alt_id_key(self._alt_id_key())
+        if not dlg.exec():
+            return
+        result = dlg.result_settings()
+        old_size = self._settings.get("text_size", "normal")
+        size_changed = result.get("text_size", "normal") != old_size
+        # A text-size change rebuilds the window, which drops unsaved edits —
+        # run the same guard as switching members. On Cancel the size reverts
+        # (nothing half-applied) while every other setting still saves.
+        if size_changed and not self._ok_to_leave_current():
+            result["text_size"] = old_size
+            size_changed = False
+        self._settings.update(result)
+        save_settings(self._settings, self._settings_path)
+        self._alt_id_password = dlg.result_alt_id_password()
+        # First key derivation (PBKDF2) blocks ~0.15s — warm it here under
+        # a wait cursor; every later use hits the cache.
+        QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            self._alt_id_key()
+        finally:
+            QGuiApplication.restoreOverrideCursor()
+        # Drop cached DB handles so the new path is used on next access.
+        from db.members import close_connections
+        close_connections()
+        if size_changed:
+            # member_manager.run() sees the flag once exec() returns and
+            # rebuilds the window at the new scale on the same member.
+            self.reopen_requested = True
+            self.reopen_member_id = self._last_center_id
+            self.close()
+            return
+        from gui.theme import apply_theme
+        apply_theme(QApplication.instance(), self._settings["theme"],
+                    self._settings.get("text_size", "normal"))
+        self._refresh_list_theme()
+        self._update_db_indicator()
+        self._load_members()
+        # Apply the row-ID debug toggle and the alt-id key to the open
+        # member live (no rebuild, so unsaved edits survive).
+        from gui.member_tabs import MemberTabsWidget
+        current = (self._detail_stack.widget(1)
+                   if self._detail_stack.count() > 1 else None)
+        if isinstance(current, MemberTabsWidget):
+            current.set_show_row_ids(self._settings.get("show_row_ids", False))
+            current.set_alt_id_key(self._alt_id_key())
