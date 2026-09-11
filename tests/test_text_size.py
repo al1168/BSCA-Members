@@ -53,3 +53,41 @@ def test_apply_theme_sets_scale_only_when_asked(qapp):
     assert theme.current_text_scale() == pytest.approx(30 / 13)
     theme.apply_theme(qapp, "dark", "normal")
     assert theme.current_text_scale() == 1.0
+
+
+# ── build_qss scaling ──────────────────────────────────────────────────────
+
+def test_qss_default_scale_is_unchanged_and_has_no_literal_sizes_left():
+    from gui.theme import build_qss, DARK, LIGHT
+    for tokens in (DARK, LIGHT):
+        qss = build_qss(tokens)
+        assert qss == build_qss(tokens, 1.0)
+        assert "font-size: 13px;" in qss           # base rule intact at Normal
+        assert 'QLineEdit#info_field[fsize="xlarge"] { font-size: 20px; }' in qss
+        assert 'QLabel#field_label[lsize="large"] { font-size: 13px; }' in qss
+
+
+def test_qss_scales_every_font_size():
+    from gui.theme import build_qss, DARK, text_scale_for
+    normal = build_qss(DARK)
+    large = build_qss(DARK, text_scale_for("large"))
+    xlarge = build_qss(DARK, text_scale_for("xlarge"))
+    # Same number of font-size rules in each; none left at Normal pixels.
+    sizes = lambda q: re.findall(r"font-size: (\d+)px", q)
+    assert len(sizes(normal)) == len(sizes(large)) == len(sizes(xlarge)) >= 48
+    assert "font-size: 25px;" in large and "font-size: 23px;" in large
+    assert "font-size: 30px;" in xlarge and "font-size: 28px;" in xlarge
+    assert 'QLineEdit#info_field[fsize="xlarge"] { font-size: 46px; }' in xlarge
+    assert 'QLabel#field_label[lsize="large"] { font-size: 30px; }' in xlarge
+    # Paddings and radii are not scaled.
+    assert "padding: 7px 16px;" in xlarge and "border-radius: 7px;" in xlarge
+
+
+def test_rendered_label_reports_scaled_pixel_size(qapp):
+    from PyQt6.QtWidgets import QLabel
+    from gui.theme import build_qss, DARK, text_scale_for
+    lab = QLabel("Members")
+    lab.setStyleSheet(build_qss(DARK, text_scale_for("xlarge")))
+    lab.style().unpolish(lab)
+    lab.style().polish(lab)
+    assert lab.font().pixelSize() == 30

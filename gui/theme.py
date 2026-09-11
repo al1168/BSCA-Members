@@ -92,6 +92,11 @@ def _readable_text(hex_color: str) -> str:
 
 
 def build_qss(t: dict, scale: float = 1.0) -> str:
+    def p(n: int) -> int:
+        """Font pixels at Normal size → pixels at `scale`; shares the rounding
+        rule with px() so QSS and inline sizes can never drift apart."""
+        return _scaled(n, scale)
+
     plan_rules = "\n".join(
         f'QLabel#plan_badge[plan="{code}"] {{ background-color: {color}; '
         f'color: {_readable_text(color)}; border: 1px solid {color}; }}'
@@ -102,7 +107,7 @@ QMainWindow, QDialog, QWidget {{
     background-color: {t['bg']};
     color: {t['text']};
     font-family: "Segoe UI", system-ui, sans-serif;
-    font-size: 13px;
+    font-size: {p(13)}px;
 }}
 QWidget#sidebar {{
     background-color: {t['surface']};
@@ -135,7 +140,7 @@ QPushButton {{
     border: 1px solid {t['border']};
     border-radius: 7px;
     padding: 7px 16px;
-    font-size: 12px;
+    font-size: {p(12)}px;
     font-weight: 500;
 }}
 QPushButton:hover {{
@@ -166,7 +171,7 @@ QPushButton#btn_add {{
     font-weight: 600;
     border-radius: 7px;
     padding: 8px 12px;
-    font-size: 12px;
+    font-size: {p(12)}px;
 }}
 QPushButton#btn_add:hover {{
     background-color: {t['accent_hover']};
@@ -202,7 +207,7 @@ QLineEdit, QComboBox, QDateEdit, QTimeEdit, QSpinBox {{
     border: 1px solid {t['border']};
     border-radius: 5px;
     padding: 7px 10px;
-    font-size: 12px;
+    font-size: {p(12)}px;
     selection-background-color: {t['accent_bg']};
     selection-color: {t['text']};
 }}
@@ -243,7 +248,7 @@ QDateEdit::drop-down {{
 QCalendarWidget QSpinBox {{
     min-width: 72px;
     padding: 2px 6px;
-    font-size: 12px;
+    font-size: {p(12)}px;
 }}
 /* Hide the year spinner's step buttons: once the spinbox is styled their hit
    area can overlap the field and increment the year on a plain click. The year
@@ -269,7 +274,7 @@ QLineEdit#info_field, QLineEdit#info_field:read-only {{
     border: none;
     border-radius: 0;
     color: {t['text']};
-    font-size: 13px;
+    font-size: {p(13)}px;
     font-weight: 600;          /* bolder values so they read clearly */
     padding: 3px 2px;
 }}
@@ -278,9 +283,9 @@ QLineEdit#info_field, QLineEdit#info_field:read-only {{
    ([changed]/[empty]/[editing]/[error]) so those later, equal-specificity
    states keep winning their background/border while bold/large persist. */
 QLineEdit#info_field[fbold="true"] {{ font-weight: 800; }}
-QLineEdit#info_field[fsize="small"] {{ font-size: 11px; }}
-QLineEdit#info_field[fsize="large"] {{ font-size: 16px; }}
-QLineEdit#info_field[fsize="xlarge"] {{ font-size: 20px; }}
+QLineEdit#info_field[fsize="small"] {{ font-size: {p(11)}px; }}
+QLineEdit#info_field[fsize="large"] {{ font-size: {p(16)}px; }}
+QLineEdit#info_field[fsize="xlarge"] {{ font-size: {p(20)}px; }}
 QLineEdit#info_field[hl="amber"], QLineEdit#info_field[hl="amber"]:read-only {{
     background-color: {t['hl_amber']}; border-radius: 4px; padding: 3px 6px;
 }}
@@ -324,9 +329,9 @@ QLineEdit#info_field[error="true"] {{
    redundant (the address inner edit uses #info_field too) but kept as a
    safety net. */
 QLineEdit[fbold="true"] {{ font-weight: 800; }}
-QLineEdit[fsize="small"] {{ font-size: 11px; }}
-QLineEdit[fsize="large"] {{ font-size: 16px; }}
-QLineEdit[fsize="xlarge"] {{ font-size: 20px; }}
+QLineEdit[fsize="small"] {{ font-size: {p(11)}px; }}
+QLineEdit[fsize="large"] {{ font-size: {p(16)}px; }}
+QLineEdit[fsize="xlarge"] {{ font-size: {p(20)}px; }}
 QLineEdit[hl="amber"], QLineEdit[hl="amber"]:read-only {{
     background-color: {t['hl_amber']}; border-radius: 4px; padding: 3px 6px;
 }}
@@ -385,7 +390,7 @@ QTabBar::tab {{
     color: {t['text3']};
     padding: 6px 14px;
     border-bottom: 2px solid transparent;
-    font-size: 11px;
+    font-size: {p(11)}px;
     font-weight: 500;
 }}
 QTabBar::tab:selected {{
@@ -410,7 +415,7 @@ QPushButton#btn_company_calendar, QPushButton#btn_bookmarks {{
     border: 1px solid {t['border']};
     border-radius: 7px;
     padding: 7px 12px;
-    font-size: 12px;
+    font-size: {p(12)}px;
     font-weight: 600;
 }}
 QPushButton#btn_export:hover, QPushButton#btn_expiring_report:hover,
@@ -428,7 +433,7 @@ QPushButton#btn_bookmark {{
     border: 1px solid {t['border']};
     border-radius: 6px;
     padding: 3px 10px;
-    font-size: 12px;
+    font-size: {p(12)}px;
     font-weight: 600;
 }}
 QPushButton#btn_bookmark:hover {{
@@ -449,7 +454,7 @@ QPushButton#btn_notifications {{
     border: 1px solid {t['border']};
     border-radius: 7px;
     padding: 7px 12px;
-    font-size: 12px;
+    font-size: {p(12)}px;
     font-weight: 600;
 }}
 QPushButton#btn_notifications:hover {{
@@ -467,7 +472,7 @@ QFrame#notif_frame {{
     border-radius: 10px;
 }}
 QLabel#notif_title {{
-    font-size: 13px;
+    font-size: {p(13)}px;
     font-weight: 600;
     color: {t['text']};
 }}
@@ -477,7 +482,7 @@ QPushButton#notif_tab {{
     border-bottom: 2px solid transparent;
     border-radius: 0;
     padding: 7px 12px;
-    font-size: 12px;
+    font-size: {p(12)}px;
     font-weight: 500;
     color: {t['text2']};
 }}
@@ -502,7 +507,7 @@ QPushButton#btn_settings {{
     border: 1px solid {t['accent']};
     border-radius: 7px;
     padding: 7px 16px;
-    font-size: 12px;
+    font-size: {p(12)}px;
     font-weight: 600;
 }}
 QPushButton#btn_settings:hover {{
@@ -511,7 +516,7 @@ QPushButton#btn_settings:hover {{
 }}
 QLabel#db_indicator {{
     background-color: transparent;
-    font-size: 12px;
+    font-size: {p(12)}px;
     font-weight: 600;
     padding: 4px 6px;
     color: {t['text2']};
@@ -539,7 +544,7 @@ QPushButton#btn_terminate:hover {{
 /* Muted line shown inside empty tables / lists ("No … yet — click + Add"). */
 QLabel#empty_state {{
     color: {t['text3']};
-    font-size: 12px;
+    font-size: {p(12)}px;
     font-style: italic;
     padding: 18px;
 }}
@@ -620,20 +625,20 @@ QLabel {{
 }}
 QLabel#section_header {{
     color: {t['accent_text']};
-    font-size: 10px;
+    font-size: {p(10)}px;
     font-weight: 700;
     border-bottom: 1px solid {t['border_mid']};
     padding: 6px 0 2px 0;
 }}
 QLabel#field_label {{
     color: {t['text3']};
-    font-size: 11px;
+    font-size: {p(11)}px;
     padding-right: 2px;
 }}
 /* Global label size from the customizable layout ("normal" = the 11px base
    above; the lsize property is stamped by _make_info_tab). */
-QLabel#field_label[lsize="small"] {{ font-size: 9px; }}
-QLabel#field_label[lsize="large"] {{ font-size: 13px; }}
+QLabel#field_label[lsize="small"] {{ font-size: {p(9)}px; }}
+QLabel#field_label[lsize="large"] {{ font-size: {p(13)}px; }}
 /* Ctrl+K quick-search palette: a floating rounded card with a big search box. */
 QWidget#quick_search {{
     background-color: {t['surface']};
@@ -644,7 +649,7 @@ QLineEdit#quick_search_input {{
     background-color: {t['raised']};
     border: 1px solid {t['border']};
     border-radius: 8px;
-    font-size: 15px;
+    font-size: {p(15)}px;
     padding: 10px 12px;
 }}
 QListWidget#quick_search_list {{
@@ -653,7 +658,7 @@ QListWidget#quick_search_list {{
 }}
 QLabel#quick_search_hint {{
     color: {t['text3']};
-    font-size: 10px;
+    font-size: {p(10)}px;
 }}
 /* Schedule summary card on the Info tab: a contained, spaced-out row instead of
    stretched grid cells. */
@@ -664,12 +669,12 @@ QWidget#schedule_card {{
 }}
 QLabel#schedule_value {{
     color: {t['text']};
-    font-size: 13px;
+    font-size: {p(13)}px;
     font-weight: 700;
 }}
 QLabel#notes_label {{
     color: {t['accent_text']};
-    font-size: 11px;
+    font-size: {p(11)}px;
     font-weight: 700;
 }}
 QTextEdit#notes_edit {{
@@ -686,7 +691,7 @@ QLabel#day_chip_on {{
     border: 1px solid {t['accent']};
     border-radius: 9px;
     padding: 3px 0;
-    font-size: 10px;
+    font-size: {p(10)}px;
     font-weight: 700;
 }}
 QLabel#day_chip_off {{
@@ -695,12 +700,12 @@ QLabel#day_chip_off {{
     border: 1px solid {t['border']};
     border-radius: 9px;
     padding: 3px 0;
-    font-size: 10px;
+    font-size: {p(10)}px;
     font-weight: 600;
 }}
 QLabel#label_field {{
     color: {t['text3']};
-    font-size: 10px;
+    font-size: {p(10)}px;
     font-weight: 600;
 }}
 QLabel#warning_badge {{
@@ -709,19 +714,19 @@ QLabel#warning_badge {{
     border: 1px solid {t['error']};
     border-radius: 10px;
     padding: 3px 10px;
-    font-size: 10px;
+    font-size: {p(10)}px;
     font-weight: 500;
 }}
 QLabel#alt_id_label {{
     color: {t['text2']};
-    font-size: 12px;
+    font-size: {p(12)}px;
     font-weight: 600;
 }}
 QPushButton#alt_id_add {{
     background: transparent;
     border: none;
     color: {t['text2']};
-    font-size: 12px;
+    font-size: {p(12)}px;
     font-weight: 600;
     padding: 0px;
 }}
@@ -735,7 +740,7 @@ QLabel#terminated_badge {{
     border: none;
     border-radius: 10px;
     padding: 3px 10px;
-    font-size: 11px;
+    font-size: {p(11)}px;
     font-weight: 700;
 }}
 QLabel#expired_chip {{
@@ -744,7 +749,7 @@ QLabel#expired_chip {{
     border: 1px solid {t['error']};
     border-radius: 8px;
     padding: 1px 7px;
-    font-size: 9px;
+    font-size: {p(9)}px;
     font-weight: 700;
 }}
 QLabel#active_chip {{
@@ -753,7 +758,7 @@ QLabel#active_chip {{
     border: 1px solid {t['success']};
     border-radius: 8px;
     padding: 1px 7px;
-    font-size: 9px;
+    font-size: {p(9)}px;
     font-weight: 700;
 }}
 QLabel#upcoming_chip {{
@@ -762,7 +767,7 @@ QLabel#upcoming_chip {{
     border: 1px solid {t['warning']};
     border-radius: 8px;
     padding: 1px 7px;
-    font-size: 9px;
+    font-size: {p(9)}px;
     font-weight: 700;
 }}
 /* Current Schedule strip cells on the Availability tab. */
@@ -787,7 +792,7 @@ QWidget#avail_day_empty[authorized="true"] {{
 }}
 QLabel#avail_day_name {{
     color: {t['text3']};
-    font-size: 10px;
+    font-size: {p(10)}px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -799,23 +804,23 @@ QLabel#avail_legend_swatch {{
 }}
 QLabel#avail_legend {{
     color: {t['text3']};
-    font-size: 10px;
+    font-size: {p(10)}px;
     font-weight: 600;
     letter-spacing: 0.04em;
 }}
 QLabel#avail_day_time {{
     color: {t['text']};
-    font-size: 12px;
+    font-size: {p(12)}px;
     font-weight: 600;
 }}
 QLabel#avail_day_dash {{
     color: {t['text3']};
-    font-size: 12px;
+    font-size: {p(12)}px;
     font-weight: 600;
 }}
 QLabel#strip_caption {{
     color: {t['text3']};
-    font-size: 10px;
+    font-size: {p(10)}px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -826,7 +831,7 @@ QLabel#plan_badge {{
     border: 1px solid {t['accent']};
     border-radius: 10px;
     padding: 3px 10px;
-    font-size: 11px;
+    font-size: {p(11)}px;
     font-weight: 700;
 }}
 {plan_rules}
@@ -836,7 +841,7 @@ QLabel#wizard_warning {{
     border: 1px solid {t['warning']};
     border-radius: 7px;
     padding: 10px;
-    font-size: 11px;
+    font-size: {p(11)}px;
 }}
 QWidget#wizard_panel {{
     background-color: {t['surface']};
@@ -860,7 +865,7 @@ QTableWidget {{
     border: 1px solid {t['border_mid']};
     border-radius: 7px;
     gridline-color: {t['border_mid']};
-    font-size: 12px;
+    font-size: {p(12)}px;
 }}
 QTableWidget::item {{
     padding: 6px 10px;
@@ -881,7 +886,7 @@ QHeaderView::section {{
     border: none;
     border-bottom: 1px solid {t['border_mid']};
     padding: 6px 10px;
-    font-size: 10px;
+    font-size: {p(10)}px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
