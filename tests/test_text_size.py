@@ -524,3 +524,18 @@ def test_wizard_steps_scroll_and_dialog_never_exceeds_the_work_area(qapp):
     needed_h = max(p.sizeHint().height() for p in pages) + chrome_h
     # Opens at content height unless the work area is smaller.
     assert wiz.height() == min(max(660, needed_h), avail.height() - 80)
+
+
+# ── radio indicator (Settings: Theme / Text size rows) ─────────────────────
+
+def test_radio_indicator_is_styled_and_scales():
+    """Qt's native radio dot is invisible on the dark palette; the theme draws
+    its own, sized with the text so it stays legible at Extra Large."""
+    from gui.theme import build_qss, DARK, LIGHT, text_scale_for
+    for tokens in (DARK, LIGHT):
+        qss = build_qss(tokens)
+        assert "QRadioButton::indicator:checked" in qss
+        assert f"background: {tokens['accent']};" in qss.split("QRadioButton::indicator:checked")[1][:120]
+    xl = build_qss(DARK, text_scale_for("xlarge"))
+    ind = xl.split("QRadioButton::indicator {")[1][:200]
+    assert "width: 32px;" in ind and "height: 32px;" in ind and "border-radius: 16px;" in ind

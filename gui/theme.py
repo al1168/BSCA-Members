@@ -385,6 +385,22 @@ QLineEdit[hl="green"], QLineEdit[hl="green"]:read-only {{
 QLineEdit[hl="red"], QLineEdit[hl="red"]:read-only {{
     background-color: {t['hl_red']}; border-radius: 4px; padding: 3px 6px;
 }}
+/* Radio buttons: the native indicator is invisible on the dark palette (the
+   checked Theme / Text size choice could not be told apart), so draw our own:
+   a ring, filled with the accent when checked. Sized with the text. */
+QRadioButton {{ spacing: 6px; }}
+QRadioButton::indicator {{
+    width: {p(14)}px;
+    height: {p(14)}px;
+    border-radius: {p(7)}px;
+    border: 1px solid {t['text2']};
+    background: {t['raised']};
+}}
+QRadioButton::indicator:hover {{ border: 1px solid {t['accent_hover']}; }}
+QRadioButton::indicator:checked {{
+    background: {t['accent']};
+    border: 1px solid {t['accent']};
+}}
 QComboBox::drop-down {{
     border: none;
     width: 22px;
