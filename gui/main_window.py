@@ -236,10 +236,11 @@ class MainWindow(QMainWindow):
 
     def _apply_default_geometry(self):
         """Open at 1800x920 at Normal text size (scaled with the text size; wide
-        the sidebar) centered on the primary screen when the window plus
-        its frame fits the work area; otherwise open maximized so the OS
-        keeps the bottom edge — and the Info tab's Save/Discard row on it —
-        above the taskbar. See choose_startup_geometry."""
+        enough for the Authorizations table with the sidebar) centered on the
+        primary screen when the window plus its frame fits the work area;
+        otherwise open maximized so the OS keeps the bottom edge — and the
+        Info tab's Save/Discard row on it — above the taskbar. See
+        choose_startup_geometry."""
         desired = QSize(px(1800), px(920))
         screen = QApplication.primaryScreen()
         if screen is None:
