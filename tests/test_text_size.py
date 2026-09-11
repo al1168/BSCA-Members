@@ -539,3 +539,5 @@ def test_radio_indicator_is_styled_and_scales():
     xl = build_qss(DARK, text_scale_for("xlarge"))
     ind = xl.split("QRadioButton::indicator {")[1][:200]
     assert "width: 32px;" in ind and "height: 32px;" in ind and "border-radius: 16px;" in ind
+    box = xl.split("QCheckBox::indicator {")[1][:200]
+    assert "width: 32px;" in box and "height: 32px;" in box

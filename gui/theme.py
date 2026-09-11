@@ -385,9 +385,23 @@ QLineEdit[hl="green"], QLineEdit[hl="green"]:read-only {{
 QLineEdit[hl="red"], QLineEdit[hl="red"]:read-only {{
     background-color: {t['hl_red']}; border-radius: 4px; padding: 3px 6px;
 }}
-/* Radio buttons: the native indicator is invisible on the dark palette (the
-   checked Theme / Text size choice could not be told apart), so draw our own:
-   a ring, filled with the accent when checked. Sized with the text. */
+/* Check boxes and radio buttons: the native radio dot is invisible on the
+   dark palette (the checked Theme / Text size choice could not be told
+   apart) and neither indicator grows with the text, so draw our own — a box /
+   ring filled with the accent when checked, sized with the text. */
+QCheckBox {{ spacing: 6px; }}
+QCheckBox::indicator {{
+    width: {p(14)}px;
+    height: {p(14)}px;
+    border-radius: 3px;
+    border: 1px solid {t['text2']};
+    background: {t['raised']};
+}}
+QCheckBox::indicator:hover {{ border: 1px solid {t['accent_hover']}; }}
+QCheckBox::indicator:checked {{
+    background: {t['accent']};
+    border: 1px solid {t['accent']};
+}}
 QRadioButton {{ spacing: 6px; }}
 QRadioButton::indicator {{
     width: {p(14)}px;
