@@ -219,22 +219,37 @@ class StepAuths(QWidget):
         both dates, at least one day, a plan type, and an auth number. Added
         availability times must always be valid. Flags the bad fields red."""
         ok = True
+        first_bad = None   # focused at the end so a scrolled step scrolls it into view
         if not self.is_skipped():
-            ok = self.auth_start.flag_validity(required=True) and ok
-            ok = self.auth_end.flag_validity(required=True) and ok
+            start_ok = self.auth_start.flag_validity(required=True)
+            ok = start_ok and ok
+            if not start_ok and first_bad is None:
+                first_bad = self.auth_start
+            end_ok = self.auth_end.flag_validity(required=True)
+            ok = end_ok and ok
+            if not end_ok and first_bad is None:
+                first_bad = self.auth_end
             ok = any(cb.isChecked()
                      for cb in self._day_checks.values()) and ok
             plan_ok = bool(self.plan_type.currentText())
             set_widget_error(self.plan_type, not plan_ok)
             ok = plan_ok and ok
+            if not plan_ok and first_bad is None:
+                first_bad = self.plan_type
             num_ok = bool(self.auth_number.text().strip())
             set_widget_error(self.auth_number, not num_ok)
             ok = num_ok and ok
+            if not num_ok and first_bad is None:
+                first_bad = self.auth_number
         for r in self._avail_rows:
             for field in (r["t_start"], r["t_end"]):
                 valid = field.is_valid()
                 set_widget_error(field, not valid)
                 ok = ok and valid
+                if not valid and first_bad is None:
+                    first_bad = field
+        if first_bad is not None:
+            first_bad.setFocus()
         return ok
 
     def collect(self) -> dict:

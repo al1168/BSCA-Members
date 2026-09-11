@@ -19,6 +19,8 @@ def _scrolled(page: QWidget) -> QScrollArea:
     Extra Large text, where the form would otherwise force the dialog past
     the work area) — the page scrolls instead."""
     area = QScrollArea()
+    # Not a tab stop: focus goes straight to the first field, as before.
+    area.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     area.setWidgetResizable(True)
     area.setFrameShape(QFrame.Shape.NoFrame)
     area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -35,10 +37,15 @@ class AddMemberWizard(QDialog):
         self.setWindowTitle("Add New Member")
         self._current = 0
         self._build_ui()
-        # Open at the Normal-scale 880x660 scaled with the text size, but never
-        # larger than the work area (Extra Large would otherwise exceed 1080p);
-        # the step pages scroll (see _scrolled) so the dialog can be this small.
-        w, h = px(_BASE_W), px(_BASE_H)
+        # Open big enough for the tallest/widest step (so nothing scrolls at
+        # Normal), never smaller than the Normal-scale 880x660, and never
+        # larger than the work area; at Large/Extra Large the steps scroll
+        # inside the dialog instead of pushing it off-screen (see _scrolled).
+        pages = (self._step_contact, self._step_enrollment,
+                 self._step_auths, self._step_review)
+        chrome = self.sizeHint() - self._stack.sizeHint()   # progress row, nav, margins
+        w = max(_BASE_W, max(p.sizeHint().width() for p in pages) + chrome.width())
+        h = max(_BASE_H, max(p.sizeHint().height() for p in pages) + chrome.height())
         screen = QApplication.primaryScreen()
         if screen is not None:
             avail = screen.availableGeometry()

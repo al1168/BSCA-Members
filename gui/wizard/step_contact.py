@@ -147,11 +147,16 @@ class StepContact(QWidget):
         self.address.set_error(False)
 
     def _fail(self, message: str, *widgets) -> bool:
-        """Show the message and outline the offending field(s); returns False."""
+        """Show the message and outline the offending field(s); returns False.
+        Focuses the first offending widget so a scrolled step (see wizard.py's
+        _scrolled) scrolls it into view instead of leaving the error off-screen."""
         self._error_label.setText(message)
         for w in widgets:
             (w.set_error(True) if isinstance(w, AddressAutocomplete)
              else set_widget_error(w, True))
+        if widgets:
+            first = widgets[0]
+            (first._edit if isinstance(first, AddressAutocomplete) else first).setFocus()
         return False
 
     def validate(self, db_path: str) -> bool:

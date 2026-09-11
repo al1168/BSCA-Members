@@ -515,3 +515,12 @@ def test_wizard_steps_scroll_and_dialog_never_exceeds_the_work_area(qapp):
     assert wiz.minimumSize().width() <= avail.width() - 40
     assert wiz.minimumSize().height() <= avail.height() - 80
     assert wiz.minimumSizeHint().height() <= avail.height() - 80
+
+    from PyQt6.QtCore import Qt
+    for i in range(3):
+        assert wiz._stack.widget(i).focusPolicy() == Qt.FocusPolicy.NoFocus, i
+    pages = (wiz._step_contact, wiz._step_enrollment, wiz._step_auths, wiz._step_review)
+    chrome_h = wiz.sizeHint().height() - wiz._stack.sizeHint().height()
+    needed_h = max(p.sizeHint().height() for p in pages) + chrome_h
+    # Opens at content height unless the work area is smaller.
+    assert wiz.height() == min(max(660, needed_h), avail.height() - 80)
