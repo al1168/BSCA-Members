@@ -42,7 +42,7 @@ class ConfirmChangesDialog(QDialog):
         from gui.theme import current_tokens
         t = current_tokens()
         self.setWindowTitle("Confirm Changes")
-        self.setMinimumWidth(760)
+        self.setMinimumWidth(px(760))
         self._rows = list(rows)
 
         layout = QVBoxLayout(self)
@@ -132,7 +132,7 @@ class ConfirmChangesDialog(QDialog):
     @staticmethod
     def _set_column_stretch(grid: QGridLayout) -> None:
         grid.setColumnStretch(0, 0)
-        grid.setColumnMinimumWidth(0, 120)
+        grid.setColumnMinimumWidth(0, px(120))
         grid.setColumnStretch(1, 1)
         grid.setColumnMinimumWidth(2, 24)
         grid.setColumnStretch(3, 1)

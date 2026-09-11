@@ -413,8 +413,9 @@ def test_run_exits_immediately_and_propagates_the_exit_code(monkeypatch, tmp_pat
 # ── no literal font sizes left in widget code ──────────────────────────────
 
 # Files converted so far; later tasks extend this list until it covers every
-# widget module. theme.py (the QSS) and profile_print.py (printouts,
-# deliberately unscaled) are excluded by design.
+# widget module. theme.py (the QSS) and profile_print.py (printed HTML keeps
+# its own point scale; only its on-screen printer picker scales) are excluded
+# by design.
 _CONVERTED = [
     "gui/member_tabs.py",
     "gui/main_window.py",
@@ -467,3 +468,19 @@ def test_member_table_row_height_follows_scale(qapp):
     w._emergency_badge = QLabel()
     w._test_outer = w._make_info_tab()   # keep a ref so children aren't GC'd
     assert w._emergency_table.verticalHeader().defaultSectionSize() == theme.px(34) == 65
+
+
+def test_popup_panels_and_slider_follow_scale(qapp):
+    from gui import theme
+    theme.set_text_size("large")
+    from gui.bookmarks_panel import BookmarksPanel
+    from gui.notifications import NotificationsPanel
+    from gui.time_range_editor import RangeSlider
+    from gui.confirm_changes import ConfirmChangesDialog
+    assert BookmarksPanel([]).width() == theme.px(380) == 731
+    assert NotificationsPanel([], [], {}).width() == theme.px(360) == 692
+    s = RangeSlider()
+    assert s._handle_r == theme.px(9) == 17
+    assert s.minimumHeight() >= theme.px(60) == 115
+    d = ConfirmChangesDialog("Chan, Mary", [("Notes", "a", "b")])
+    assert d.minimumWidth() == theme.px(760) == 1462

@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QLineEdit, QComboBox, QMessageBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QRectF
-from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QFont
+from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QFont, QFontMetrics
 
 from gui.theme import px
 
@@ -70,6 +70,17 @@ class RangeSlider(QWidget):
         self._end = MAX_MINUTES
         self._drag = None  # 'start' | 'end' | None
         self.setMinimumHeight(px(60))
+        # Painted geometry scales with the text size (class constants are the
+        # Normal-scale values; px() must run at construction, not import).
+        self._margin = px(self._MARGIN)      # keeps scaled handles unclipped at the ends
+        self._track_y = px(self._TRACK_Y)
+        self._track_h = px(self._TRACK_H)
+        self._handle_r = px(self._HANDLE_R)
+        # Ensure the tick labels below the track still fit inside the minimum
+        # height at large scales.
+        fm = QFontMetrics(QFont("Segoe UI", px(7)))
+        needed = self._track_y + self._track_h + px(7) + fm.height() + px(4)
+        self.setMinimumHeight(max(px(60), needed))
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
@@ -87,8 +98,8 @@ class RangeSlider(QWidget):
 
     # ── geometry ─────────────────────────────────────────────────────────
     def _track_left_width(self):
-        w = max(self.width() - 2 * self._MARGIN, 1)
-        return self._MARGIN, w
+        w = max(self.width() - 2 * self._margin, 1)
+        return self._margin, w
 
     def _x_for(self, minutes: int) -> float:
         left, w = self._track_left_width()
@@ -105,35 +116,37 @@ class RangeSlider(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         left, w = self._track_left_width()
-        cy = self._TRACK_Y + self._TRACK_H / 2
+        cy = self._track_y + self._track_h / 2
 
         # base track
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QBrush(QColor("#2a2e3a")))
-        p.drawRoundedRect(QRectF(left, self._TRACK_Y, w, self._TRACK_H), 4, 4)
+        p.drawRoundedRect(QRectF(left, self._track_y, w, self._track_h), 4, 4)
 
         # filled band
         xs, xe = self._x_for(self._start), self._x_for(self._end)
         p.setBrush(QBrush(QColor("#5b7cf4")))
-        p.drawRoundedRect(QRectF(xs, self._TRACK_Y, max(xe - xs, 1), self._TRACK_H), 4, 4)
+        p.drawRoundedRect(QRectF(xs, self._track_y, max(xe - xs, 1), self._track_h), 4, 4)
 
         # hour ticks + labels (8a..4p)
         p.setFont(QFont("Segoe UI", px(7)))
         p.setPen(QPen(QColor("#757a98")))
+        fm = p.fontMetrics()
+        lw = fm.horizontalAdvance("12p") + px(6)
         for hour in range(8, 17):
             mx = self._x_for(hour * 60)
-            p.drawLine(int(mx), self._TRACK_Y + self._TRACK_H + 2,
-                       int(mx), self._TRACK_Y + self._TRACK_H + 6)
+            p.drawLine(int(mx), self._track_y + self._track_h + 2,
+                       int(mx), self._track_y + self._track_h + 6)
             label = f"{hour}a" if hour < 12 else ("12p" if hour == 12 else f"{hour - 12}p")
-            p.drawText(QRectF(mx - 12, self._TRACK_Y + self._TRACK_H + 7, 24, 12),
+            p.drawText(QRectF(mx - lw / 2, self._track_y + self._track_h + px(7), lw, fm.height()),
                        Qt.AlignmentFlag.AlignHCenter, label)
 
         # handles
         p.setPen(QPen(QColor("#5b7cf4"), 2))
         p.setBrush(QBrush(QColor("#ffffff")))
         for mx in (xs, xe):
-            p.drawEllipse(QRectF(mx - self._HANDLE_R, cy - self._HANDLE_R,
-                                 self._HANDLE_R * 2, self._HANDLE_R * 2))
+            p.drawEllipse(QRectF(mx - self._handle_r, cy - self._handle_r,
+                                 self._handle_r * 2, self._handle_r * 2))
         p.end()
 
     # ── interaction ──────────────────────────────────────────────────────
