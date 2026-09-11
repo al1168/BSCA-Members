@@ -308,9 +308,13 @@ def test_run_rebuilds_window_once_when_requested(monkeypatch, tmp_path):
     import member_manager as mm
 
     created = []
+    prev_local = []      # run()'s local `window` as seen when pass 2 constructs
 
     class StubWindow:
         def __init__(self, settings, path):
+            if created:   # second pass: run() must have released the first window
+                import inspect
+                prev_local.append(inspect.currentframe().f_back.f_locals.get("window"))
             self.settings = settings
             self.jumped = None
             self.password = None
@@ -360,12 +364,9 @@ def test_run_rebuilds_window_once_when_requested(monkeypatch, tmp_path):
     # The password must be restored before the member is reopened.
     assert created[1].order == ["password", "show", "jump"]
     assert applied == [("light", "normal"), ("light", "xlarge")]
-    # run() must not keep the first window alive into the second pass.
-    import gc, weakref
-    first = weakref.ref(created[0])
-    created.clear()
-    gc.collect()
-    assert first() is None
+    # The release line (`window = None`) is what makes this None; without it
+    # the first window would still be referenced while the second is built.
+    assert prev_local == [None]
 
 
 def test_run_exits_immediately_and_propagates_the_exit_code(monkeypatch, tmp_path):
