@@ -128,8 +128,10 @@ rebuilt on change, see §5):
   `combo.setMaximumWidth(px(240))`; `time_range_editor.setMinimumHeight(px(60))`.
   `address_autocomplete`'s `sizeHint`-based minimum is already font-driven
   and needs no change.
-- **Not scaled:** `PHOTO_SIZE`, the 12px colour swatch, the 18px icon,
-  1px rules, `confirm_changes`' 70 %-of-screen cap, connector line heights.
+- **Not scaled:** `PHOTO_SIZE`, the 12px colour swatch, 1px rules,
+  `confirm_changes`' 70 %-of-screen cap, connector line heights. (The HHA
+  note card's 18px "i" badge *does* scale, with its radius — it is a text
+  glyph, not an image.)
 - **Startup geometry:** `desired = QSize(px(1800), px(920))`;
   `choose_startup_geometry` already falls back to maximized when that does
   not fit the work area.

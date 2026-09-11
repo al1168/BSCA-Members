@@ -1146,24 +1146,13 @@ _CONVERTED = [
 ]
 ```
 
-Also add a rendered check for the two point-size fonts:
-
-```python
-def test_point_size_fonts_follow_scale(qapp):
-    from gui import theme
-    theme.set_text_size("xlarge")
-    from gui.events_view import EventsTableWidget
-    import inspect
-    src = inspect.getsource(EventsTableWidget)
-    assert 'QFont("Cascadia Mono, Consolas", px(10))' in src
-    from gui import time_range_editor
-    assert 'QFont("Segoe UI", px(7))' in inspect.getsource(time_range_editor)
-```
+(The two point-size fonts are guarded by the `_LITERAL_POINT_SIZE` regex the
+Task 8 review added to the same test — `QFont(..., 10)` fails it, `QFont(..., px(10))` passes — so no separate source-substring test is needed.)
 
 - [ ] **Step 2: Run to verify the new entries fail**
 
-Run: `python -m pytest tests/test_text_size.py -k "literal or point_size" -q`
-Expected: the seven new files FAIL; `point_size` FAILS
+Run: `python -m pytest tests/test_text_size.py -k "literal" -q`
+Expected: the seven new files FAIL (events_view and time_range_editor on the point-size guard as well)
 
 - [ ] **Step 3: Convert each file**
 
@@ -1418,6 +1407,7 @@ Run: `python main.py`
 
 1. Settings → Text size → **Extra Large** → OK. The window closes and reopens; sidebar, toolbar, tabs, tables, badges and the header are all large; no clipped rows or buttons.
 2. Open a member with a bookmark note and an Authorizations table; check row heights and the Edit column fit.
+2b. Availability tab at Extra Large for a member with Saturday availability: the current-schedule strip (`_make_current_schedule_strip`) needs ~1430px for six day cells on a 1920 screen, which is wider than the detail pane. If the rightmost day clips, wrap the strip in a `QScrollArea` with vertical scrolling off and horizontal on demand.
 3. Add New Member: the step dots are round and readable.
 4. Edit a field, then Settings → **Normal** → OK → the Unsaved Changes prompt appears → **Cancel**: window stays at Extra Large, text size still Extra Large in Settings on reopening the dialog.
 5. Discard or save the edit, switch to **Normal**: window reopens at the original size on the same member.
