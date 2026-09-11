@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QMessageBox, QTextEdit, QSizePolicy, QLineEdit,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
+from gui.theme import px
 
 from db.members import (
     get_member_context, format_phone, format_date_only, format_dob_display,
@@ -47,7 +48,7 @@ class _NotesEdit(QTextEdit):
         doc = self.document()
         doc.setTextWidth(self.viewport().width())
         h = int(doc.size().height()) + 2 * self.frameWidth() + 4
-        self.setFixedHeight(max(self._MIN_H, min(h, self._MAX_H)))
+        self.setFixedHeight(max(px(self._MIN_H), min(h, px(self._MAX_H))))
 
 
 FIELD_LABELS = {
@@ -79,7 +80,7 @@ def make_plan_badge(plan: str | None, *, max_height: int = 26):
     badge.setObjectName("plan_badge")
     badge.setProperty("plan", plan)
     badge.setToolTip("Health Plan")
-    badge.setMaximumHeight(max_height)
+    badge.setMaximumHeight(px(max_height))
     return badge
 
 
@@ -142,7 +143,7 @@ def _fit_pill_column(table, col: int, pills: list, floor: int) -> None:
     which mis-measures widget-only columns and let the pills clip across DPI."""
     from PyQt6.QtWidgets import QHeaderView
     widest = max((p.sizeHint().width() for p in pills), default=0)
-    width = max(widest + 2 * _PILL_CELL_HMARGIN + 4, floor)
+    width = max(widest + 2 * _PILL_CELL_HMARGIN + 4, px(floor))
     table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
     table.setColumnWidth(col, width)
 
@@ -547,7 +548,7 @@ class WeekdayChips(QWidget):
             chip = QLabel(name[0] if compact else name.upper())
             chip.setObjectName("day_chip_on" if num in self._days else "day_chip_off")
             chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            chip.setMinimumWidth(22 if compact else 34)  # uniform, grid-like track
+            chip.setMinimumWidth(px(22) if compact else px(34))  # uniform, grid-like track
             self._chips.append(chip)
             row.addWidget(chip)
         row.addStretch()
@@ -1009,7 +1010,7 @@ class MemberTabsWidget(QWidget):
         if is_terminated(self._enrollments):
             badge = QLabel("⊘ Terminated")
             badge.setObjectName("terminated_badge")
-            badge.setMaximumHeight(26)
+            badge.setMaximumHeight(px(26))
             idx = 2 if self._header_plan_badge is not None else 1
             self._header_top_row.insertWidget(
                 idx, badge, alignment=Qt.AlignmentFlag.AlignVCenter)
@@ -1280,7 +1281,7 @@ class MemberTabsWidget(QWidget):
         note_edit = QPlainTextEdit()
         note_edit.setPlaceholderText(
             "Why are you bookmarking this member? e.g. Follow up on auth renewal")
-        note_edit.setFixedHeight(64)
+        note_edit.setFixedHeight(px(64))
         if existing:
             note_edit.setPlainText(existing.get("note", "") or "")
         root.addWidget(note_edit)
@@ -1302,7 +1303,7 @@ class MemberTabsWidget(QWidget):
                 text = note_edit.toPlainText()
             at_limit = len(text) >= NOTE_MAX_LEN
             counter.setStyleSheet(
-                f"font-size:11px; color:"
+                f"font-size:{px(11)}px; color:"
                 f"{t['error_text'] if at_limit else t['text3']};")
             counter.setText(f"{len(text)} / {NOTE_MAX_LEN}")
         note_edit.textChanged.connect(sync_counter)
@@ -1361,7 +1362,7 @@ class MemberTabsWidget(QWidget):
                             alignment=Qt.AlignmentFlag.AlignHCenter)
         cid = str(self._center_id)
         id_label = QLabel(
-            f"<span style='font-size:17px; font-weight:700; color:#5b7cf4'>"
+            f"<span style='font-size:{px(17)}px; font-weight:700; color:#5b7cf4'>"
             f"ID {cid}</span>")
         id_label.setTextFormat(Qt.TextFormat.RichText)
         # Let staff highlight + copy the ID.
@@ -1392,7 +1393,7 @@ class MemberTabsWidget(QWidget):
         top_row = QHBoxLayout()
         name = f"{self._member.get('last_name', '')}, {self._member.get('first_name', '')}"
         name_label = QLabel(
-            f"<span style='font-size:16px; font-weight:700'>{name}</span>")
+            f"<span style='font-size:{px(16)}px; font-weight:700'>{name}</span>")
         name_label.setTextFormat(Qt.TextFormat.RichText)
         # Let staff highlight + copy the name.
         name_label.setTextInteractionFlags(
@@ -1410,7 +1411,7 @@ class MemberTabsWidget(QWidget):
         if is_terminated(self._enrollments):
             self._term_badge = QLabel("⊘ Terminated")
             self._term_badge.setObjectName("terminated_badge")
-            self._term_badge.setMaximumHeight(26)
+            self._term_badge.setMaximumHeight(px(26))
             top_row.addWidget(self._term_badge,
                               alignment=Qt.AlignmentFlag.AlignVCenter)
         top_row.addStretch()
@@ -1419,20 +1420,20 @@ class MemberTabsWidget(QWidget):
         if warn:
             badge = QLabel("⚠ " + warn)
             badge.setObjectName("warning_badge")
-            badge.setMaximumHeight(26)
+            badge.setMaximumHeight(px(26))
             top_row.addWidget(badge, alignment=Qt.AlignmentFlag.AlignVCenter)
         # Emergency-contact badge: created here (hidden) so it can toggle live
         # when contacts are added/removed in the Info tab. _fill_emergency_box
         # sets its initial state.
         self._emergency_badge = QLabel()
         self._emergency_badge.setObjectName("warning_badge")
-        self._emergency_badge.setMaximumHeight(26)
+        self._emergency_badge.setMaximumHeight(px(26))
         self._emergency_badge.setVisible(False)
         top_row.addWidget(self._emergency_badge,
                           alignment=Qt.AlignmentFlag.AlignVCenter)
         self._btn_bookmark = QPushButton()
         self._btn_bookmark.setObjectName("btn_bookmark")
-        self._btn_bookmark.setMaximumHeight(26)
+        self._btn_bookmark.setMaximumHeight(px(26))
         self._btn_bookmark.clicked.connect(self._open_bookmark_dialog)
         self._sync_bookmark_button()
         top_row.addWidget(self._btn_bookmark,
@@ -1440,7 +1441,7 @@ class MemberTabsWidget(QWidget):
         btn_print = QPushButton("🖨 Print")
         btn_print.setObjectName("btn_print")
         btn_print.setToolTip("Print this member's profile")
-        btn_print.setMaximumHeight(26)
+        btn_print.setMaximumHeight(px(26))
         btn_print.clicked.connect(self._print_profile)
         top_row.addWidget(btn_print, alignment=Qt.AlignmentFlag.AlignVCenter)
         right.addLayout(top_row)
@@ -1457,7 +1458,7 @@ class MemberTabsWidget(QWidget):
         # note (or the user clicks it), keeping the header uncluttered.
         self._btn_add_note = QPushButton("+ Add note")
         self._btn_add_note.setObjectName("btn_add_note")
-        self._btn_add_note.setMaximumHeight(26)
+        self._btn_add_note.setMaximumHeight(px(26))
         self._btn_add_note.clicked.connect(self._reveal_notes)
         notes_row.addWidget(self._btn_add_note, alignment=Qt.AlignmentFlag.AlignTop)
         notes_row.addStretch()
@@ -1960,7 +1961,7 @@ class MemberTabsWidget(QWidget):
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(34)
+        table.verticalHeader().setDefaultSectionSize(px(34))
 
         for r, ec in enumerate(self._emergency_contacts):
             name_item = QTableWidgetItem(ec["full_name"])
@@ -2396,7 +2397,7 @@ class MemberTabsWidget(QWidget):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.horizontalHeader().setStretchLastSection(True)
         table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(34)  # room for action buttons
+        table.verticalHeader().setDefaultSectionSize(px(34))  # room for action buttons
 
         for r, row_data in enumerate(rows):
             for c, val in enumerate(row_data):
@@ -2498,7 +2499,7 @@ class MemberTabsWidget(QWidget):
         hdr.setStretchLastSection(False)
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(40)  # room for action buttons
+        table.verticalHeader().setDefaultSectionSize(px(40))  # room for action buttons
 
         from db.members import enrollment_active, sort_enrollments_active_first
 
@@ -2539,7 +2540,7 @@ class MemberTabsWidget(QWidget):
         # buttons never clip; the empty-table floor keeps the header readable.
         widest = max((w_.sizeHint().width() for w_ in action_wraps), default=0)
         hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
-        table.setColumnWidth(4, max(widest + 36, 140))
+        table.setColumnWidth(4, max(widest + 36, px(140)))
 
         self._apply_id_column(table)
         set_table_empty_state(
@@ -2791,7 +2792,7 @@ class MemberTabsWidget(QWidget):
         hdr.setStretchLastSection(False)
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(40)  # roomier rows; pills uncramped
+        table.verticalHeader().setDefaultSectionSize(px(40))  # roomier rows; pills uncramped
 
         from db.members import get_auth_ids_with_documents, get_auth_edges
         doc_ids = get_auth_ids_with_documents(self._center_id, self._db_path)
@@ -3301,7 +3302,7 @@ class MemberTabsWidget(QWidget):
         hdr.setStretchLastSection(False)
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(40)
+        table.verticalHeader().setDefaultSectionSize(px(40))
 
         doc_ids = get_transport_ids_with_documents(self._center_id, self._db_path)
 
@@ -3808,7 +3809,7 @@ class MemberTabsWidget(QWidget):
             # Authorized days are tinted light green (the time stays legible),
             # driven by this dynamic property in the QSS.
             cell.setProperty("authorized", bool(authorized))
-            cell.setMinimumWidth(104)
+            cell.setMinimumWidth(px(104))
             cv = QVBoxLayout(cell)
             cv.setContentsMargins(10, 7, 10, 7)
             cv.setSpacing(2)
@@ -3851,8 +3852,8 @@ class MemberTabsWidget(QWidget):
         card.setStyleSheet(
             f"#hha_note_card {{ background: {t['accent_bg']}; "
             f"border: 1px solid {t['accent']}; border-radius: 7px; }}")
-        card.setMinimumWidth(260)
-        card.setMaximumWidth(400)
+        card.setMinimumWidth(px(260))
+        card.setMaximumWidth(px(400))
         row = QHBoxLayout(card)
         row.setContentsMargins(16, 14, 16, 14)
         row.setSpacing(11)
@@ -3861,13 +3862,13 @@ class MemberTabsWidget(QWidget):
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon.setStyleSheet(
             f"background: {t['accent']}; color: white; border-radius: 9px; "
-            f"font-size: 12px; font-weight: 700;")
+            f"font-size: {px(12)}px; font-weight: 700;")
         row.addWidget(icon, alignment=Qt.AlignmentFlag.AlignTop)
         col = QVBoxLayout()
         col.setSpacing(5)
         title = QLabel("HHA Note")
         title.setStyleSheet(
-            f"color: {t['accent_text']}; font-size: 13px; font-weight: 700; "
+            f"color: {t['accent_text']}; font-size: {px(13)}px; font-weight: 700; "
             f"background: transparent; border: none;")
         col.addWidget(title)
         body = QLabel(text)
@@ -3875,7 +3876,7 @@ class MemberTabsWidget(QWidget):
         body.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         body.setStyleSheet(
-            f"color: {t['accent_text']}; font-size: 13px; "
+            f"color: {t['accent_text']}; font-size: {px(13)}px; "
             f"background: transparent; border: none;")
         col.addWidget(body)
         row.addLayout(col, 1)
@@ -3924,7 +3925,7 @@ class MemberTabsWidget(QWidget):
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(SPACER_COL, QHeaderView.ResizeMode.Stretch)
         table.verticalHeader().setVisible(False)
-        ROW_H = 40                    # roomier rows; pills uncramped
+        ROW_H = px(40)                # roomier rows; pills uncramped
         table.verticalHeader().setDefaultSectionSize(ROW_H)
 
         status_chips = []
@@ -3992,7 +3993,7 @@ class MemberTabsWidget(QWidget):
         # the Edit buttons.
         edit_w = max((b.sizeHint().width() for b in edit_btns), default=0)
         hdr.setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
-        table.setColumnWidth(7, max(edit_w + 2 * _PILL_CELL_HMARGIN + 24, 116))
+        table.setColumnWidth(7, max(edit_w + 2 * _PILL_CELL_HMARGIN + 24, px(116)))
 
         self._apply_id_column(table)
         set_table_empty_state(
@@ -4259,7 +4260,7 @@ class MemberTabsWidget(QWidget):
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(36)
+        table.verticalHeader().setDefaultSectionSize(px(36))
         hdr = table.horizontalHeader()
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -4285,14 +4286,14 @@ class MemberTabsWidget(QWidget):
                 hl.setSpacing(4)
                 edit = QPushButton("✎")
                 edit.setObjectName("btn_icon_edit")
-                edit.setFixedWidth(28)
+                edit.setFixedWidth(px(28))
                 edit.setToolTip("Edit this scheduled change")
                 edit.clicked.connect(
                     lambda _=False, av=a: (self._edit_scheduled_change(av),
                                            repopulate()))
                 dele = QPushButton("✕")
                 dele.setObjectName("btn_icon_delete")
-                dele.setFixedWidth(28)
+                dele.setFixedWidth(px(28))
                 dele.setToolTip("Delete this scheduled change")
                 dele.clicked.connect(
                     lambda _=False, av=a: (self._delete_scheduled_change(av),
@@ -4502,7 +4503,7 @@ class MemberTabsWidget(QWidget):
         hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(34)
+        table.verticalHeader().setDefaultSectionSize(px(34))
 
         for r, a in enumerate(self._one_off):
             table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
@@ -4553,7 +4554,7 @@ class MemberTabsWidget(QWidget):
         date_edit = DateLineEdit()
         editor = TimeRangeEditor()
         notes_edit = QPlainTextEdit()
-        notes_edit.setFixedHeight(60)
+        notes_edit.setFixedHeight(px(60))
 
         if existing:
             date_edit.set_pydate(existing.get("date") or _date.today())
@@ -4682,7 +4683,7 @@ class MemberTabsWidget(QWidget):
         hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(34)
+        table.verticalHeader().setDefaultSectionSize(px(34))
 
         for r, a in enumerate(self._absences):
             table.setItem(r, 0, QTableWidgetItem(str(a["id"])))
@@ -4732,7 +4733,7 @@ class MemberTabsWidget(QWidget):
         start = DateLineEdit()
         end = DateLineEdit()
         notes_edit = QPlainTextEdit()
-        notes_edit.setFixedHeight(60)
+        notes_edit.setFixedHeight(px(60))
         if existing:
             idx = leave_combo.findText(existing.get("leave_type") or "")
             if idx >= 0:

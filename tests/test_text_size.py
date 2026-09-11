@@ -340,7 +340,7 @@ def test_run_rebuilds_window_once_when_requested(monkeypatch, tmp_path):
             return 0
 
     applied = []
-    sizes = iter(["xlarge", "xlarge"])
+    sizes = iter(["normal", "xlarge"])
     monkeypatch.setattr(mm, "MainWindow", StubWindow)
     monkeypatch.setattr(mm, "apply_theme",
                         lambda app, theme, text_size="normal": applied.append((theme, text_size)))
@@ -359,4 +359,89 @@ def test_run_rebuilds_window_once_when_requested(monkeypatch, tmp_path):
     assert created[0].password == "" and created[1].password == "hunter2"
     # The password must be restored before the member is reopened.
     assert created[1].order == ["password", "show", "jump"]
-    assert applied == [("light", "xlarge"), ("light", "xlarge")]
+    assert applied == [("light", "normal"), ("light", "xlarge")]
+
+
+def test_run_exits_immediately_and_propagates_the_exit_code(monkeypatch, tmp_path):
+    import member_manager as mm
+
+    created = []
+
+    class StubWindow:
+        reopen_requested = False
+        reopen_member_id = None
+        reopen_alt_id_password = ""
+
+        def __init__(self, settings, path):
+            self.jumped = None
+            created.append(self)
+
+        def show(self):
+            pass
+
+        def set_alt_id_password(self, pw):
+            pass
+
+        def jump_to_member(self, cid):
+            self.jumped = cid
+
+    class StubApp:
+        def __init__(self):
+            self.execs = 0
+
+        def exec(self):
+            self.execs += 1
+            return 3
+
+    monkeypatch.setattr(mm, "MainWindow", StubWindow)
+    monkeypatch.setattr(mm, "apply_theme", lambda *a, **k: None)
+    monkeypatch.setattr(mm, "load_settings",
+                        lambda path: {"theme": "dark", "events_db_path": "x"})
+    monkeypatch.setattr(mm, "SETTINGS_PATH", str(tmp_path / "s.json"))
+    app = StubApp()
+    assert mm.run(app) == 3
+    assert app.execs == 1 and len(created) == 1 and created[0].jumped is None
+
+
+# ── no literal font sizes left in widget code ──────────────────────────────
+
+# Files converted so far; later tasks extend this list until it covers every
+# widget module. theme.py (the QSS) and profile_print.py (printouts,
+# deliberately unscaled) are excluded by design.
+_CONVERTED = [
+    "gui/member_tabs.py",
+    "gui/main_window.py",
+    "gui/info_layout_editor.py",
+]
+
+_LITERAL_FONT_SIZE = re.compile(r"font-size:\s*\d+px")
+_LITERAL_ROW_HEIGHT = re.compile(r"setDefaultSectionSize\(\s*\d+\s*\)")
+
+
+@pytest.mark.parametrize("rel", _CONVERTED)
+def test_no_literal_font_sizes_or_row_heights(rel):
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, rel), encoding="utf-8").read()
+    assert not _LITERAL_FONT_SIZE.findall(src), rel
+    assert not _LITERAL_ROW_HEIGHT.findall(src), rel
+
+
+def test_member_table_row_height_follows_scale(qapp):
+    """Same bare-widget setup as tests/test_emergency_table.py::_info_tab_with:
+    _make_info_tab builds the emergency-contacts table without a database."""
+    from PyQt6.QtWidgets import QLabel
+    from gui import theme
+    import gui.member_tabs as mt
+    theme.set_text_size("large")
+    w = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
+    w._member = {"first_name": "A", "last_name": "B"}
+    w._center_id = 1
+    w._db_path = ""
+    w._api_key = ""
+    w._enrollments = []
+    w._authorizations = []
+    w._emergency_contacts = [{"id": 1, "full_name": "Andy Lau",
+                              "phone": "(917) 628-0459", "relationship": "Son"}]
+    w._emergency_badge = QLabel()
+    w._test_outer = w._make_info_tab()   # keep a ref so children aren't GC'd
+    assert w._emergency_table.verticalHeader().defaultSectionSize() == theme.px(34) == 65

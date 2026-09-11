@@ -63,7 +63,9 @@ def run(app) -> int:
     Settings are re-read on every pass so the rebuilt window and the freshly
     applied theme see the size the user just saved. The session-only alt-id
     password is carried in memory (it is never on disk) and handed to the
-    new window before the member is reopened."""
+    new window before the member is reopened. ensure_events_path is re-run
+    each pass but only writes on the first (the path is non-empty
+    afterwards)."""
     reopen_id = None
     reopen_password = ""
     while True:
@@ -78,10 +80,14 @@ def run(app) -> int:
         if reopen_id is not None:
             window.jump_to_member(reopen_id)
         code = app.exec()
-        if not getattr(window, "reopen_requested", False):
+        requested = window.reopen_requested
+        reopen_id = window.reopen_member_id if requested else None
+        reopen_password = window.reopen_alt_id_password if requested else ""
+        # Release the closed window before apply_theme re-polishes
+        # app.allWidgets() on the next pass, so it doesn't walk a dead tree.
+        window = None
+        if not requested:
             return code
-        reopen_id = window.reopen_member_id
-        reopen_password = window.reopen_alt_id_password
 
 
 def main():
