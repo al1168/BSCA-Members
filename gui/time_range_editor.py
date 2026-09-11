@@ -69,7 +69,6 @@ class RangeSlider(QWidget):
         self._start = MIN_MINUTES
         self._end = MAX_MINUTES
         self._drag = None  # 'start' | 'end' | None
-        self.setMinimumHeight(px(60))
         # Painted geometry scales with the text size (class constants are the
         # Normal-scale values; px() must run at construction, not import).
         self._margin = px(self._MARGIN)      # keeps scaled handles unclipped at the ends
@@ -135,8 +134,8 @@ class RangeSlider(QWidget):
         lw = fm.horizontalAdvance("12p") + px(6)
         for hour in range(8, 17):
             mx = self._x_for(hour * 60)
-            p.drawLine(int(mx), self._track_y + self._track_h + 2,
-                       int(mx), self._track_y + self._track_h + 6)
+            p.drawLine(int(mx), self._track_y + self._track_h + px(2),
+                       int(mx), self._track_y + self._track_h + px(6))
             label = f"{hour}a" if hour < 12 else ("12p" if hour == 12 else f"{hour - 12}p")
             p.drawText(QRectF(mx - lw / 2, self._track_y + self._track_h + px(7), lw, fm.height()),
                        Qt.AlignmentFlag.AlignHCenter, label)
