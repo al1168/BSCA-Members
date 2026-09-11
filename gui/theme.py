@@ -82,6 +82,43 @@ PLAN_COLORS = {
 }
 
 
+# App-wide text size. Every on-screen font size in build_qss and every inline
+# size / text-holding dimension in the widget files is multiplied by the
+# current factor (base ÷ 13). Widgets read it at construction; a change
+# rebuilds the main window (see MainWindow._open_settings).
+BASE_PX = 13
+TEXT_SIZES = {"normal": BASE_PX, "large": 25, "xlarge": 30}
+_current_scale = 1.0
+
+
+def text_scale_for(name: str) -> float:
+    """Scale factor for a text-size name; unknown names mean Normal (1.0)."""
+    return TEXT_SIZES.get(name, BASE_PX) / BASE_PX
+
+
+def set_text_size(name: str) -> float:
+    """Make `name` the active text size and return its factor."""
+    global _current_scale
+    _current_scale = text_scale_for(name)
+    return _current_scale
+
+
+def current_text_scale() -> float:
+    return _current_scale
+
+
+def _scaled(n: int | float, scale: float) -> int:
+    """`n` pixels at Normal size → pixels at `scale`, rounded to the nearest
+    whole pixel. Dimensions are always positive here (fonts, widths, heights)."""
+    return int(n * scale + 0.5)
+
+
+def px(n: int | float) -> int:
+    """`n` logical pixels at Normal size, scaled to the active text size and
+    rounded to the nearest whole pixel."""
+    return _scaled(n, _current_scale)
+
+
 def _readable_text(hex_color: str) -> str:
     """Dark text on light badge colors, white on dark ones (perceptual
     luminance), so e.g. yellow/orange badges stay legible."""
@@ -898,42 +935,6 @@ QHeaderView::section {{
 # badges, count labels) can color themselves without threading the settings
 # dict everywhere.
 _current_name = "dark"
-
-# App-wide text size. Every on-screen font size in build_qss and every inline
-# size / text-holding dimension in the widget files is multiplied by the
-# current factor (base ÷ 13). Widgets read it at construction; a change
-# rebuilds the main window (see MainWindow._open_settings).
-BASE_PX = 13
-TEXT_SIZES = {"normal": BASE_PX, "large": 25, "xlarge": 30}
-_current_scale = 1.0
-
-
-def text_scale_for(name: str) -> float:
-    """Scale factor for a text-size name; unknown names mean Normal (1.0)."""
-    return TEXT_SIZES.get(name, BASE_PX) / BASE_PX
-
-
-def set_text_size(name: str) -> float:
-    """Make `name` the active text size and return its factor."""
-    global _current_scale
-    _current_scale = text_scale_for(name)
-    return _current_scale
-
-
-def current_text_scale() -> float:
-    return _current_scale
-
-
-def _scaled(n: int | float, scale: float) -> int:
-    """`n` pixels at Normal size → pixels at `scale`, rounded to the nearest
-    whole pixel. Dimensions are always positive here (fonts, widths, heights)."""
-    return int(n * scale + 0.5)
-
-
-def px(n: int | float) -> int:
-    """`n` logical pixels at Normal size, scaled to the active text size and
-    rounded to the nearest whole pixel."""
-    return _scaled(n, _current_scale)
 
 
 def current_theme_name() -> str:

@@ -65,22 +65,35 @@ def test_qss_default_scale_is_unchanged_and_has_no_literal_sizes_left():
         assert "font-size: 13px;" in qss           # base rule intact at Normal
         assert 'QLineEdit#info_field[fsize="xlarge"] { font-size: 20px; }' in qss
         assert 'QLabel#field_label[lsize="large"] { font-size: 13px; }' in qss
+    # The generator's source carries no literal font-size — every rule goes
+    # through p()/_scaled, so a hand-written `font-size: 12px` cannot sneak in.
+    import inspect
+    import gui.theme
+    assert not re.search(r"font-size:\s*\d", inspect.getsource(gui.theme))
 
 
 def test_qss_scales_every_font_size():
-    from gui.theme import build_qss, DARK, text_scale_for
-    normal = build_qss(DARK)
-    large = build_qss(DARK, text_scale_for("large"))
-    xlarge = build_qss(DARK, text_scale_for("xlarge"))
-    # Same number of font-size rules in each; none left at Normal pixels.
-    sizes = lambda q: re.findall(r"font-size: (\d+)px", q)
-    assert len(sizes(normal)) == len(sizes(large)) == len(sizes(xlarge)) >= 48
-    assert "font-size: 25px;" in large and "font-size: 23px;" in large
-    assert "font-size: 30px;" in xlarge and "font-size: 28px;" in xlarge
-    assert 'QLineEdit#info_field[fsize="xlarge"] { font-size: 46px; }' in xlarge
-    assert 'QLabel#field_label[lsize="large"] { font-size: 30px; }' in xlarge
-    # Paddings and radii are not scaled.
-    assert "padding: 7px 16px;" in xlarge and "border-radius: 7px;" in xlarge
+    from gui.theme import build_qss, DARK, LIGHT, text_scale_for, _scaled
+
+    def sizes(qss):
+        return [int(s) for s in re.findall(r"font-size: (\d+)px", qss)]
+
+    for tokens in (DARK, LIGHT):
+        normal = build_qss(tokens)
+        large = build_qss(tokens, text_scale_for("large"))
+        xlarge = build_qss(tokens, text_scale_for("xlarge"))
+        assert len(sizes(normal)) >= 48
+        # Every rule, in order, is exactly the Normal value through _scaled —
+        # a single hand-written literal among the rules fails this.
+        assert sizes(large) == [_scaled(n, 25 / 13) for n in sizes(normal)]
+        assert sizes(xlarge) == [_scaled(n, 30 / 13) for n in sizes(normal)]
+        # Readability anchors.
+        assert "font-size: 25px;" in large and "font-size: 23px;" in large
+        assert "font-size: 30px;" in xlarge and "font-size: 28px;" in xlarge
+        assert 'QLineEdit#info_field[fsize="xlarge"] { font-size: 46px; }' in xlarge
+        assert 'QLabel#field_label[lsize="large"] { font-size: 30px; }' in xlarge
+        # Paddings and radii are not scaled.
+        assert "padding: 7px 16px;" in xlarge and "border-radius: 7px;" in xlarge
 
 
 def test_rendered_label_reports_scaled_pixel_size(qapp):
