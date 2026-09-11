@@ -10,7 +10,7 @@ import pytest
 TEST_DB = os.path.abspath(
     os.path.join(
         os.path.dirname(__file__),
-        "..", "..", "BSCA", "scripts", "test_dbs", "populate_real_members.accdb",
+        "test_dbs", "DBM_test_cathay.accdb",
     )
 )
 

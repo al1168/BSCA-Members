@@ -83,8 +83,7 @@ def test_statements_shape():
 
 # -- Access round-trip (skipped when the shared test DB is absent) --------
 _TEST_DB = os.path.abspath(os.path.join(
-    os.path.dirname(__file__), "..", "..", "BSCA", "scripts", "test_dbs",
-    "populate_real_members.accdb"))
+    os.path.dirname(__file__), "test_dbs", "DBM_test_cathay.accdb"))
 
 needs_db = pytest.mark.skipif(not os.path.exists(_TEST_DB),
                               reason="shared test DB not present")

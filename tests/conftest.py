@@ -17,11 +17,11 @@ def _normal_text_scale():
     theme.set_text_size("normal")
 
 
+# The shared Access fixture lives inside the repo (gitignored via *.accdb):
+# a production-shaped copy with ~1,300 members. Integration tests self-skip
+# when it is absent.
 _TEST_DB = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..", "..", "BSCA", "scripts", "test_dbs", "populate_real_members.accdb",
-    )
+    os.path.join(os.path.dirname(__file__), "test_dbs", "DBM_test_cathay.accdb")
 )
 
 _CREATE_SQL = {

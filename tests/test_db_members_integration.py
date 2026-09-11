@@ -1,9 +1,9 @@
-"""Integration tests against the real populate_real_members.accdb test fixture.
+"""Integration tests against the shared Access test fixture (DBM_test_cathay.accdb).
 
 These tests require the Microsoft Access ODBC driver and the test DB file.
 They are skipped automatically if the file is not found.
 
-Test DB: BSCA/scripts/test_dbs/populate_real_members.accdb
+Test DB: tests/test_dbs/DBM_test_cathay.accdb (gitignored)
   - Contains the real Contacts table (including rows with NULL Center IDs)
   - Supporting tables (Enrollment, Authorization, etc.) are empty
 """
@@ -13,7 +13,7 @@ import pytest
 TEST_DB = os.path.abspath(
     os.path.join(
         os.path.dirname(__file__),
-        "..", "..", "BSCA", "scripts", "test_dbs", "populate_real_members.accdb",
+        "test_dbs", "DBM_test_cathay.accdb",
     )
 )
 
