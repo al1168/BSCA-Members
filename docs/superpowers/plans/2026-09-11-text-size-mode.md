@@ -100,6 +100,8 @@ git commit -m "feat(settings): text_size default (normal)"
 
 ### Task 2: Scale model in `gui/theme.py`
 
+> **Post-review adjustments (applied in a follow-up commit, supersede the text below where they differ):** `apply_theme(app, theme_name, text_size=None)` keeps the current scale when `text_size` is omitted; `px` and `build_qss`'s `p` both call a private `_scaled(n, scale)`; `TEXT_SIZES["normal"]` is `BASE_PX`; the scale is pinned to Normal before and after every test by an autouse fixture in `tests/conftest.py`, so no test needs a `normal_scale` fixture.
+
 **Files:**
 - Modify: `gui/theme.py` (state block near line 890 and `apply_theme` at the end)
 - Create: `tests/test_text_size.py`
@@ -336,8 +338,9 @@ Then define `p` at the top of `build_qss`:
 ```python
 def build_qss(t: dict, scale: float = 1.0) -> str:
     def p(n: int) -> int:
-        """Font pixels at Normal size → pixels at `scale` (nearest whole px)."""
-        return int(n * scale + 0.5)
+        """Font pixels at Normal size → pixels at `scale`; shares the rounding
+        rule with px() so QSS and inline sizes can never drift apart."""
+        return _scaled(n, scale)
 
     plan_rules = "\n".join(
         f'QLabel#plan_badge[plan="{code}"] {{ background-color: {color}; '
@@ -423,15 +426,12 @@ def test_preview_uses_scaled_pixels(qapp):
     dlg = _dlg(qapp)
     dlg._select(("field", "dob"))
     dlg._set_prop("size", "xxxlarge")
-    theme.set_text_size("xlarge")
-    try:
-        dlg._rebuild_preview()
-        from PyQt6.QtWidgets import QLabel
-        texts = [w.text() for w in dlg._preview_scroll.widget().findChildren(QLabel)]
-        assert any("font-size:69px" in t for t in texts)      # value 30 × 30/13
-        assert any("font-size:25px" in t for t in texts)      # label 11 × 30/13
-    finally:
-        theme.set_text_size("normal")
+    theme.set_text_size("xlarge")          # conftest resets to Normal afterwards
+    dlg._rebuild_preview()
+    from PyQt6.QtWidgets import QLabel
+    texts = [w.text() for w in dlg._preview_scroll.widget().findChildren(QLabel)]
+    assert any("font-size:69px" in t for t in texts)      # value 30 × 30/13
+    assert any("font-size:25px" in t for t in texts)      # label 11 × 30/13
 ```
 
 In `tests/test_info_tab_render.py::test_qss_pixel_values_match_editor_maps` widen the loops:
@@ -637,7 +637,7 @@ def _main_window(tmp_path, **settings):
                       str(tmp_path / "settings.json"))
 
 
-def test_sidebar_and_startup_size_follow_text_scale(qapp, tmp_path, normal_scale):
+def test_sidebar_and_startup_size_follow_text_scale(qapp, tmp_path):
     from gui import theme
     theme.set_text_size("xlarge")
     w = _main_window(tmp_path, text_size="xlarge")
@@ -986,7 +986,7 @@ def test_no_literal_font_sizes_or_row_heights(rel):
     assert not _LITERAL_ROW_HEIGHT.findall(src), rel
 
 
-def test_member_table_row_height_follows_scale(qapp, normal_scale):
+def test_member_table_row_height_follows_scale(qapp):
     """Same bare-widget setup as tests/test_emergency_table.py::_info_tab_with:
     _make_info_tab builds the emergency-contacts table without a database."""
     from PyQt6.QtWidgets import QLabel
@@ -1138,7 +1138,7 @@ _CONVERTED = [
 Also add a rendered check for the two point-size fonts:
 
 ```python
-def test_point_size_fonts_follow_scale(qapp, normal_scale):
+def test_point_size_fonts_follow_scale(qapp):
     from gui import theme
     theme.set_text_size("xlarge")
     from gui.events_view import EventsTableWidget
@@ -1291,7 +1291,7 @@ Append to `_CONVERTED` in `tests/test_text_size.py`:
 and add:
 
 ```python
-def test_wizard_dots_scale_and_stay_round(qapp, normal_scale):
+def test_wizard_dots_scale_and_stay_round(qapp):
     from gui import theme
     theme.set_text_size("xlarge")
     from gui.wizard.wizard import AddMemberWizard

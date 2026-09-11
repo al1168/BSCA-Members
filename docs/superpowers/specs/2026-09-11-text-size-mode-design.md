@@ -78,9 +78,14 @@ fields can be pushed larger still.
   - `px(n: int | float) -> int` = `int(n * current_text_scale() + 0.5)`
     (nearest whole pixel). This is the single helper widget code uses for
     both inline font sizes and text-holding dimensions.
-  - `apply_theme(app, theme_name, text_size="normal")` sets both module
-    states, then `app.setStyleSheet(build_qss(tokens, scale))` and
-    re-polishes as today.
+  - `apply_theme(app, theme_name, text_size=None)`: when `text_size` is
+    given it becomes the active size; when omitted the current size is kept
+    (so a theme-only change never resets the scale). Then
+    `app.setStyleSheet(build_qss(tokens, scale))` and re-polish as today.
+  - `px` and `build_qss` share one private rounding helper
+    (`_scaled(n, scale)`) so QSS and inline sizes cannot drift apart.
+  - Tests: an autouse fixture in `tests/conftest.py` pins the scale to
+    Normal before and after every test.
 
 ### 2. Theme stylesheet
 
