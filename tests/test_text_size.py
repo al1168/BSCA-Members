@@ -427,6 +427,11 @@ _CONVERTED = [
     "gui/expiring_report.py",
     "gui/address_autocomplete.py",
     "gui/time_range_editor.py",
+    "gui/wizard/wizard.py",
+    "gui/wizard/step_auths.py",
+    "gui/wizard/step_contact.py",
+    "gui/wizard/step_enrollment.py",
+    "gui/wizard/step_review.py",
 ]
 
 _LITERAL_FONT_SIZE = re.compile(r"font-size:\s*\d+px")
@@ -484,3 +489,13 @@ def test_popup_panels_and_slider_follow_scale(qapp):
     assert s.minimumHeight() >= theme.px(60) == 115
     d = ConfirmChangesDialog("Chan, Mary", [("Notes", "a", "b")])
     assert d.minimumWidth() == theme.px(760) == 1462
+
+
+def test_wizard_dots_scale_and_stay_round(qapp):
+    from gui import theme
+    theme.set_text_size("xlarge")
+    from gui.wizard.wizard import AddMemberWizard
+    wiz = AddMemberWizard("", "")
+    dot = wiz._dots[0]
+    assert dot.width() == dot.height() == theme.px(28) == 65
+    assert f"border-radius:{theme.px(14)}px" in dot.styleSheet()

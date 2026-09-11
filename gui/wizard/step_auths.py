@@ -8,6 +8,7 @@ from PyQt6.QtCore import QRegularExpression
 from PyQt6.QtGui import QRegularExpressionValidator
 from gui.address_autocomplete import DateLineEdit, set_widget_error
 from db.members import format_time_live, normalize_time_12h
+from gui.theme import px
 
 
 class TimeLineEdit(QLineEdit):
@@ -19,7 +20,7 @@ class TimeLineEdit(QLineEdit):
         super().__init__(default, parent)
         self.setValidator(
             QRegularExpressionValidator(QRegularExpression(r"[0-9:]*"), self))
-        self.setFixedWidth(64)
+        self.setFixedWidth(px(64))          # the time-entry line edit class near the top
         self.textEdited.connect(self._on_edited)
 
     def _on_edited(self):
@@ -69,7 +70,7 @@ class StepAuths(QWidget):
         auth_layout.setSpacing(10)
 
         title_auth = QLabel("Authorization")
-        title_auth.setStyleSheet("font-weight:600; font-size:11px;")
+        title_auth.setStyleSheet(f"font-weight:600; font-size:{px(11)}px;")
         auth_layout.addRow(title_auth)
 
         # Dates start empty: an authorization here is an explicit act (the
@@ -115,7 +116,7 @@ class StepAuths(QWidget):
         # auth; left blank, no transport auth is created. Days/dates can be
         # adjusted later in the member's Transportation tab.
         title_transport = QLabel("Transportation")
-        title_transport.setStyleSheet("font-weight:600; font-size:11px;")
+        title_transport.setStyleSheet(f"font-weight:600; font-size:{px(11)}px;")
         auth_layout.addRow(title_transport)
 
         self.transport_number = QLineEdit()
@@ -137,7 +138,7 @@ class StepAuths(QWidget):
         avail_layout.setContentsMargins(14, 14, 14, 14)
 
         title_avail = QLabel("Time Slot Availability")
-        title_avail.setStyleSheet("font-weight:600; font-size:11px;")
+        title_avail.setStyleSheet(f"font-weight:600; font-size:{px(11)}px;")
         avail_layout.addWidget(title_avail)
 
         self._avail_container = QVBoxLayout()
@@ -145,7 +146,7 @@ class StepAuths(QWidget):
 
         btn_add_day = QPushButton("+ Add day")
         btn_add_day.setFlat(True)
-        btn_add_day.setStyleSheet("color: #5b7cf4; font-size:10px; text-align:left;")
+        btn_add_day.setStyleSheet(f"color: #5b7cf4; font-size:{px(10)}px; text-align:left;")
         btn_add_day.clicked.connect(self._add_avail_row)
         avail_layout.addWidget(btn_add_day)
         avail_layout.addStretch()
@@ -165,7 +166,7 @@ class StepAuths(QWidget):
             day_combo.addItem(name, num)
         # Wide enough for the day name plus the dropdown arrow + input padding
         # (60px clipped the last letter, e.g. "Mon" -> "Mor").
-        day_combo.setMinimumWidth(90)
+        day_combo.setMinimumWidth(px(90))
 
         # Free-text time + a separate AM/PM dropdown (defaults 8:00 AM–4:00 PM).
         t_start = TimeLineEdit("8:00")

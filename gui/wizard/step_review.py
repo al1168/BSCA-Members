@@ -1,5 +1,6 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea
 from PyQt6.QtCore import Qt
+from gui.theme import px
 
 
 class StepReview(QWidget):
@@ -10,7 +11,7 @@ class StepReview(QWidget):
     def _build(self):
         layout = QVBoxLayout(self)
         title = QLabel("Review your entries before saving.")
-        title.setStyleSheet("font-size:12px; color:gray;")
+        title.setStyleSheet(f"font-size:{px(12)}px; color:gray;")
         layout.addWidget(title)
         self._body = QLabel("")
         self._body.setWordWrap(True)

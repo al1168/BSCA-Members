@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (
     QLabel, QWidget, QMessageBox,
 )
 from PyQt6.QtCore import Qt
+from gui.theme import px
 from gui.wizard.step_contact import StepContact
 from gui.wizard.step_enrollment import StepEnrollment
 from gui.wizard.step_auths import StepAuths
@@ -84,7 +85,7 @@ class AddMemberWizard(QDialog):
         self._dots: list[QLabel] = []
         for i in range(4):
             dot = QLabel(str(i + 1))
-            dot.setFixedSize(28, 28)
+            dot.setFixedSize(px(28), px(28))
             dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
             dot.setStyleSheet(self._dot_style(i, 0))
             self._dots.append(dot)
@@ -92,17 +93,17 @@ class AddMemberWizard(QDialog):
             if i < 3:
                 line = QLabel()
                 line.setFixedHeight(1)
-                line.setFixedWidth(64)
+                line.setFixedWidth(px(64))       # the connector line; its setFixedHeight(1) stays
                 line.setStyleSheet("background: #282c38;")
                 dot_row.addWidget(line)
 
         lbl_row = QHBoxLayout()
         for label in STEP_LABELS:
             lbl = QLabel(label)
-            lbl.setFixedWidth(84)
+            lbl.setFixedWidth(px(84))
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setWordWrap(True)
-            lbl.setStyleSheet("font-size:10px; color:#31354a;")
+            lbl.setStyleSheet(f"font-size:{px(10)}px; color:#31354a;")
             lbl_row.addWidget(lbl)
 
         layout.addLayout(dot_row)
@@ -110,14 +111,15 @@ class AddMemberWizard(QDialog):
         return widget
 
     def _dot_style(self, dot_index: int, current: int) -> str:
+        r, fs = px(14), px(11)     # radius = half the dot so it stays a circle
         if dot_index < current:
-            return ("background:#3d9e6e; color:white; border-radius:14px;"
-                    "font-weight:700; font-size:11px;")
+            return (f"background:#3d9e6e; color:white; border-radius:{r}px;"
+                    f"font-weight:700; font-size:{fs}px;")
         if dot_index == current:
-            return ("background:#5b7cf4; color:white; border-radius:14px;"
-                    "font-weight:700; font-size:11px; border:3px solid #1c2040;")
-        return ("background:#1e2128; color:#31354a; border-radius:14px;"
-                "border:1px solid #282c38; font-size:11px;")
+            return (f"background:#5b7cf4; color:white; border-radius:{r}px;"
+                    f"font-weight:700; font-size:{fs}px; border:3px solid #1c2040;")
+        return (f"background:#1e2128; color:#31354a; border-radius:{r}px;"
+                f"border:1px solid #282c38; font-size:{fs}px;")
 
     def _update_progress(self):
         for i, dot in enumerate(self._dots):

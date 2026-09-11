@@ -10,6 +10,7 @@ from db.members import HEALTH_PLANS, format_phone
 from gui.address_autocomplete import (
     AddressAutocomplete, PhoneLineEdit, set_widget_error,
 )
+from gui.theme import px
 
 # DOB is a free-text field (so staff can type it) with a gray placeholder, not a
 # date-picker dropdown. Input is numbers only; the value is dash-separated
@@ -76,7 +77,7 @@ class StepContact(QWidget):
         # only a fallback so the dropdown is never empty.
         self._plans = list(plans) if plans else list(HEALTH_PLANS)
         self._error_label = QLabel("")
-        self._error_label.setStyleSheet("color: #d05555; font-size: 11px;")
+        self._error_label.setStyleSheet(f"color: #d05555; font-size: {px(11)}px;")
         self._build()
 
     def _build(self):
@@ -112,7 +113,7 @@ class StepContact(QWidget):
         self.address.setPlaceholderText("Street, City, State ZIP")
 
         phone_hint = QLabel("Enter at least one phone number (just digits is fine).")
-        phone_hint.setStyleSheet("color: #7a7f93; font-size: 10px;")
+        phone_hint.setStyleSheet(f"color: #7a7f93; font-size: {px(10)}px;")
 
         # Clear a field's error outline as soon as the user edits it. (DOB and
         # the phone fields self-clear on edit.)

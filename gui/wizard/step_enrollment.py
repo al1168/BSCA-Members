@@ -2,6 +2,7 @@ from datetime import date
 
 from PyQt6.QtWidgets import QWidget, QFormLayout, QLabel, QVBoxLayout
 from gui.address_autocomplete import DateLineEdit
+from gui.theme import px
 
 
 class StepEnrollment(QWidget):
@@ -24,7 +25,7 @@ class StepEnrollment(QWidget):
             "You can set an end date later from the Enrollments tab."
         )
         note.setWordWrap(True)
-        note.setStyleSheet("color: gray; font-size: 11px;")
+        note.setStyleSheet(f"color: gray; font-size: {px(11)}px;")
 
         layout.addLayout(form)
         layout.addWidget(note)
