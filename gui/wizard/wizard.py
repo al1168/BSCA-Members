@@ -159,9 +159,18 @@ class AddMemberWizard(QDialog):
         for i, dot in enumerate(self._dots):
             dot.setStyleSheet(self._dot_style(i, self._current))
 
+    def _reveal_focused_field(self) -> None:
+        """After a failed validation the step focused its first invalid
+        field; setFocus() alone does not scroll a QScrollArea to it (only
+        Tab-driven focus does), so bring the outlined field into view."""
+        area = self._stack.currentWidget()
+        if isinstance(area, QScrollArea) and area.focusWidget() is not None:
+            area.ensureWidgetVisible(area.focusWidget())
+
     def _go_next(self):
         if self._current == 0:
             if not self._step_contact.validate(self._db_path):
+                self._reveal_focused_field()
                 return
         if self._current == 1:
             if not self._step_enrollment.validate():
@@ -176,6 +185,7 @@ class AddMemberWizard(QDialog):
                     "End dates (MM/DD/YYYY), at least one day, a plan type, "
                     "and an auth number — or clear all of it to skip this "
                     "step.")
+                self._reveal_focused_field()
                 return
             data = self._collect_all()
             self._step_review.populate(data)

@@ -13,7 +13,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QDialog, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QGridLayout,
     QScrollArea, QPushButton, QFrame, QComboBox, QCheckBox, QLineEdit,
-    QMessageBox,
+    QMessageBox, QApplication,
 )
 
 from gui.info_layout import (
@@ -56,7 +56,6 @@ class InfoLayoutEditor(QDialog):
         self.setWindowTitle("Customize Info Tab")
         # Size with the app text scale, but never larger than the work area
         # (at Extra Large the unclamped size would exceed a 1080p screen).
-        from PyQt6.QtWidgets import QApplication
         w, h = px(980), px(640)
         screen = QApplication.primaryScreen()
         if screen is not None:
