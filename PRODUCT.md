@@ -26,6 +26,7 @@ product
 - Per-member tabs: Info, Enrollments, Authorizations, Availability, Absences, Events
 - Global events log (audit trail, 30-day TTL, stored in local SQLite)
 - Company Calendar dialog (holidays + weekly operating hours)
+- Settings → Text size (Normal / Large / Extra Large): app-wide on-screen font scaling; printouts unaffected
 
 ## Tech Stack
 PyQt6 desktop app on Windows. Styled with Qt stylesheets (QSS). Dark theme — staff work in an indoor office environment with controlled lighting.
