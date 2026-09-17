@@ -633,7 +633,8 @@ class _ViewEditLineEdit(QLineEdit):
     """
 
     def __init__(self, value: str = "", editable: bool = True, parent=None,
-                 *, formatter=None, validator=None, live_formatter=None):
+                 *, formatter=None, validator=None, live_formatter=None,
+                 fit_sample: str | None = None, invalid_hint: str | None = None):
         # formatter(text)->text reformats on commit; live_formatter(text)->text
         # reformats on every keystroke (e.g. insert dashes / uppercase as you
         # type); validator(text)->bool flags an error outline when invalid (empty
@@ -641,6 +642,15 @@ class _ViewEditLineEdit(QLineEdit):
         self._formatter = formatter
         self._validator = validator
         self._live_formatter = live_formatter
+        # fit_sample: size the field to this text (plus the pencil and
+        # padding) instead of QLineEdit's default 17-character width, for
+        # fixed-length values whose neighbour should sit right beside them.
+        self._fit_sample = fit_sample
+        # invalid_hint: also judge the *loaded* value (not just edits): a
+        # non-empty value the validator rejects is outlined and carries this
+        # tooltip, on open and after every setText. Purely an indicator —
+        # whether it blocks saving is the save-time check's business.
+        self._invalid_hint = invalid_hint
         value = formatter(value) if (formatter and value) else (value or "")
         super().__init__(value, parent)
         self._editable = editable
@@ -676,6 +686,17 @@ class _ViewEditLineEdit(QLineEdit):
         if self._validator is not None:
             text = self.text().strip()
             set_widget_error(self, bool(text) and not self._validator(text))
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        if self._fit_sample:
+            # QLineEdit's hint is 17 'x' advances plus frame, padding and
+            # side actions; swap the text part for the sample (and a little
+            # breathing room) so everything else still scales with the font.
+            fm = self.fontMetrics()
+            hint.setWidth(hint.width() - fm.horizontalAdvance("x") * 17
+                          + fm.horizontalAdvance(self._fit_sample + "  "))
+        return hint
 
     def _repolish(self):
         self.style().unpolish(self)
@@ -749,6 +770,11 @@ class _ViewEditLineEdit(QLineEdit):
         # flat text. A value differing from the saved baseline gets a highlight.
         self.setProperty("empty", self._is_empty())
         self.setProperty("changed", self.text() != self._baseline)
+        if self._invalid_hint is not None and self._validator is not None:
+            text = self.text().strip()
+            bad = bool(text) and not self._validator(text)
+            self.setProperty("error", bad)
+            self.setToolTip(self._invalid_hint if bad else "")
         self._repolish()
         self._update_pencil()
 
@@ -1182,39 +1208,68 @@ class MemberTabsWidget(QWidget):
         dates = [e["start_date"] for e in enrollments if e.get("start_date")]
         return min(dates) if dates else None
 
-    def _print_active_auth(self) -> dict | None:
-        """The current active auth (auth_start <= today <= auth_end, same rule
-        as the Auths tab's status pill; latest start wins) as pre-formatted
-        strings for the printout, with the linked transport auth's number.
-        None when nothing is active — the printout notes the lapse."""
+    def _print_auth_choices(self) -> tuple[list[dict], int | None]:
+        """The auths a profile printout can show — active ones first (latest
+        start first, same rule as the Auths tab's status pill), then upcoming
+        ones soonest first; expired auths are left out. Each is a dict of
+        pre-formatted strings for the sheet (sadc, auth_start, auth_end,
+        auth_number, linked trans_auth numbers, status) plus a ``label`` for
+        the picker. Also returns the index to preselect: the active auth when
+        there is one, else the soonest upcoming. ``([], None)`` when the
+        member has neither — the printout notes the lapse."""
         from datetime import date as _date
+        from db.members import get_auth_edges
+        from db.export import format_auth_days_dotted
+
         today = _date.today()
-        active = [a for a in self._authorizations
-                  if auth_status(a, today) == "active"]
-        if not active:
-            return None
-        a = max(active, key=lambda x: _as_date(x.get("auth_start")) or _date.min)
+        by_status = {"active": [], "upcoming": []}
+        for a in self._authorizations:
+            status = auth_status(a, today)
+            if status in by_status:
+                by_status[status].append(a)
+        start_key = lambda x: _as_date(x.get("auth_start")) or _date.min
+        ordered = (sorted(by_status["active"], key=start_key, reverse=True)
+                   + sorted(by_status["upcoming"], key=start_key))
+        if not ordered:
+            return [], None
 
         def fmt(value):
             d = _as_date(value)
             return f"{d:%m/%d/%Y}" if d else ""
 
-        from db.members import get_auth_edges
-        linked = {e["transport_authorization_id"]
-                  for e in get_auth_edges(self._db_path)
-                  if e["authorization_id"] == a["id"]}
-        trans_numbers = ", ".join(
-            t.get("auth_number") or "" for t in self._transport_auths
-            if t["id"] in linked and (t.get("auth_number") or ""))
+        edges = get_auth_edges(self._db_path)
+        choices = []
+        for a in ordered:
+            linked = {e["transport_authorization_id"] for e in edges
+                      if e["authorization_id"] == a["id"]}
+            trans_numbers = ", ".join(
+                t.get("auth_number") or "" for t in self._transport_auths
+                if t["id"] in linked and (t.get("auth_number") or ""))
+            status = "Active" if auth_status(a, today) == "active" else "Upcoming"
+            start, end = fmt(a.get("auth_start")), fmt(a.get("auth_end"))
+            number = a.get("auth_number") or ""
+            label = f"{status} · {start} – {end}"
+            if number:
+                label += f" · {number}"
+            choices.append({
+                "sadc": format_auth_days_dotted(a.get("auth_days")),
+                "auth_start": start,
+                "auth_end": end,
+                "auth_number": number,
+                "trans_auth": trans_numbers,
+                "status": status,
+                "label": label,
+            })
+        return choices, 0
 
-        from db.export import format_auth_days_dotted
-        return {
-            "sadc": format_auth_days_dotted(a.get("auth_days")),
-            "auth_start": fmt(a.get("auth_start")),
-            "auth_end": fmt(a.get("auth_end")),
-            "auth_number": a.get("auth_number") or "",
-            "trans_auth": trans_numbers,
-        }
+    def _make_print_button(self) -> QPushButton:
+        """The header's "Print Profile" button (opens the print preview)."""
+        btn_print = QPushButton("🖨 Print Profile")
+        btn_print.setObjectName("btn_print")
+        btn_print.setToolTip("Print this member's profile")
+        btn_print.setMaximumHeight(px(26))
+        btn_print.clicked.connect(self._print_profile)
+        return btn_print
 
     def _print_profile(self):
         """Open a print preview (print or Save-as-PDF) of this member's profile."""
@@ -1222,10 +1277,11 @@ class MemberTabsWidget(QWidget):
         from db.members import get_member_photo
 
         photo = get_member_photo(self._center_id, self._db_path)
+        choices, default_index = self._print_auth_choices()
         open_profile_print_preview(
             self, self._member, self._emergency_contacts,
             self._enrollment_start(self._enrollments), photo_bytes=photo,
-            active_auth=self._print_active_auth(),
+            auth_choices=choices, default_auth_index=default_index,
         )
 
     # ── Bookmarks ──────────────────────────────────────────────────────────
@@ -1438,12 +1494,8 @@ class MemberTabsWidget(QWidget):
         self._sync_bookmark_button()
         top_row.addWidget(self._btn_bookmark,
                           alignment=Qt.AlignmentFlag.AlignVCenter)
-        btn_print = QPushButton("🖨 Print")
-        btn_print.setObjectName("btn_print")
-        btn_print.setToolTip("Print this member's profile")
-        btn_print.setMaximumHeight(px(26))
-        btn_print.clicked.connect(self._print_profile)
-        top_row.addWidget(btn_print, alignment=Qt.AlignmentFlag.AlignVCenter)
+        top_row.addWidget(self._make_print_button(),
+                          alignment=Qt.AlignmentFlag.AlignVCenter)
         right.addLayout(top_row)
 
         notes_row = QHBoxLayout()
@@ -1729,7 +1781,7 @@ class MemberTabsWidget(QWidget):
         self._info_chinese   = field("chinese_name")
         self._info_gender    = field("gender")
         self._info_dob       = _ViewEditLineEdit(
-            format_dob_display(m.get("dob", "") or ""))
+            format_dob_display(m.get("dob", "") or ""), fit_sample="00/00/0000")
         self._info_cid       = _ViewEditLineEdit(str(self._center_id),
                                                  editable=False)
         # Member ID is assigned at member creation and shown read-only here.
@@ -1753,7 +1805,9 @@ class MemberTabsWidget(QWidget):
         self._info_medicare = _ViewEditLineEdit(
             format_medicare(m.get("medicare", "") or ""),
             formatter=format_medicare, validator=is_valid_medicare,
-            live_formatter=format_medicare_live)
+            live_formatter=format_medicare_live,
+            invalid_hint="Not a valid Medicare number (MBI, e.g. 1EG4-TE5-MK73). "
+                         "It can stay as is; a new value must be a valid MBI.")
         self._info_ssn = _ViewEditLineEdit(
             format_ssn(m.get("ssn", "") or ""),
             formatter=format_ssn, validator=is_valid_ssn,
@@ -1800,8 +1854,12 @@ class MemberTabsWidget(QWidget):
         dob_row = QHBoxLayout(self._info_dob_row)
         dob_row.setContentsMargins(0, 0, 0, 0)
         dob_row.setSpacing(6)
-        dob_row.addWidget(self._info_dob, 1)
+        # The date keeps its natural width and the age sits right after it;
+        # any slack (a DOB spanning several columns) goes after the age, so
+        # the readout never drifts to the far end of the span.
+        dob_row.addWidget(self._info_dob)
         dob_row.addWidget(self._info_age)
+        dob_row.addStretch(1)
 
         widgets = {
             "first_name": self._info_first, "last_name": self._info_last,
@@ -2162,11 +2220,17 @@ class MemberTabsWidget(QWidget):
         self._populate_info_fields()
         self._set_dirty(False)
 
-    def _save_info(self):
-        from db.members import update_contact
+    def _id_validation_errors(self) -> list[str]:
+        """Invalid (non-empty) SSN / Medicaid / Medicare / Alt ID values that
+        block saving, as "Label (hint)" strings; each offending field is
+        outlined red — same idea as the Add Member phone validation.
 
-        # Block save on invalid (non-empty) SSN / Medicaid / Medicare, flagging
-        # the offending field(s) — same idea as the Add Member phone validation.
+        A Medicare value that is exactly what was loaded from the database is
+        never reported, even when it isn't a valid MBI: the database holds
+        legacy ids in other formats, and leaving one as-is must not block
+        saving the rest of the record. Anything typed into the field still has
+        to be a valid MBI."""
+        stored_medicare = format_medicare(self._member.get("medicare", "") or "")
         bad = []
         for w, valid_fn, label, hint in (
             (self._info_ssn, is_valid_ssn, "SSN", "xxx-xx-xxxx"),
@@ -2174,9 +2238,19 @@ class MemberTabsWidget(QWidget):
             (self._info_medicare, is_valid_medicare, "Medicare", "MBI format"),
             (self._info_alt_id, is_valid_alt_id, "Alt ID", "digits only"),
         ):
-            if w.text().strip() and not valid_fn(w.text().strip()):
-                set_widget_error(w, True)
-                bad.append(f"{label} ({hint})")
+            text = w.text().strip()
+            if not text or valid_fn(text):
+                continue
+            if w is self._info_medicare and text == stored_medicare:
+                continue
+            set_widget_error(w, True)
+            bad.append(f"{label} ({hint})")
+        return bad
+
+    def _save_info(self):
+        from db.members import update_contact
+
+        bad = self._id_validation_errors()
         if bad:
             QMessageBox.warning(self, "Validation",
                                 "Please fix these fields:\n  • " + "\n  • ".join(bad))
@@ -2842,7 +2916,7 @@ class MemberTabsWidget(QWidget):
             else:
                 table.setItem(r, ci["Health Plan"], QTableWidgetItem(""))
 
-            # Plan type (MAP/MLTC); blank for rows that predate the column.
+            # Plan type (MAP/MLTC/N/A); blank for rows that predate the column.
             table.setItem(r, ci["Plan Type"], QTableWidgetItem(a.get("plan_type") or ""))
 
             # Member ID (per-authorization); blank when unset.
@@ -3032,6 +3106,26 @@ class MemberTabsWidget(QWidget):
         # bell (expiring/expired counts) without reopening the member.
         self.members_changed.emit()
 
+    def _plan_choices(self, existing_plan: str = "") -> list[str]:
+        """Health plans for the auth dialogs: the distinct plans present in
+        the database (the same list the add-member wizard offers), falling
+        back to the static HEALTH_PLANS tuple when there is no database or
+        it cannot be read. The static tuple alone misses plans that only
+        exist as data (SWH, VNS, CL, ...). An existing auth's plan is kept in
+        the list so editing never silently reassigns it."""
+        import db.members as dbm
+        db_path = getattr(self, "_db_path", "") or ""
+        plans = list(dbm.HEALTH_PLANS)
+        if db_path:
+            try:
+                plans = dbm.get_health_plans(db_path)
+            except Exception as exc:          # unreachable share, bad path
+                import crash_log
+                crash_log.log_warning(f"get_health_plans failed: {exc!r}")
+        if existing_plan and existing_plan not in plans:
+            plans = sorted(plans + [existing_plan], key=str.upper)
+        return plans
+
     def _open_auth_dialog(self, existing: dict | None = None) -> dict | None:
         """Build the Add/Edit Authorization dialog. Returns a dict with
         auth_start, auth_end, days, health_plan, plan_type, member_id,
@@ -3042,7 +3136,7 @@ class MemberTabsWidget(QWidget):
             QHBoxLayout, QDialogButtonBox, QWidget, QLineEdit,
         )
         from PyQt6.QtCore import QDate
-        from db.members import HEALTH_PLANS, PLAN_TYPES
+        from db.members import PLAN_TYPES
 
         dlg = QDialog(self)
         dlg.setWindowTitle("Edit Authorization" if existing else "Add Authorization")
@@ -3071,17 +3165,18 @@ class MemberTabsWidget(QWidget):
             days_hl.addWidget(cb)
 
         plan_combo = QComboBox()
+        plans = self._plan_choices(existing.get("health_plan", "") if existing else "")
         if existing:
-            plan_combo.addItems(HEALTH_PLANS)
+            plan_combo.addItems(plans)
             idx = plan_combo.findText(existing.get("health_plan", ""))
             if idx >= 0:
                 plan_combo.setCurrentIndex(idx)
         else:
             # Creating: start on a blank entry so the plan is a choice, not
             # whatever happened to be first in the list.
-            plan_combo.addItems(("",) + HEALTH_PLANS)
+            plan_combo.addItems([""] + plans)
 
-        # Plan type (MAP/MLTC); the blank entry covers rows that predate the
+        # Plan type (MAP/MLTC/N/A); the blank entry covers rows that predate the
         # column so editing one doesn't force a value onto it.
         plan_type_combo = QComboBox()
         plan_type_combo.addItems(PLAN_TYPES)
@@ -3431,9 +3526,7 @@ class MemberTabsWidget(QWidget):
             QDialog, QFormLayout, QCheckBox, QComboBox,
             QHBoxLayout, QDialogButtonBox, QWidget, QLineEdit,
         )
-        from db.members import (
-            HEALTH_PLANS, current_authorization, latest_authorization,
-        )
+        from db.members import current_authorization, latest_authorization
         from datetime import date as _date
 
         dlg = QDialog(self)
@@ -3466,7 +3559,8 @@ class MemberTabsWidget(QWidget):
             days_hl.addWidget(cb)
 
         plan_combo = QComboBox()
-        plan_combo.addItems(HEALTH_PLANS)
+        plan_combo.addItems(self._plan_choices(
+            existing.get("health_plan", "") if existing else ""))
         if existing:
             idx = plan_combo.findText(existing.get("health_plan", ""))
             if idx >= 0:

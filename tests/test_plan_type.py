@@ -1,4 +1,4 @@
-"""Plan Type (MAP/MLTC) on authorizations: table column, hidden Created column,
+"""Plan Type (MAP/MLTC/N/A) on authorizations: table column, hidden Created column,
 dialog/wizard plumbing."""
 import os
 from datetime import date
@@ -48,7 +48,7 @@ def _build_auths_tab(monkeypatch, auths, show_row_ids=False):
 
 def test_plan_types_constant():
     from db.members import PLAN_TYPES
-    assert PLAN_TYPES == ("", "MAP", "MLTC")
+    assert PLAN_TYPES == ("", "MAP", "MLTC", "N/A")
 
 
 # ── the Authorizations table ───────────────────────────────────────────────
@@ -144,7 +144,7 @@ def test_review_shows_plan_type(qapp):
 # ── add/edit dialog ────────────────────────────────────────────────────────
 
 def test_auth_dialog_has_plan_type_combo(qapp, monkeypatch):
-    """The dialog offers a MAP/MLTC dropdown, pre-selected from the existing
+    """The dialog offers a MAP/MLTC/N-A dropdown, pre-selected from the existing
     auth, and its selection lands in the returned dict."""
     from PyQt6.QtWidgets import QDialog, QComboBox, QWidget
     import gui.member_tabs as mt
@@ -167,7 +167,7 @@ def test_auth_dialog_has_plan_type_combo(qapp, monkeypatch):
 
     plan_type_combos = [c for c in combos
                         if [c.itemText(i) for i in range(c.count())]
-                        == ["", "MAP", "MLTC"]]
+                        == ["", "MAP", "MLTC", "N/A"]]
     assert len(plan_type_combos) == 1
     assert plan_type_combos[0].currentText() == "MLTC"
     assert result["plan_type"] == "MLTC"

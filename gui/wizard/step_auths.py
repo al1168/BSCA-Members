@@ -94,7 +94,7 @@ class StepAuths(QWidget):
             days_grid.addWidget(cb, i // 4, i % 4)   # 4 per row -> Mon-Thu / Fri-Sun
         auth_layout.addRow("Days:", days_widget)
 
-        # Plan type (MAP/MLTC). The blank first entry is the untouched state
+        # Plan type (MAP/MLTC/N/A). The blank first entry is the untouched state
         # that keeps the whole step skippable; once the step is engaged,
         # validate() requires a real choice.
         from db.members import PLAN_TYPES

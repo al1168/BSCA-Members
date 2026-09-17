@@ -11,6 +11,10 @@ DEFAULT_SETTINGS = {
     "show_row_ids": False,
     # App-wide text size: "normal" (13px base) | "large" (25px) | "xlarge" (30px).
     "text_size": "normal",
+    # Member list (left sidebar) hidden so the profile gets the full width —
+    # the way to fit Large / Extra Large text on a small screen. Toggled from
+    # the toolbar or Ctrl+B; remembered across the text-size rebuild and runs.
+    "sidebar_collapsed": False,
 }
 
 

@@ -40,7 +40,7 @@ Center ID are skipped by the app.
 | Member ID | TEXT(255) *(inferred)* | Health-plan member number. Can be auto-synced from the current authorization. |
 | Health Plan | TEXT(255) *(inferred)* | One of `AE, BCBS, ES, HC, HF, HOF, VCM` for new rows (legacy values like "Aetna"/"Anthem" still render). Auto-synced from the current authorization. Required at startup. |
 | Medicaid | TEXT(255) *(inferred)* | Format `AAdddddA` (2 letters, 5 digits, 1 letter), uppercased. |
-| Medicare | TEXT(255) *(inferred)* | MBI format (11 chars, 4-3-4 with optional dashes), uppercased. |
+| Medicare | TEXT(255) *(inferred)* | MBI format (11 chars, 4-3-4 with optional dashes), uppercased, enforced on edit. Legacy rows hold ids in other formats; an untouched legacy value never blocks saving the record. |
 | SSN | TEXT(255) *(inferred)* | Stored formatted `xxx-xx-xxxx`. |
 | Language | TEXT(255) *(inferred)* | |
 | Case Manager | TEXT(255) *(inferred)* | |
@@ -81,7 +81,7 @@ Center ID are skipped by the app.
 | created_at | DATETIME | Set to now() on insert; NULL on legacy rows. Required at startup. |
 | Member ID | TEXT(255) | Plan member number on the auth (seeds/syncs Contacts.[Member ID]). Required at startup. |
 | auth_number | TEXT(255) *(inferred)* | Authorization number from the plan. Required at startup. |
-| Plan Type | TEXT(255) | `""`, `"MAP"`, or `"MLTC"` (blank kept so legacy rows aren't force-migrated). Required at startup. |
+| Plan Type | TEXT(255) | `""`, `"MAP"`, `"MLTC"`, or `"N/A"` (blank kept so legacy rows aren't force-migrated). Required at startup. |
 | Document | Attachment | Attached authorization document (PDF/image), via DAO. |
 
 ### TransportAuthorization — transportation authorizations

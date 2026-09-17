@@ -68,6 +68,8 @@ else:
     self.resize(rect.size()); self.move(rect.topLeft())
 ```
 
+**Addendum (2026-09-14):** the maximize branch first does `self.resize(avail.size())`. `show()` maximizes asynchronously, so until the event loop runs the widget still reports its pre-show size; when the text-size rebuild reopened a member right after `show()`, the grown minimum exceeded that stale size and Qt resized the maximized native window down to the minimum (a window stuck in the top-left corner on every screen). Pre-sizing to the work area makes any minimum that fits a no-op. Test: `test_maximized_window_is_presized_to_the_work_area`.
+
 Setting the maximized state before `show()` (called by `member_manager.py`)
 makes Windows size the frame to the work area, so the bottom edge is always
 above the taskbar. No change to `member_manager.py`.

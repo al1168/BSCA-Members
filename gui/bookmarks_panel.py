@@ -169,8 +169,9 @@ class BookmarksPanel(QDialog):
         self.bookmarks_edited.emit()
 
     def open_under(self, widget):
-        """Show anchored under `widget` (the toolbar button), right-aligned."""
-        pos = widget.mapToGlobal(widget.rect().bottomRight())
+        """Show anchored under `widget` (the toolbar button), right-aligned and kept
+        on screen — also when the button sits in the toolbar's "…" overflow."""
+        from gui.popup_placement import place_popup_under
         self.adjustSize()
-        self.move(pos.x() - self.width(), pos.y() + 6)
+        place_popup_under(self, widget)
         self.show()

@@ -22,9 +22,10 @@ from monthly_schedule.db import (
 # still render a badge.
 HEALTH_PLANS = ("AE", "BCBS", "ES", "HC", "HF", "HOF", "VCM")
 
-# Authorization [Plan Type] values. The leading blank keeps legacy rows (which
+# Authorization [Plan Type] values. "N/A" is a deliberate "no plan type" choice
+# that satisfies the required-field check. The leading blank keeps legacy rows (which
 # predate the column) editable without silently forcing a value on them.
-PLAN_TYPES = ("", "MAP", "MLTC")
+PLAN_TYPES = ("", "MAP", "MLTC", "N/A")
 
 LEAVE_TYPES = (
     "Vacation", "Medical", "Hospitalization",

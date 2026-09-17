@@ -248,8 +248,18 @@ class MainWindow(QMainWindow):
         if screen is None:
             self.resize(desired)
             return
-        rect = choose_startup_geometry(desired, screen.availableGeometry())
+        avail = screen.availableGeometry()
+        rect = choose_startup_geometry(desired, avail)
         if rect is None:
+            # Pre-size to the work area before asking for maximized. show()
+            # maximizes asynchronously: the OS geometry only reaches the
+            # widget once the event loop runs, and until then it reports its
+            # pre-show size. If a minimum that grows right after show() (a
+            # member reopened after a text-size rebuild) exceeds that stale
+            # size, Qt resizes the maximized native window down to the
+            # minimum, leaving it stuck in the top-left corner. With the
+            # work-area size in place, any minimum that fits is a no-op.
+            self.resize(avail.size())
             self.setWindowState(self.windowState()
                                 | Qt.WindowState.WindowMaximized)
         else:
@@ -265,6 +275,7 @@ class MainWindow(QMainWindow):
 
         # ── Sidebar ──────────────────────────────────────────
         sidebar = QWidget()
+        self._sidebar = sidebar
         sidebar.setObjectName("sidebar")
         sidebar.setFixedWidth(px(220))
         sidebar_layout = QVBoxLayout(sidebar)
@@ -332,6 +343,16 @@ class MainWindow(QMainWindow):
         toolbar = self.addToolBar("Main")
         toolbar.setObjectName("main_toolbar")
         toolbar.setMovable(False)
+
+        # Collapse / expand the member list (also Ctrl+B). Hidden, the
+        # sidebar leaves the layout entirely, so the profile gets its width
+        # and the window minimum shrinks with it.
+        self._btn_sidebar = QPushButton()
+        self._btn_sidebar.setObjectName("btn_sidebar_toggle")
+        self._btn_sidebar.clicked.connect(self.toggle_sidebar)
+        toolbar.addWidget(self._btn_sidebar)
+        collapse = QShortcut(QKeySequence("Ctrl+B"), self)
+        collapse.activated.connect(self.toggle_sidebar)
 
         self._db_indicator = QLabel()
         self._db_indicator.setObjectName("db_indicator")
@@ -415,6 +436,36 @@ class MainWindow(QMainWindow):
 
         root.addWidget(sidebar)
         root.addWidget(self._detail_stack)
+        self._apply_sidebar_collapsed(
+            bool(self._settings.get("sidebar_collapsed", False)))
+
+    def _apply_sidebar_collapsed(self, collapsed: bool):
+        self._sidebar.setVisible(not collapsed)
+        if collapsed:
+            self._btn_sidebar.setText("▶  Members")
+            self._btn_sidebar.setToolTip("Show the member list (Ctrl+B)")
+        else:
+            self._btn_sidebar.setText("◀  Members")
+            self._btn_sidebar.setToolTip("Hide the member list (Ctrl+B)")
+
+    def toggle_sidebar(self):
+        """Hide or show the member list and remember the choice, so it
+        survives the text-size rebuild and the next launch."""
+        collapsed = not self._sidebar.isHidden()
+        self._apply_sidebar_collapsed(collapsed)
+        self._settings["sidebar_collapsed"] = collapsed
+        save_settings(self._settings, self._settings_path)
+        # On a screen too narrow for list + profile the maximized window
+        # was forced wider than the screen (its minimum won), leaving the
+        # toolbar's right end off-screen. The minimum just changed, but
+        # Windows keeps a maximized window at its size until it is
+        # maximized again — so re-apply the state to refit the work area.
+        if self._is_maximized():
+            self.setWindowState(Qt.WindowState.WindowNoState)
+            self.setWindowState(Qt.WindowState.WindowMaximized)
+
+    def _is_maximized(self) -> bool:
+        return bool(self.windowState() & Qt.WindowState.WindowMaximized)
 
     def _update_db_indicator(self):
         """Show the current database filename in the toolbar."""

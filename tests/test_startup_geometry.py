@@ -83,3 +83,21 @@ def test_main_window_maximizes_on_small_offscreen_screen(qapp, tmp_path):
     w = MainWindow({"db_path": "", "theme": "dark"},
                    str(tmp_path / "settings.json"))
     assert w.windowState() & Qt.WindowState.WindowMaximized
+
+
+def test_maximized_window_is_presized_to_the_work_area(qapp, tmp_path):
+    """show() maximizes asynchronously: the OS geometry only lands once the
+    event loop runs, and until then the widget still reports its pre-show
+    size. When a minimum that grows right after show() (reopening a member
+    after a text-size rebuild) exceeds that stale size, Qt resizes the
+    maximized native window down to the minimum, leaving it stuck in the
+    top-left corner. Pre-sizing to the work area makes the stale size safe:
+    any minimum that fits the work area leaves the size alone."""
+    from PyQt6.QtWidgets import QApplication
+    avail = QApplication.primaryScreen().availableGeometry()
+    from gui.main_window import MainWindow
+    w = MainWindow({"db_path": "", "theme": "dark"},
+                   str(tmp_path / "settings.json"))
+    assert w.size() == avail.size()
+    w.setMinimumSize(avail.width() - 10, avail.height() - 10)
+    assert w.size() == avail.size()

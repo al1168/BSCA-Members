@@ -22,6 +22,10 @@ _PHOTO_URL = "profile://photo"
 # Compact type scale so the sheet always fits one printed page.
 _BODY_PT = "10.5pt"
 _TITLE_PT = "11pt"
+# The Center ID sits under the photo: larger and a saturated print blue so
+# it reads at a glance from across a desk.
+_ID_PT = "15pt"
+_ID_BLUE = "#1d4ed8"
 
 
 def _esc(value) -> str:
@@ -100,19 +104,20 @@ def build_profile_html(
     dob = _date_only(m.get("dob"))
     dob_with_age = f"{dob}{_age_text(m.get('dob'))}" if dob else dob
 
-    photo_cell = (
-        f'<td width="120" valign="top">'
-        f'<img src="{_PHOTO_URL}" width="108" height="108"></td>'
-        if include_photo else ""
+    photo_img = (f'<img src="{_PHOTO_URL}" width="108" height="108"><br>'
+                 if include_photo else "")
+    # Left cell: photo (when there is one) with the Center ID right under it.
+    id_cell = (
+        f'<td width="120" valign="top">{photo_img}'
+        f'<span style="font-size:{_ID_PT}; color:{_ID_BLUE};">'
+        f'<b>ID {_esc(m.get("center_id"))}</b></span></td>'
     )
-    # Header: photo (left) + name and a single meta line, left-aligned.
+    # Header: photo + ID (left), name and a single meta line, left-aligned.
     header = (
         f'<table width="100%" cellspacing="0" cellpadding="4">'
-        f'<tr>{photo_cell}'
+        f'<tr>{id_cell}'
         f'<td valign="middle">'
-        f'<span style="font-size:17pt; color:{_VALUE};"><b>{name}</b></span>'
-        f'&nbsp;&nbsp;<span style="color:{_LABEL}; font-size:{_TITLE_PT};">'
-        f'Center ID {_esc(m.get("center_id"))}</span><br>'
+        f'<span style="font-size:17pt; color:{_VALUE};"><b>{name}</b></span><br>'
         f'<span style="color:{_LABEL}; font-size:{_BODY_PT};">'
         f'Health Plan {_esc(m.get("health_plan"))}'
         f' &nbsp;·&nbsp; DOB {_esc(dob_with_age)}'
@@ -242,15 +247,79 @@ def _attach_printer_selector(preview, printer,
         combo.setVisible(False)
 
 
+def _attach_auth_selector(preview, choices: list, default_index,
+                          render) -> None:
+    """Add an "Authorization:" drop-down to the preview toolbar listing the
+    member's active and upcoming auths (``choices`` carry a ``label``), so the
+    user picks which one the sheet shows. ``render(choice)`` rebuilds the
+    sheet; it runs once up front with the default (or None when the member
+    has no active/upcoming auth) and again on every change. No toolbar entry
+    when there is nothing to choose between."""
+    from PyQt6.QtWidgets import QComboBox, QLabel, QMainWindow, QToolBar
+    from PyQt6.QtPrintSupport import QPrintPreviewWidget
+
+    if not choices:
+        render(None)
+        return
+    if len(choices) == 1:
+        render(choices[0])
+        return
+
+    combo = QComboBox()
+    combo.setObjectName("auth_select")
+    combo.addItems([c["label"] for c in choices])
+    combo.setCurrentIndex(default_index or 0)
+    combo.setMaximumWidth(px(360))
+
+    def _rerender(index: int):
+        render(choices[index])
+        w = preview.findChild(QPrintPreviewWidget)
+        if w is not None:
+            w.updatePreview()
+
+    render(choices[combo.currentIndex()])
+    combo.currentIndexChanged.connect(_rerender)
+
+    # The dialog's main toolbar is already wider than the dialog, so anything
+    # appended to it lands in the overflow "»" menu where a drop-down can't be
+    # used. QPrintPreviewDialog hosts that toolbar in a QMainWindow, so the
+    # picker gets its own toolbar row directly beneath.
+    main_window = preview.findChild(QMainWindow)
+    if main_window is not None:
+        bar = QToolBar("Authorization", main_window)
+        bar.setObjectName("auth_toolbar")
+        bar.setMovable(False)
+        bar.addWidget(QLabel(" Authorization to print: "))
+        bar.addWidget(combo)
+        main_window.addToolBarBreak()
+        main_window.addToolBar(bar)
+        return
+
+    toolbar = preview.findChild(QToolBar)
+    if toolbar is not None:
+        toolbar.addSeparator()
+        toolbar.addWidget(QLabel(" Authorization: "))
+        toolbar.addWidget(combo)
+    else:
+        combo.setParent(preview)
+        combo.setVisible(False)
+
+
 def open_profile_print_preview(
     parent,
     member: dict,
     emergency_contacts: list,
     enroll_start,
     photo_bytes: bytes | None = None,
-    active_auth: dict | None = None,
+    auth_choices: list | None = None,
+    default_auth_index=None,
 ) -> None:
-    """Show a print-preview dialog (print or Save-as-PDF) for a member profile."""
+    """Show a print-preview dialog (print or Save-as-PDF) for a member profile.
+
+    ``auth_choices`` lists the member's active and upcoming auths as
+    pre-formatted dicts (see ``MemberTabsWidget._print_auth_choices``); the
+    sheet shows the one at ``default_auth_index`` and, when there is more than
+    one, a toolbar drop-down lets the user switch."""
     from PyQt6.QtCore import QUrl, QMarginsF
     from PyQt6.QtGui import QTextDocument, QImage, QPageLayout
     from PyQt6.QtPrintSupport import QPrinter, QPrintPreviewDialog
@@ -261,11 +330,13 @@ def open_profile_print_preview(
         if img.loadFromData(photo_bytes):
             doc.addResource(QTextDocument.ResourceType.ImageResource,
                             QUrl(_PHOTO_URL), img)
-    doc.setHtml(build_profile_html(
-        member, emergency_contacts, enroll_start,
-        include_photo=bool(photo_bytes),
-        active_auth=active_auth,
-    ))
+
+    def _render(auth):
+        doc.setHtml(build_profile_html(
+            member, emergency_contacts, enroll_start,
+            include_photo=bool(photo_bytes),
+            active_auth=auth,
+        ))
 
     printer = QPrinter(QPrinter.PrinterMode.HighResolution)
     # Slim, even margins — enough to look framed while keeping the whole
@@ -279,5 +350,7 @@ def open_profile_print_preview(
     # printer drop-down) shows instead of collapsing into an overflow "…" menu.
     preview.resize(1200, 800)
     _attach_printer_selector(preview, printer)
+    _attach_auth_selector(preview, auth_choices or [], default_auth_index,
+                          _render)
     preview.paintRequested.connect(doc.print)  # PyQt6: print (not print_)
     preview.exec()

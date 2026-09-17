@@ -47,7 +47,7 @@ def test_missing_fields_whitespace_counts_as_missing():
 # ── Add Authorization dialog (create mode) ─────────────────────────────────
 
 def _run_auth_dialog(monkeypatch, existing=None, fill=None,
-                     member=None):
+                     member=None, db_path=None):
     """Open _open_auth_dialog with widget spies and a fake exec() that
     optionally fills the widgets, then clicks OK (emits accepted, which runs
     on_accept). Returns (result, cap, warnings).
@@ -94,6 +94,8 @@ def _run_auth_dialog(monkeypatch, existing=None, fill=None,
     w = mt.MemberTabsWidget.__new__(mt.MemberTabsWidget)
     QWidget.__init__(w)          # C++ base only; QDialog(self) needs it
     w._member = member or {"member_id": "MBR-1"}
+    if db_path is not None:
+        w._db_path = db_path        # plan choices come from this database
     result = w._open_auth_dialog(existing=existing)
     cap["_owner"] = w   # keep the dialog's C++ parent chain alive for
                         # post-return widget inspection (PyQt destroys a
@@ -338,3 +340,57 @@ def test_wizard_next_message_matches_new_skip_rule(qapp):
     src = inspect.getsource(wz)
     assert "uncheck all days" not in src
     assert "clear all of it to skip" in src
+
+
+# ── health plans come from the database, like the add-member wizard ────────
+def test_plan_combo_lists_the_database_plans(qapp, monkeypatch):
+    """Plans such as SWH / VNS / CL exist in the database but not in the
+    static HEALTH_PLANS tuple; the dialog must offer what the database has."""
+    import db.members as dbm
+    monkeypatch.setattr(dbm, "get_health_plans",
+                        lambda path: ["AE", "CL", "SWH", "VNS"])
+    seen = {}
+
+    def inspect(cap):
+        plan = cap["combos"][0]
+        seen["plan_items"] = [plan.itemText(i) for i in range(plan.count())]
+
+    _run_auth_dialog(monkeypatch, fill=inspect, db_path="prod.accdb")
+    assert seen["plan_items"] == ["", "AE", "CL", "SWH", "VNS"]
+
+
+def test_edit_keeps_a_plan_missing_from_the_list_selectable(qapp, monkeypatch):
+    import db.members as dbm
+    monkeypatch.setattr(dbm, "get_health_plans", lambda path: ["AE", "CL"])
+    existing = {"id": 9, "auth_start": date(2026, 1, 1),
+                "auth_end": date(2026, 12, 31), "auth_days": "1,2",
+                "health_plan": "HF", "member_id": "", "auth_number": "",
+                "plan_type": ""}
+    seen = {}
+
+    def inspect(cap):
+        plan = cap["combos"][0]
+        seen["plan_items"] = [plan.itemText(i) for i in range(plan.count())]
+        seen["current"] = plan.currentText()
+
+    _run_auth_dialog(monkeypatch, existing=existing, fill=inspect,
+                     db_path="prod.accdb")
+    assert "HF" in seen["plan_items"]
+    assert seen["current"] == "HF"
+
+
+def test_plan_lookup_failure_falls_back_to_static_list(qapp, monkeypatch):
+    import db.members as dbm
+    from db.members import HEALTH_PLANS
+
+    def boom(path):
+        raise FileNotFoundError(path)
+    monkeypatch.setattr(dbm, "get_health_plans", boom)
+    seen = {}
+
+    def inspect(cap):
+        plan = cap["combos"][0]
+        seen["plan_items"] = [plan.itemText(i) for i in range(plan.count())]
+
+    _run_auth_dialog(monkeypatch, fill=inspect, db_path="gone.accdb")
+    assert seen["plan_items"] == [""] + list(HEALTH_PLANS)

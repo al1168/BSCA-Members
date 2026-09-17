@@ -35,12 +35,25 @@ def test_includes_member_name_and_id():
     assert "10042" in html
 
 
-def test_center_id_sits_on_the_name_line():
-    html = build_profile_html(_member(), [], "2026-01-01")
+def test_center_id_sits_under_the_photo_bigger_and_blue():
+    from gui.profile_print import _ID_PT, _ID_BLUE, _BODY_PT
+    html = build_profile_html(_member(), [], "2026-01-01", include_photo=True)
+    photo_i = html.find('src="profile://photo"')
+    id_i = html.find("ID 10042")
     name_i = html.find("Doe, Jane")
-    br_i = html.find("<br>", name_i)
-    cid_i = html.find("Center ID 10042", name_i)
-    assert -1 < cid_i < br_i   # before the line break → same line as the name
+    assert -1 < photo_i < id_i < name_i        # photo, then ID, then the name
+    # The ID sits in the same cell as the photo (no cell boundary between).
+    assert "</td>" not in html[photo_i:id_i]
+    id_span = html[html.rfind("<span", 0, id_i):id_i]
+    assert f"font-size:{_ID_PT}" in id_span and f"color:{_ID_BLUE}" in id_span
+    assert float(_ID_PT.rstrip("pt")) > float(_BODY_PT.rstrip("pt"))
+    assert "Center ID" not in html             # no longer on the name line
+
+
+def test_center_id_shown_even_without_photo():
+    html = build_profile_html(_member(), [], "2026-01-01", include_photo=False)
+    assert "ID 10042" in html
+    assert html.find("ID 10042") < html.find("Doe, Jane")
 
 
 def test_age_shown_next_to_dob():
@@ -80,6 +93,16 @@ def test_active_auth_section_with_values():
         assert label in html
     for value in ("1.2.3", "01/01/2026", "12/31/2026", "AUTH-77", "TR-42"):
         assert value in html
+
+
+def test_auth_status_not_printed():
+    # The picker's status (Active/Upcoming) stays in the dialog; the sheet
+    # itself shows only the auth's own fields.
+    auth = {"sadc": "1", "auth_start": "01/01/2027", "auth_end": "12/31/2027",
+            "auth_number": "A", "trans_auth": "", "status": "Upcoming"}
+    html = build_profile_html(_member(), [], "2026-01-01", active_auth=auth)
+    assert "Status" not in html and "Upcoming" not in html
+    assert "No active authorization" not in html
 
 
 def test_no_active_auth_notes_the_lapse():
@@ -142,47 +165,153 @@ def test_layout_is_not_centered():
     assert 'align="center"' not in html
 
 
-def test_print_active_auth_picks_todays_auth(qapp, monkeypatch):
-    from datetime import date, timedelta
+def _tabs_widget(auths, transports=()):
     from gui.member_tabs import MemberTabsWidget
-    today = date.today()
     w = MemberTabsWidget.__new__(MemberTabsWidget)
     w._db_path = "fake.accdb"
-    w._authorizations = [
+    w._authorizations = list(auths)
+    w._transport_auths = list(transports)
+    return w
+
+
+def test_print_auth_choices_active_first_then_upcoming(qapp, monkeypatch):
+    from datetime import date, timedelta
+    today = date.today()
+    w = _tabs_widget([
         {"id": 1, "auth_start": today - timedelta(days=400),
-         "auth_end": today - timedelta(days=30),          # expired
+         "auth_end": today - timedelta(days=30),          # expired: excluded
          "auth_days": "1,2", "auth_number": "OLD"},
+        {"id": 3, "auth_start": today + timedelta(days=200),
+         "auth_end": today + timedelta(days=500),         # upcoming (later)
+         "auth_days": "2", "auth_number": "UP-LATER"},
         {"id": 2, "auth_start": today - timedelta(days=10),
          "auth_end": today + timedelta(days=300),         # active
          "auth_days": "3,1,5", "auth_number": "NEW-1"},
-    ]
-    w._transport_auths = [{"id": 9, "auth_number": "TR-9"},
-                          {"id": 8, "auth_number": "TR-OTHER"}]
+        {"id": 4, "auth_start": today + timedelta(days=20),
+         "auth_end": today + timedelta(days=100),         # upcoming (sooner)
+         "auth_days": "4", "auth_number": "UP-SOON"},
+    ], transports=[{"id": 9, "auth_number": "TR-9"},
+                   {"id": 8, "auth_number": "TR-OTHER"}])
     monkeypatch.setattr(
         "db.members.get_auth_edges",
         lambda _db: [{"id": 1, "authorization_id": 2,
                       "transport_authorization_id": 9}])
-    info = w._print_active_auth()
-    assert info["sadc"] == "1.3.5"
-    assert info["auth_number"] == "NEW-1"
-    assert info["trans_auth"] == "TR-9"                   # linked, not TR-OTHER
-    assert info["auth_start"] == f"{today - timedelta(days=10):%m/%d/%Y}"
-    assert info["auth_end"] == f"{today + timedelta(days=300):%m/%d/%Y}"
+    choices, default = w._print_auth_choices()
+    assert [c["auth_number"] for c in choices] == ["NEW-1", "UP-SOON", "UP-LATER"]
+    assert [c["status"] for c in choices] == ["Active", "Upcoming", "Upcoming"]
+    assert default == 0                                   # active wins
+    active = choices[0]
+    assert active["sadc"] == "1.3.5"
+    assert active["trans_auth"] == "TR-9"                 # linked, not TR-OTHER
+    assert active["auth_start"] == f"{today - timedelta(days=10):%m/%d/%Y}"
+    assert active["auth_end"] == f"{today + timedelta(days=300):%m/%d/%Y}"
+    # Each choice carries a label for the picker: status, dates, number.
+    assert "Active" in active["label"] and "NEW-1" in active["label"]
+    assert active["auth_start"] in active["label"]
 
 
-def test_print_active_auth_none_when_all_expired(qapp, monkeypatch):
+def test_print_auth_choices_default_to_upcoming_when_none_active(qapp, monkeypatch):
     from datetime import date, timedelta
-    from gui.member_tabs import MemberTabsWidget
     today = date.today()
-    w = MemberTabsWidget.__new__(MemberTabsWidget)
-    w._db_path = "fake.accdb"
-    w._transport_auths = []
-    w._authorizations = [
+    w = _tabs_widget([
         {"id": 1, "auth_start": today - timedelta(days=400),
          "auth_end": today - timedelta(days=30),
          "auth_days": "1", "auth_number": "OLD"},
-    ]
-    assert w._print_active_auth() is None
+        {"id": 5, "auth_start": today + timedelta(days=5),
+         "auth_end": today + timedelta(days=200),
+         "auth_days": "1", "auth_number": "NEXT"},
+    ])
+    monkeypatch.setattr("db.members.get_auth_edges", lambda _db: [])
+    choices, default = w._print_auth_choices()
+    assert [c["auth_number"] for c in choices] == ["NEXT"]
+    assert choices[default]["status"] == "Upcoming"
+
+
+def test_print_auth_choices_empty_when_all_expired(qapp, monkeypatch):
+    from datetime import date, timedelta
+    today = date.today()
+    w = _tabs_widget([
+        {"id": 1, "auth_start": today - timedelta(days=400),
+         "auth_end": today - timedelta(days=30),
+         "auth_days": "1", "auth_number": "OLD"},
+    ])
+    monkeypatch.setattr("db.members.get_auth_edges", lambda _db: [])
+    assert w._print_auth_choices() == ([], None)
+
+
+def test_print_button_reads_print_profile(qapp):
+    w = _tabs_widget([])
+    btn = w._make_print_button()
+    assert btn.text() == "🖨 Print Profile"
+    assert btn.objectName() == "btn_print"
+
+
+# Auth picker in the preview toolbar: re-renders the sheet with the chosen
+# auth. Uses a plain dialog+toolbar and a recording render callback (no
+# QPrinter -- see the spooler note below).
+def _auth_selector_fixture(choices, default):
+    """Mimics QPrintPreviewDialog's structure: a dialog whose layout holds a
+    QMainWindow carrying the toolbar."""
+    from PyQt6.QtWidgets import (QComboBox, QDialog, QMainWindow, QToolBar,
+                                 QVBoxLayout)
+    from gui.profile_print import _attach_auth_selector
+    rendered = []
+    preview = QDialog()
+    mw = QMainWindow(preview)
+    mw.addToolBar(QToolBar("main", mw))
+    QVBoxLayout(preview).addWidget(mw)
+    _attach_auth_selector(preview, choices, default, rendered.append)
+    return rendered, preview.findChild(QComboBox, "auth_select")
+
+
+def test_auth_selector_gets_its_own_toolbar_row(qapp):
+    """The main preview toolbar is already too wide for the dialog; a picker
+    added there falls into the overflow menu where it can't be used. It goes
+    on a second toolbar row under the main one instead."""
+    from PyQt6.QtWidgets import QMainWindow, QToolBar
+    a = {"label": "Active - A", "auth_number": "A"}
+    b = {"label": "Upcoming - B", "auth_number": "B"}
+    _rendered, combo = _auth_selector_fixture([a, b], 0)
+    mw = combo.parent()
+    while mw is not None and not isinstance(mw, QMainWindow):
+        mw = mw.parent()
+    bars = mw.findChildren(QToolBar)
+    assert len(bars) == 2
+    own = next(t for t in bars if t.objectName() == "auth_toolbar")
+    assert combo in own.findChildren(type(combo))
+    assert mw.toolBarBreak(own)          # on its own row, not squeezed in
+
+
+def test_auth_selector_preselects_default_and_renders_it(qapp):
+    a = {"label": "Active - A", "auth_number": "A"}
+    b = {"label": "Upcoming - B", "auth_number": "B"}
+    rendered, combo = _auth_selector_fixture([a, b], 0)
+    assert combo is not None
+    assert [combo.itemText(i) for i in range(combo.count())] == [
+        "Active - A", "Upcoming - B"]
+    assert combo.currentIndex() == 0
+    assert rendered == [a]
+
+
+def test_auth_selector_switch_rerenders_with_chosen_auth(qapp):
+    a = {"label": "Active - A", "auth_number": "A"}
+    b = {"label": "Upcoming - B", "auth_number": "B"}
+    rendered, combo = _auth_selector_fixture([a, b], 0)
+    combo.setCurrentIndex(1)
+    assert rendered == [a, b]
+
+
+def test_auth_selector_absent_with_single_choice(qapp):
+    a = {"label": "Upcoming - A", "auth_number": "A"}
+    rendered, combo = _auth_selector_fixture([a], 0)
+    assert combo is None                 # nothing to choose between
+    assert rendered == [a]               # still rendered once
+
+
+def test_auth_selector_absent_with_no_choices(qapp):
+    rendered, combo = _auth_selector_fixture([], None)
+    assert combo is None
+    assert rendered == [None]            # sheet notes the lapse
 
 
 # The selector tests use a fake printer and a plain dialog+toolbar: a real

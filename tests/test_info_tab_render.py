@@ -287,6 +287,30 @@ def test_age_label_tracks_dob_edits(qapp):
     assert w._info_age.text() == ""          # unparseable -> no age
 
 
+def test_dob_field_hugs_its_date_so_the_age_sits_beside_it(qapp):
+    """A DOB stretched over several columns must not push the age readout to
+    the far end of the span: the date field keeps its natural width and the
+    age label sits right after it, with the slack after the age."""
+    from gui.info_layout import default_layout
+    lay = default_layout()
+    for f in lay["blocks"][1]["fields"]:
+        if f["key"] == "dob":
+            f.update(slot=0, span=3)
+    w, tab = _make_tab(qapp, layout_cfg=lay,
+                       member={"first_name": "Mary", "last_name": "Chan",
+                               "dob": "5/14/1948", "alt_id": None})
+    tab.resize(1400, 800)
+    tab.show()
+    qapp.processEvents()
+    row, dob, age = w._info_dob_row, w._info_dob, w._info_age
+    assert row.width() > 600                              # the span is wide
+    assert age.x() - (dob.x() + dob.width()) <= 12        # age right beside it
+    # The field hugs the date (text + pencil + padding), not Qt's default
+    # 17-character line-edit width, so the age reads as part of the DOB.
+    assert dob.width() < 2 * dob.fontMetrics().horizontalAdvance(dob.text())
+    tab.hide()
+
+
 # ── font-size steps: value fsize small/xlarge + label lsize rules ──────────
 
 def test_qss_has_size_step_rules_both_themes():

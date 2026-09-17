@@ -141,3 +141,98 @@ def test_viewedit_formats_as_you_type(qapp):
     g.setText("1eg45")
     g._on_edited()
     assert g.text() == "1EG4-5"                 # dashed + uppercased live
+
+
+# ── save-time check: a legacy Medicare value left untouched doesn't block ──
+def _info_stub(member: dict):
+    """A minimal stand-in for MemberTabsWidget holding just the id fields the
+    save-time validation reads, loaded the way _populate_info_fields does."""
+    import types
+    import gui.member_tabs as mt
+    from db.members import format_medicaid_live, format_medicare_live, format_ssn_live
+    stub = types.SimpleNamespace(_member=member)
+    stub._info_ssn = mt._ViewEditLineEdit(
+        format_ssn(member.get("ssn", "")), formatter=format_ssn,
+        validator=is_valid_ssn, live_formatter=format_ssn_live)
+    stub._info_medicaid = mt._ViewEditLineEdit(
+        format_medicaid(member.get("medicaid", "")), formatter=format_medicaid,
+        validator=is_valid_medicaid, live_formatter=format_medicaid_live)
+    stub._info_medicare = mt._ViewEditLineEdit(
+        format_medicare(member.get("medicare", "")), formatter=format_medicare,
+        validator=is_valid_medicare, live_formatter=format_medicare_live)
+    stub._info_alt_id = mt._ViewEditLineEdit("", validator=is_valid_alt_id)
+    return stub
+
+
+def test_untouched_legacy_medicare_does_not_block_save(qapp):
+    import gui.member_tabs as mt
+    stub = _info_stub({"medicare": "123-45-6789A", "medicaid": "", "ssn": ""})
+    assert stub._info_medicare.text() == "123-45-6789A"      # shown as stored
+    assert mt.MemberTabsWidget._id_validation_errors(stub) == []
+    assert stub._info_medicare.property("error") in (False, None)
+
+
+def test_edited_medicare_still_must_be_an_mbi(qapp):
+    import gui.member_tabs as mt
+    stub = _info_stub({"medicare": "123-45-6789A", "medicaid": "", "ssn": ""})
+    stub._info_medicare.setText("1BG4-TE5-MK73")            # edited, invalid
+    errors = mt.MemberTabsWidget._id_validation_errors(stub)
+    assert errors == ["Medicare (MBI format)"]
+    assert stub._info_medicare.property("error") is True
+
+    stub._info_medicare.setText("1EG4-TE5-MK73")            # edited, valid
+    assert mt.MemberTabsWidget._id_validation_errors(stub) == []
+
+
+def test_new_medicare_on_empty_member_must_be_an_mbi(qapp):
+    import gui.member_tabs as mt
+    stub = _info_stub({"medicare": "", "medicaid": "", "ssn": ""})
+    stub._info_medicare.setText("N/A")
+    assert mt.MemberTabsWidget._id_validation_errors(stub) == ["Medicare (MBI format)"]
+
+
+def test_other_id_fields_still_block_when_invalid(qapp):
+    import gui.member_tabs as mt
+    stub = _info_stub({"medicare": "", "medicaid": "AB12345C", "ssn": "123-45-6789"})
+    stub._info_ssn.setText("12345")
+    stub._info_alt_id.setText("12a")
+    assert mt.MemberTabsWidget._id_validation_errors(stub) == [
+        "SSN (xxx-xx-xxxx)", "Alt ID (digits only)"]
+
+
+# ── passive indicator: a Medicare value that isn't an MBI is outlined ──────
+def test_medicare_field_flags_invalid_value_on_load(qapp):
+    """A legacy Medicare id shows the red outline and an explanatory tooltip
+    as soon as the member opens (nothing blocks; see the save-time tests), and
+    the flag clears when the value becomes a valid MBI or empty."""
+    import gui.member_tabs as mt
+    from db.members import format_medicare_live
+    f = mt._ViewEditLineEdit("123-45-6789A", formatter=format_medicare,
+                             validator=is_valid_medicare,
+                             live_formatter=format_medicare_live,
+                             invalid_hint="Not a valid Medicare number")
+    assert f.property("error") is True
+    assert f.toolTip() == "Not a valid Medicare number"
+    f.setText("1EG4-TE5-MK73")
+    assert f.property("error") is False
+    assert f.toolTip() == ""
+    f.setText("")
+    assert f.property("error") is False
+    f.setText("N/A")
+    assert f.property("error") is True
+
+
+def test_other_fields_are_not_flagged_on_load(qapp):
+    import gui.member_tabs as mt
+    f = mt._ViewEditLineEdit("12345", formatter=format_ssn, validator=is_valid_ssn)
+    assert f.property("error") in (False, None)
+
+
+def test_info_tab_marks_legacy_medicare(qapp):
+    import sys
+    sys.path.insert(0, "tests")
+    from test_info_tab_render import _make_tab
+    w, _tab = _make_tab(qapp, member={"first_name": "Mary", "last_name": "Chan",
+                                      "medicare": "123-45-6789A", "alt_id": None})
+    assert w._info_medicare.property("error") is True
+    assert "Medicare" in w._info_medicare.toolTip()
